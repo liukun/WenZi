@@ -13,6 +13,7 @@ from .mode_loader import (
     get_sorted_modes,
     load_modes,
 )
+from .vocabulary import VocabularyIndex
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,14 @@ class TextEnhancer:
 
         self._providers_config = config.get("providers", {})
         self._init_providers()
+
+        # Vocabulary retrieval
+        vocab_cfg = config.get("vocabulary", {})
+        self._vocab_enabled = vocab_cfg.get("enabled", False)
+        self._vocab_top_k = vocab_cfg.get("top_k", 5)
+        self._vocab_index: Optional[VocabularyIndex] = None
+        if self._vocab_enabled:
+            self._vocab_index = VocabularyIndex(vocab_cfg)
 
         # Validate active provider/model
         if self._active_provider not in self._providers and self._providers:
@@ -111,6 +120,22 @@ class TextEnhancer:
     def thinking(self, value: bool) -> None:
         self._thinking = value
         logger.info("AI thinking changed to: %s", value)
+
+    @property
+    def vocab_enabled(self) -> bool:
+        return self._vocab_enabled
+
+    @vocab_enabled.setter
+    def vocab_enabled(self, value: bool) -> None:
+        self._vocab_enabled = value
+        if value and self._vocab_index is None:
+            vocab_cfg = self._config_raw.get("vocabulary", {}) if hasattr(self, "_config_raw") else {}
+            self._vocab_index = VocabularyIndex(vocab_cfg)
+        logger.info("Vocabulary changed to: %s", value)
+
+    @property
+    def vocab_index(self) -> Optional[VocabularyIndex]:
+        return self._vocab_index
 
     @property
     def provider_name(self) -> str:
@@ -257,12 +282,31 @@ class TextEnhancer:
             return text
 
         try:
+            # Retrieve vocabulary context if enabled
+            system_content = mode_def.prompt
+            if self._vocab_enabled and self._vocab_index is not None:
+                try:
+                    if not self._vocab_index.is_loaded:
+                        self._vocab_index.load()
+                    entries = self._vocab_index.retrieve(
+                        text.strip(), top_k=self._vocab_top_k
+                    )
+                    if entries:
+                        vocab_context = self._vocab_index.format_for_prompt(entries)
+                        system_content = f"{mode_def.prompt}\n\n{vocab_context}"
+                        logger.info(
+                            "Vocabulary matched: %s",
+                            ", ".join(e.term for e in entries),
+                        )
+                except Exception as e:
+                    logger.warning("Vocabulary retrieval failed: %s", e)
+
             client, _, provider_extra_body = self._providers[self._active_provider]
             extra_body = self._build_extra_body(provider_extra_body)
             kwargs: Dict[str, Any] = {
                 "model": self._active_model,
                 "messages": [
-                    {"role": "system", "content": mode_def.prompt},
+                    {"role": "system", "content": system_content},
                     {"role": "user", "content": text.strip()},
                 ],
             }

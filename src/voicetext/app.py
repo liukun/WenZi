@@ -184,6 +184,20 @@ class VoiceTextApp(rumps.App):
             self._enhance_thinking_item.state = 1
         self._enhance_menu.add(self._enhance_thinking_item)
 
+        # Vocabulary toggle
+        vocab_enabled = ai_cfg.get("vocabulary", {}).get("enabled", False)
+        self._enhance_vocab_item = rumps.MenuItem(
+            "Vocabulary", callback=self._on_vocab_toggle
+        )
+        self._enhance_vocab_item.state = 1 if vocab_enabled else 0
+        self._enhance_menu.add(self._enhance_vocab_item)
+
+        # Build vocabulary action
+        self._enhance_vocab_build_item = rumps.MenuItem(
+            "Build Vocabulary...", callback=self._on_vocab_build
+        )
+        self._enhance_menu.add(self._enhance_vocab_build_item)
+
         # Provider configuration items
         self._enhance_menu.add(rumps.separator)
         self._enhance_add_provider_item = rumps.MenuItem(
@@ -201,6 +215,10 @@ class VoiceTextApp(rumps.App):
         )
         self._enhance_menu.add(self._enhance_edit_config_item)
 
+        self._show_preview_item = rumps.MenuItem(
+            "Show Preview", callback=self._on_show_preview
+        )
+
         self._preview_item = rumps.MenuItem(
             "Preview", callback=self._on_preview_toggle
         )
@@ -213,6 +231,7 @@ class VoiceTextApp(rumps.App):
         self.menu = [
             self._status_item,
             self._hotkey_item,
+            self._show_preview_item,
             None,
             self._model_menu,
             self._enhance_menu,
@@ -590,6 +609,101 @@ Output only the processed text without any explanation."""
         self._config["ai_enhance"]["thinking"] = new_value
         save_config(self._config, self._config_path)
         logger.info("AI thinking set to: %s", new_value)
+
+    def _on_vocab_toggle(self, sender) -> None:
+        """Toggle vocabulary-based retrieval."""
+        if not self._enhancer:
+            return
+
+        new_value = not self._enhancer.vocab_enabled
+        self._enhancer.vocab_enabled = new_value
+        sender.state = 1 if new_value else 0
+
+        # Persist to config
+        self._config.setdefault("ai_enhance", {})
+        self._config["ai_enhance"].setdefault("vocabulary", {})
+        self._config["ai_enhance"]["vocabulary"]["enabled"] = new_value
+        save_config(self._config, self._config_path)
+        logger.info("Vocabulary set to: %s", new_value)
+
+    def _on_vocab_build(self, _sender) -> None:
+        """Build vocabulary from correction logs in a background thread."""
+        if not self._enhancer:
+            rumps.alert("AI Enhance is not configured.")
+            return
+
+        logger.info("Starting vocabulary build...")
+
+        cancel_event = threading.Event()
+
+        from .vocab_build_window import VocabBuildProgressPanel
+
+        progress_panel = VocabBuildProgressPanel()
+        # _on_vocab_build runs on the main thread (rumps callback), so show directly
+        progress_panel.show(on_cancel=lambda: cancel_event.set())
+
+        def _build():
+            import asyncio as _asyncio
+
+            from .vocabulary_builder import BuildCallbacks, VocabularyBuilder
+
+            ai_cfg = self._config.get("ai_enhance", {})
+            logger.info("VocabularyBuilder initializing...")
+            builder = VocabularyBuilder(ai_cfg)
+
+            callbacks = BuildCallbacks(
+                on_batch_start=lambda i, t: (
+                    progress_panel.clear_stream_text(),
+                    progress_panel.update_status(f"Batch {i}/{t} — extracting..."),
+                ),
+                on_stream_chunk=lambda chunk: progress_panel.append_stream_text(chunk),
+                on_batch_done=lambda i, t, c: progress_panel.update_status(
+                    f"Batch {i}/{t} done — {c} entries found"
+                ),
+            )
+
+            old_title = self.title
+            self.title = "VT ⏳"
+            try:
+                loop = _asyncio.new_event_loop()
+                summary = loop.run_until_complete(
+                    builder.build(cancel_event=cancel_event, callbacks=callbacks)
+                )
+                # Shut down async generators before closing the loop to avoid
+                # "Task was destroyed but it is pending" warnings from streams
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                loop.close()
+
+                # Reload vocabulary index if enhancer has one
+                if self._enhancer and self._enhancer.vocab_index is not None:
+                    self._enhancer.vocab_index.reload()
+
+                cancelled = summary.get("cancelled", False)
+                status = "Cancelled" if cancelled else "Built"
+                msg = (
+                    f"{summary['total_entries']} entries "
+                    f"({summary['new_entries']} new)"
+                )
+                progress_panel.update_status(f"{status}: {msg}")
+                try:
+                    rumps.notification("VoiceText", f"Vocabulary {status}", msg)
+                except Exception:
+                    logger.debug("Notification center unavailable, skipping notification")
+            except Exception as e:
+                logger.error("Vocabulary build failed: %s", e)
+                progress_panel.update_status(f"Failed: {e}")
+                try:
+                    rumps.notification(
+                        "VoiceText", "Vocabulary Build Failed", str(e)
+                    )
+                except Exception:
+                    logger.debug("Notification center unavailable, skipping notification")
+            finally:
+                self.title = old_title
+                progress_panel.close()
+
+        t = threading.Thread(target=_build, daemon=True)
+        t.start()
 
     def _build_enhance_model_menu(self) -> None:
         """Build or rebuild the AI enhance model submenu."""
@@ -1023,6 +1137,10 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
             logger.error("Remove provider failed: %s", e, exc_info=True)
         finally:
             self._restore_accessory()
+
+    def _on_show_preview(self, _) -> None:
+        """Bring the preview panel to the front."""
+        self._preview_panel.bring_to_front()
 
     def _on_preview_toggle(self, sender) -> None:
         """Toggle preview window on/off."""

@@ -16,6 +16,8 @@ dependencies = [
     "mlx-whisper>=0.4.3",
     "openai-agents>=0.11.0",
 ]
+# NOTE: Vocabulary feature requires fastembed (pip install fastembed).
+# Not listed as dependency due to numpy version conflict with funasr-onnx.
 
 [project.scripts]
 voicetext = "voicetext.app:main"

@@ -112,6 +112,19 @@ class ResultPreviewPanel:
 
         AppHelper.callAfter(_update)
 
+    @property
+    def is_visible(self) -> bool:
+        """Return True if the panel is currently displayed."""
+        return self._panel is not None and self._panel.isVisible()
+
+    def bring_to_front(self) -> None:
+        """Bring the panel to the front if it is visible."""
+        if self._panel is not None and self._panel.isVisible():
+            self._panel.makeKeyAndOrderFront_(None)
+            from AppKit import NSApp
+
+            NSApp.activateIgnoringOtherApps_(True)
+
     def close(self) -> None:
         """Close the panel."""
         if self._panel is not None:
