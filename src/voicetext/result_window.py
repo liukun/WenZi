@@ -79,6 +79,11 @@ class ResultPreviewPanel:
 
         self._panel.makeKeyAndOrderFront_(None)
         self._panel.makeFirstResponder_(self._final_text_field)
+        # Move cursor to end instead of selecting all text
+        editor = self._panel.fieldEditor_forObject_(True, self._final_text_field)
+        if editor:
+            end = editor.string().length() if editor.string() else 0
+            editor.setSelectedRange_((end, 0))
 
         from AppKit import NSApp
 
