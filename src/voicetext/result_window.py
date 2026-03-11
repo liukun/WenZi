@@ -274,6 +274,13 @@ class ResultPreviewPanel:
         tv.textContainer().setWidthTracksTextView_(True)
         tv.setFont_(NSFont.userFixedPitchFontOfSize_(12.0))
         tv.setEditable_(editable)
+        if not editable:
+            from AppKit import NSColor
+            tv.setBackgroundColor_(
+                NSColor.colorWithCalibratedRed_green_blue_alpha_(
+                    0.95, 0.95, 0.95, 1.0
+                )
+            )
 
         scroll.setDocumentView_(tv)
         return scroll, tv
