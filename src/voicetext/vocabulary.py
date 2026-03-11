@@ -120,12 +120,20 @@ class VocabularyIndex:
         if not entries:
             return ""
 
-        lines = ["参考以下常用词汇进行纠错："]
+        lines = [
+            "---",
+            "以下是从用户个人词库中检索到的、与本次输入相关的专有名词和术语。",
+            "语音识别常将这些词汇误写为同音或近音的错误形式，请在纠错时优先参考这些正确写法：",
+            "",
+        ]
         for entry in entries:
             if entry.context:
                 lines.append(f"- {entry.term}（{entry.context}）")
             else:
                 lines.append(f"- {entry.term}")
+        lines.append("")
+        lines.append("请注意：仅当输入文本中确实存在对应的误写时才进行替换，不要强行套用。")
+        lines.append("---")
         return "\n".join(lines)
 
     def _lazy_load_model(self) -> None:

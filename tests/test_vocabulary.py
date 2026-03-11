@@ -272,7 +272,9 @@ class TestVocabularyIndexFormatForPrompt:
         ]
         idx = VocabularyIndex({})
         result = idx.format_for_prompt(entries)
-        assert "参考以下常用词汇进行纠错：" in result
+        assert "从用户个人词库中检索到的" in result
+        assert "优先参考这些正确写法" in result
+        assert "不要强行套用" in result
         assert "- Python（编程语言）" in result
         assert "- Kubernetes（容器编排）" in result
 
@@ -281,7 +283,7 @@ class TestVocabularyIndexFormatForPrompt:
         idx = VocabularyIndex({})
         result = idx.format_for_prompt(entries)
         assert "- Python" in result
-        assert "（" not in result
+        assert "- Python（" not in result
 
     def test_format_empty(self):
         idx = VocabularyIndex({})

@@ -757,7 +757,9 @@ class TestVocabularyIntegration:
             VocabularyEntry(term="Python", context="编程语言"),
         ]
         mock_vocab.format_for_prompt.return_value = (
-            "参考以下常用词汇进行纠错：\n- Python（编程语言）"
+            "---\n以下是从用户个人词库中检索到的、与本次输入相关的专有名词和术语。\n"
+            "语音识别常将这些词汇误写为同音或近音的错误形式，请在纠错时优先参考这些正确写法：\n\n"
+            "- Python（编程语言）\n\n请注意：仅当输入文本中确实存在对应的误写时才进行替换，不要强行套用。\n---"
         )
 
         cfg = _make_config(enabled=True, vocabulary={"enabled": True, "top_k": 5})
@@ -793,7 +795,7 @@ class TestVocabularyIntegration:
 
         call_kwargs = mock_client.chat.completions.create.call_args
         system_msg = call_kwargs.kwargs["messages"][0]["content"]
-        assert "参考以下常用词汇" not in system_msg
+        assert "从用户个人词库中检索到的" not in system_msg
 
     def test_enhance_vocab_retrieval_failure_graceful(self):
         mock_client = _make_mock_client("enhanced text")
@@ -837,4 +839,4 @@ class TestVocabularyIntegration:
 
         call_kwargs = mock_client.chat.completions.create.call_args
         system_msg = call_kwargs.kwargs["messages"][0]["content"]
-        assert "参考以下常用词汇" not in system_msg
+        assert "从用户个人词库中检索到的" not in system_msg
