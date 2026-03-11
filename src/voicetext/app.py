@@ -215,6 +215,10 @@ class VoiceTextApp(rumps.App):
         )
         self._enhance_menu.add(self._enhance_edit_config_item)
 
+        self._show_preview_item = rumps.MenuItem(
+            "Show Preview", callback=self._on_show_preview
+        )
+
         self._preview_item = rumps.MenuItem(
             "Preview", callback=self._on_preview_toggle
         )
@@ -227,6 +231,7 @@ class VoiceTextApp(rumps.App):
         self.menu = [
             self._status_item,
             self._hotkey_item,
+            self._show_preview_item,
             None,
             self._model_menu,
             self._enhance_menu,
@@ -1132,6 +1137,10 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
             logger.error("Remove provider failed: %s", e, exc_info=True)
         finally:
             self._restore_accessory()
+
+    def _on_show_preview(self, _) -> None:
+        """Bring the preview panel to the front."""
+        self._preview_panel.bring_to_front()
 
     def _on_preview_toggle(self, sender) -> None:
         """Toggle preview window on/off."""

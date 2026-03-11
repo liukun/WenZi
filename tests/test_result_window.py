@@ -301,6 +301,63 @@ class TestResultPreviewPanelUserEdit:
         assert panel._user_edited is False
 
 
+class TestResultPreviewPanelVisibility:
+    """Test is_visible and bring_to_front."""
+
+    def test_is_visible_true_when_panel_visible(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = True
+
+        assert panel.is_visible is True
+
+    def test_is_visible_false_when_panel_none(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        assert panel.is_visible is False
+
+    def test_is_visible_false_when_panel_hidden(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+
+        assert panel.is_visible is False
+
+    def test_bring_to_front_when_visible(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = True
+
+        panel.bring_to_front()
+
+        panel._panel.makeKeyAndOrderFront_.assert_called_once_with(None)
+
+    def test_bring_to_front_noop_when_no_panel(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        # Should not raise
+        panel.bring_to_front()
+
+    def test_bring_to_front_noop_when_hidden(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+
+        panel.bring_to_front()
+
+        panel._panel.makeKeyAndOrderFront_.assert_not_called()
+
+
 class TestResultPreviewPanelLayout:
     """Test layout switching based on show_enhance."""
 
