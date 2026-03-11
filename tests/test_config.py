@@ -34,10 +34,22 @@ class TestMergeDict:
 
 
 class TestLoadConfig:
-    def test_default_config(self):
-        config = load_config()
+    def test_default_config_creates_file(self, tmp_path):
+        config_file = tmp_path / "config.json"
+        config = load_config(str(config_file))
         assert config["hotkey"] == "fn"
         assert config["audio"]["sample_rate"] == 16000
+        # File should be created
+        assert config_file.exists()
+        written = json.loads(config_file.read_text())
+        assert written["hotkey"] == "fn"
+        assert written["asr"]["backend"] == "funasr"
+
+    def test_default_config_creates_parent_dirs(self, tmp_path):
+        config_file = tmp_path / "sub" / "dir" / "config.json"
+        config = load_config(str(config_file))
+        assert config_file.exists()
+        assert config["hotkey"] == "fn"
 
     def test_load_from_file(self):
         overrides = {"hotkey": "f5", "audio": {"sample_rate": 44100}}
@@ -56,6 +68,8 @@ class TestLoadConfig:
         finally:
             os.unlink(tmp_path)
 
-    def test_missing_file_raises(self):
-        with pytest.raises(FileNotFoundError):
-            load_config("/nonexistent/config.json")
+    def test_explicit_missing_file_creates_default(self, tmp_path):
+        config_file = tmp_path / "nonexistent.json"
+        config = load_config(str(config_file))
+        assert config_file.exists()
+        assert config == DEFAULT_CONFIG

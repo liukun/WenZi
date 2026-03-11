@@ -16,7 +16,7 @@ from .config import load_config
 from .hotkey import HoldHotkeyListener
 from .input import type_text
 from .recorder import Recorder
-from .transcriber import Transcriber
+from .transcriber import create_transcriber
 
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,12 @@ class VoiceTextApp(rumps.App):
         )
 
         asr_cfg = self._config["asr"]
-        self._transcriber = Transcriber(
-            use_vad=asr_cfg["use_vad"],
-            use_punc=asr_cfg["use_punc"],
+        self._transcriber = create_transcriber(
+            backend=asr_cfg.get("backend", "funasr"),
+            use_vad=asr_cfg.get("use_vad", True),
+            use_punc=asr_cfg.get("use_punc", True),
+            language=asr_cfg.get("language"),
+            model=asr_cfg.get("model"),
         )
 
         self._output_method = self._config["output"]["method"]
@@ -164,7 +167,7 @@ class VoiceTextApp(rumps.App):
 def main() -> None:
     """Entry point."""
     config_path = sys.argv[1] if len(sys.argv) > 1 else None
-    app = VoiceTextApp(config_path=config_path)
+    app = VoiceTextApp(config_path=config_path)  # None uses default path
     app.run()
 
 
