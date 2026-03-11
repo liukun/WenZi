@@ -68,6 +68,34 @@ PRESETS = [
 
 PRESET_BY_ID: Dict[str, ModelPreset] = {p.id: p for p in PRESETS}
 
+# Cache backend availability at import time
+_backend_available: Dict[str, bool] = {}
+
+
+def is_backend_available(backend: str) -> bool:
+    """Check if a backend's required packages are importable."""
+    if backend in _backend_available:
+        return _backend_available[backend]
+
+    available = False
+    if backend == "funasr":
+        try:
+            import funasr_onnx  # noqa: F401
+
+            available = True
+        except ImportError:
+            pass
+    elif backend == "mlx-whisper":
+        try:
+            import mlx_whisper  # noqa: F401
+
+            available = True
+        except ImportError:
+            pass
+
+    _backend_available[backend] = available
+    return available
+
 
 def resolve_preset_from_config(
     backend: str, model: Optional[str] = None

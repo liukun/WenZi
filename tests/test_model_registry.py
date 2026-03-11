@@ -9,6 +9,7 @@ from voicetext.model_registry import (
     PRESETS,
     ModelPreset,
     get_model_cache_dir,
+    is_backend_available,
     resolve_preset_from_config,
 )
 
@@ -94,3 +95,18 @@ class TestGetModelCacheDir:
         preset = PRESET_BY_ID["mlx-whisper-tiny"]
         cache_dir = get_model_cache_dir(preset)
         assert "models--mlx-community--whisper-tiny" in str(cache_dir)
+
+
+class TestIsBackendAvailable:
+    def test_funasr_available(self):
+        # funasr_onnx should be installed in test env
+        assert is_backend_available("funasr") is True
+
+    def test_unknown_backend_not_available(self):
+        assert is_backend_available("nonexistent") is False
+
+    def test_result_is_cached(self):
+        # Call twice to exercise caching
+        r1 = is_backend_available("funasr")
+        r2 = is_backend_available("funasr")
+        assert r1 == r2

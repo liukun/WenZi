@@ -20,6 +20,7 @@ from .model_registry import (
     PRESETS,
     ModelPreset,
     get_model_cache_dir,
+    is_backend_available,
     is_model_cached,
     resolve_preset_from_config,
 )
@@ -85,15 +86,20 @@ class VoiceTextApp(rumps.App):
         self._model_menu = rumps.MenuItem("Model")
         self._model_menu_items: Dict[str, rumps.MenuItem] = {}
         for preset in PRESETS:
-            item = rumps.MenuItem(preset.display_name)
-            item.set_callback(self._on_model_select)
+            backend_ok = is_backend_available(preset.backend)
+            if backend_ok:
+                title = preset.display_name
+            else:
+                title = f"{preset.display_name} (N/A)"
+            item = rumps.MenuItem(title)
             # Tag the item with preset id
             item._preset_id = preset.id
+            if backend_ok:
+                item.set_callback(self._on_model_select)
+            else:
+                item.set_callback(None)
             if preset.id == self._current_preset_id:
                 item.state = 1
-            # Show cached indicator
-            if is_model_cached(preset):
-                pass  # No extra decoration needed
             self._model_menu_items[preset.id] = item
             self._model_menu.add(item)
 
@@ -262,9 +268,11 @@ class VoiceTextApp(rumps.App):
                 self._try_restore_previous_model(old_preset_id)
 
             finally:
-                # Re-enable model menu callbacks
-                for item in self._model_menu_items.values():
-                    item.set_callback(self._on_model_select)
+                # Re-enable model menu callbacks (only for available backends)
+                for pid, item in self._model_menu_items.items():
+                    p = PRESET_BY_ID[pid]
+                    if is_backend_available(p.backend):
+                        item.set_callback(self._on_model_select)
                 self._busy = False
 
         threading.Thread(target=_do_switch, daemon=True).start()
