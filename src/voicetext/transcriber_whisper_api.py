@@ -37,6 +37,10 @@ class WhisperAPITranscriber(BaseTranscriber):
     def initialized(self) -> bool:
         return self._initialized
 
+    @property
+    def model_display_name(self) -> str:
+        return self._model
+
     def initialize(self) -> None:
         if self._initialized:
             return

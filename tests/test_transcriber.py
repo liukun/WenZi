@@ -52,6 +52,75 @@ class TestCreateTranscriber:
             create_transcriber(backend="unknown")
 
 
+class TestModelDisplayName:
+    def test_funasr_display_name(self):
+        t = FunASRTranscriber(use_vad=False, use_punc=False)
+        assert t.model_display_name == "FunASR Paraformer"
+
+    def test_mlx_display_name_default(self):
+        try:
+            from voicetext.transcriber_mlx import MLXWhisperTranscriber
+        except ImportError:
+            pytest.skip("mlx-whisper not installed")
+
+        t = MLXWhisperTranscriber()
+        assert t.model_display_name == "whisper-large-v3-turbo"
+
+    def test_mlx_display_name_custom(self):
+        try:
+            from voicetext.transcriber_mlx import MLXWhisperTranscriber
+        except ImportError:
+            pytest.skip("mlx-whisper not installed")
+
+        t = MLXWhisperTranscriber(model="mlx-community/whisper-tiny")
+        assert t.model_display_name == "whisper-tiny"
+
+    def test_mlx_display_name_no_slash(self):
+        try:
+            from voicetext.transcriber_mlx import MLXWhisperTranscriber
+        except ImportError:
+            pytest.skip("mlx-whisper not installed")
+
+        t = MLXWhisperTranscriber(model="custom-model")
+        assert t.model_display_name == "custom-model"
+
+    def test_whisper_api_display_name(self):
+        from voicetext.transcriber_whisper_api import WhisperAPITranscriber
+
+        t = WhisperAPITranscriber(
+            base_url="https://api.example.com",
+            api_key="test-key",
+            model="whisper-large-v3",
+        )
+        assert t.model_display_name == "whisper-large-v3"
+
+
+class TestWavDurationSeconds:
+    def test_valid_wav(self):
+        import io
+        import struct
+        import wave
+
+        sample_rate = 16000
+        num_samples = sample_rate * 2  # 2 seconds
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(struct.pack(f"<{num_samples}h", *([0] * num_samples)))
+        wav_data = buf.getvalue()
+
+        duration = BaseTranscriber.wav_duration_seconds(wav_data)
+        assert abs(duration - 2.0) < 0.01
+
+    def test_invalid_data_returns_zero(self):
+        assert BaseTranscriber.wav_duration_seconds(b"not a wav") == 0.0
+
+    def test_empty_data_returns_zero(self):
+        assert BaseTranscriber.wav_duration_seconds(b"") == 0.0
+
+
 class TestCleanup:
     def test_funasr_cleanup(self):
         t = FunASRTranscriber(use_vad=False, use_punc=False)

@@ -17,6 +17,11 @@ class BaseTranscriber(abc.ABC):
     def initialized(self) -> bool:
         """Whether the model has been loaded."""
 
+    @property
+    @abc.abstractmethod
+    def model_display_name(self) -> str:
+        """Human-readable model name for display in the UI."""
+
     @abc.abstractmethod
     def initialize(self) -> None:
         """Load models. Call once at startup."""
@@ -28,6 +33,18 @@ class BaseTranscriber(abc.ABC):
     @abc.abstractmethod
     def cleanup(self) -> None:
         """Release model resources. After this, initialized should return False."""
+
+    @staticmethod
+    def wav_duration_seconds(wav_data: bytes) -> float:
+        """Calculate audio duration in seconds from WAV data."""
+        import io
+        import wave
+
+        try:
+            with wave.open(io.BytesIO(wav_data), "rb") as wf:
+                return wf.getnframes() / wf.getframerate()
+        except Exception:
+            return 0.0
 
 
 def create_transcriber(

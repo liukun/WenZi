@@ -34,6 +34,10 @@ class FunASRTranscriber(BaseTranscriber):
     def initialized(self) -> bool:
         return self._initialized
 
+    @property
+    def model_display_name(self) -> str:
+        return "FunASR Paraformer"
+
     def initialize(self) -> None:
         """Load all required models. Call once at startup."""
         if self._initialized:

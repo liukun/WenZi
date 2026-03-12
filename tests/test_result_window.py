@@ -885,3 +885,51 @@ class TestResultPreviewPanelSystemPrompt:
         panel = ResultPreviewPanel()
         assert panel._system_prompt == ""
         assert panel._prompt_button is None
+
+
+class TestResultPreviewPanelASRInfo:
+    """Test ASR model/duration info display in the preview panel."""
+
+    def test_asr_info_stored_on_show(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = _setup_panel_with_final_field(ResultPreviewPanel())
+
+        panel.show(
+            asr_text="hello",
+            show_enhance=False,
+            on_confirm=MagicMock(),
+            on_cancel=MagicMock(),
+            asr_info="whisper-large-v3-turbo  2.5s",
+        )
+
+        assert panel._asr_info == "whisper-large-v3-turbo  2.5s"
+
+    def test_asr_info_default_empty(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = _setup_panel_with_final_field(ResultPreviewPanel())
+
+        panel.show(
+            asr_text="hello",
+            show_enhance=False,
+            on_confirm=MagicMock(),
+            on_cancel=MagicMock(),
+        )
+
+        assert panel._asr_info == ""
+
+    def test_backward_compat_show_without_asr_info(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = _setup_panel_with_final_field(ResultPreviewPanel())
+
+        # Call show() without asr_info — should default to empty string
+        panel.show(
+            asr_text="text",
+            show_enhance=False,
+            on_confirm=MagicMock(),
+            on_cancel=MagicMock(),
+        )
+
+        assert panel._asr_info == ""

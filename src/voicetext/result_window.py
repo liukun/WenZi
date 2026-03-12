@@ -60,6 +60,7 @@ class ResultPreviewPanel:
         self._asr_text = ""
         self._available_modes: List[Tuple[str, str]] = []
         self._current_mode: str = "off"
+        self._asr_info: str = ""
         self._enhance_info: str = ""
         self._enhance_request_id: int = 0
         self._system_prompt: str = ""
@@ -76,6 +77,7 @@ class ResultPreviewPanel:
         available_modes: Optional[List[Tuple[str, str]]] = None,
         current_mode: Optional[str] = None,
         on_mode_change: Optional[Callable[[str], None]] = None,
+        asr_info: str = "",
         enhance_info: str = "",
     ) -> None:
         """Show the preview panel with ASR text.
@@ -88,6 +90,7 @@ class ResultPreviewPanel:
             available_modes: List of (mode_id, label) pairs for mode switcher.
             current_mode: Currently selected mode_id.
             on_mode_change: Callback when user switches mode in the segmented control.
+            asr_info: Model/duration info string to display in ASR label.
             enhance_info: Provider/model info string to display in enhance label.
         """
         self._on_confirm = on_confirm
@@ -98,6 +101,7 @@ class ResultPreviewPanel:
         self._asr_text = asr_text
         self._available_modes = available_modes or []
         self._current_mode = current_mode or "off"
+        self._asr_info = asr_info
         self._enhance_info = enhance_info
         self._enhance_request_id = 0
 
@@ -481,7 +485,10 @@ class ResultPreviewPanel:
             self._segment_target = None
 
         # ASR Result label
-        asr_label = NSTextField.labelWithString_("ASR Result")
+        asr_label_text = "ASR"
+        if self._asr_info:
+            asr_label_text = f"ASR ({self._asr_info})"
+        asr_label = NSTextField.labelWithString_(asr_label_text)
         asr_label.setFrame_(NSMakeRect(self._PADDING, y + self._TEXT_HEIGHT, inner_width, self._LABEL_HEIGHT))
         asr_label.setFont_(NSFont.boldSystemFontOfSize_(12))
         content_view.addSubview_(asr_label)

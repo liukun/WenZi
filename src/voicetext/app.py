@@ -375,13 +375,18 @@ class VoiceTextApp(rumps.App):
         # Run transcription in background to keep UI responsive
         def _do_transcribe():
             try:
+                from .transcriber import BaseTranscriber
+
+                audio_duration = BaseTranscriber.wav_duration_seconds(wav_data)
                 text = self._transcriber.transcribe(wav_data)
                 if text and text.strip():
                     asr_text = text.strip()
                     use_enhance = bool(self._enhancer and self._enhancer.is_active)
 
                     if self._preview_enabled:
-                        self._do_transcribe_with_preview(asr_text, use_enhance)
+                        self._do_transcribe_with_preview(
+                            asr_text, use_enhance, audio_duration=audio_duration,
+                        )
                     else:
                         self._do_transcribe_direct(asr_text, use_enhance)
                 else:
@@ -443,7 +448,9 @@ class VoiceTextApp(rumps.App):
         except Exception as e:
             logger.error("Failed to log conversation: %s", e)
 
-    def _do_transcribe_with_preview(self, asr_text: str, use_enhance: bool) -> None:
+    def _do_transcribe_with_preview(
+        self, asr_text: str, use_enhance: bool, audio_duration: float = 0.0,
+    ) -> None:
         """Show preview panel, optionally run AI enhance, wait for user decision."""
         from PyObjCTools import AppHelper
         import time
@@ -493,6 +500,16 @@ class VoiceTextApp(rumps.App):
         if self._enhancer:
             available_modes = [("off", "Off")] + self._enhancer.available_modes
 
+        # Build ASR info string (model name + audio duration)
+        asr_info_parts = []
+        try:
+            asr_info_parts.append(self._transcriber.model_display_name)
+        except Exception:
+            pass
+        if audio_duration > 0:
+            asr_info_parts.append(f"{audio_duration:.1f}s")
+        asr_info = "  ".join(asr_info_parts)
+
         # Build enhance info string
         enhance_info = ""
         if self._enhancer:
@@ -514,6 +531,7 @@ class VoiceTextApp(rumps.App):
                 available_modes=available_modes,
                 current_mode=self._enhance_mode,
                 on_mode_change=self._on_preview_mode_change,
+                asr_info=asr_info,
                 enhance_info=enhance_info,
             )
             # Start enhancement after show() so request_id is not reset

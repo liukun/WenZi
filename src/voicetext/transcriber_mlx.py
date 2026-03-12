@@ -36,6 +36,14 @@ class MLXWhisperTranscriber(BaseTranscriber):
     def initialized(self) -> bool:
         return self._initialized
 
+    @property
+    def model_display_name(self) -> str:
+        name = self._model_name
+        # Strip common prefixes for a cleaner display
+        if "/" in name:
+            name = name.rsplit("/", 1)[-1]
+        return name
+
     def initialize(self) -> None:
         """Import mlx_whisper and warm up the model."""
         if self._initialized:
