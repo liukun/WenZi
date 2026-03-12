@@ -806,3 +806,82 @@ class TestResultPreviewPanelKeyboardShortcuts:
 
         assert result is event
         assert changed_modes == []
+
+
+class TestResultPreviewPanelSystemPrompt:
+    """Test system prompt viewing functionality."""
+
+    def test_system_prompt_stored_on_set_enhance_result(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._user_edited = False
+        panel._enhance_text_view = MagicMock()
+        panel._enhance_label = MagicMock()
+        panel._final_text_field = MagicMock()
+        panel._prompt_button = MagicMock()
+
+        with patch("PyObjCTools.AppHelper") as mock_helper:
+            mock_helper.callAfter.side_effect = lambda fn: fn()
+            panel.set_enhance_result("done", system_prompt="You are a proofreader.")
+
+        assert panel._system_prompt == "You are a proofreader."
+
+    def test_prompt_button_enabled_when_system_prompt_provided(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._user_edited = False
+        panel._enhance_text_view = MagicMock()
+        panel._enhance_label = MagicMock()
+        panel._final_text_field = MagicMock()
+        panel._prompt_button = MagicMock()
+
+        with patch("PyObjCTools.AppHelper") as mock_helper:
+            mock_helper.callAfter.side_effect = lambda fn: fn()
+            panel.set_enhance_result("done", system_prompt="prompt text")
+
+        panel._prompt_button.setEnabled_.assert_called_with(True)
+
+    def test_prompt_button_not_enabled_when_no_system_prompt(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._user_edited = False
+        panel._enhance_text_view = MagicMock()
+        panel._enhance_label = MagicMock()
+        panel._final_text_field = MagicMock()
+        panel._prompt_button = MagicMock()
+
+        with patch("PyObjCTools.AppHelper") as mock_helper:
+            mock_helper.callAfter.side_effect = lambda fn: fn()
+            panel.set_enhance_result("done")
+
+        panel._prompt_button.setEnabled_.assert_not_called()
+
+    def test_prompt_info_clicked_noop_when_empty(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._system_prompt = ""
+
+        # Should not raise
+        panel.promptInfoClicked_(None)
+
+    def test_prompt_info_clicked_calls_show_panel(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._system_prompt = "You are a helpful assistant."
+        panel._show_system_prompt_panel = MagicMock()
+
+        panel.promptInfoClicked_(None)
+
+        panel._show_system_prompt_panel.assert_called_once()
+
+    def test_system_prompt_default_empty(self):
+        from voicetext.result_window import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        assert panel._system_prompt == ""
+        assert panel._prompt_button is None

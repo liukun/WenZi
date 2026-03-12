@@ -1131,3 +1131,51 @@ class TestConversationHistoryIntegration:
         call_kwargs = mock_client.chat.completions.create.call_args
         system_msg = call_kwargs.kwargs["messages"][0]["content"]
         assert "对话历史记录" not in system_msg
+
+
+class TestLastSystemPrompt:
+    """Test last_system_prompt property."""
+
+    def test_last_system_prompt_empty_by_default(self):
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config())
+        assert enhancer.last_system_prompt == ""
+
+    def test_last_system_prompt_set_after_enhance(self):
+        mock_client = _make_mock_client("enhanced text")
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (mock_client, ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+            enhancer._active_model = "qwen2.5:7b"
+
+        asyncio.get_event_loop().run_until_complete(enhancer.enhance("hello"))
+
+        assert enhancer.last_system_prompt == "proofread prompt"
+
+    def test_last_system_prompt_includes_vocab_context(self):
+        mock_client = _make_mock_client("enhanced")
+        mock_vocab = MagicMock(spec=VocabularyIndex)
+        mock_vocab.is_loaded = True
+        entries = [VocabularyEntry(term="API", context="Application Programming Interface")]
+        mock_vocab.retrieve.return_value = entries
+        mock_vocab.format_for_prompt.return_value = "# Vocabulary\n- API: Application Programming Interface"
+
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(
+                enabled=True, mode="proofread",
+                vocabulary={"enabled": True, "top_k": 5},
+            ))
+            enhancer._providers = {
+                "ollama": (mock_client, ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+            enhancer._active_model = "qwen2.5:7b"
+            enhancer._vocab_index = mock_vocab
+
+        asyncio.get_event_loop().run_until_complete(enhancer.enhance("test API"))
+
+        assert "proofread prompt" in enhancer.last_system_prompt
+        assert "Vocabulary" in enhancer.last_system_prompt

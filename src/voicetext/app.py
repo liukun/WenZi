@@ -503,8 +503,10 @@ class VoiceTextApp(rumps.App):
                 loop.close()
                 if result_holder is not None:
                     result_holder["enhanced_text"] = enhanced
+                system_prompt = self._enhancer.last_system_prompt
                 self._preview_panel.set_enhance_result(
-                    enhanced, request_id=request_id, usage=usage
+                    enhanced, request_id=request_id, usage=usage,
+                    system_prompt=system_prompt,
                 )
             except Exception as e:
                 logger.error("AI enhancement failed: %s", e)

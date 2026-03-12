@@ -42,6 +42,9 @@ class TextEnhancer:
         self._debug_print_prompt = False
         self._debug_print_request_body = False
 
+        # Last system prompt used in enhance()
+        self._last_system_prompt: str = ""
+
         # Load enhancement modes from external files
         ensure_default_modes()
         self._modes: Dict[str, ModeDefinition] = load_modes()
@@ -171,6 +174,11 @@ class TextEnhancer:
     @property
     def conversation_history(self) -> ConversationHistory:
         return self._conversation_history
+
+    @property
+    def last_system_prompt(self) -> str:
+        """Return the system prompt used in the last enhance() call."""
+        return self._last_system_prompt
 
     @property
     def debug_print_prompt(self) -> bool:
@@ -376,6 +384,8 @@ class TextEnhancer:
                         )
                 except Exception as e:
                     logger.warning("Conversation history retrieval failed: %s", e)
+
+            self._last_system_prompt = system_content
 
             client, _, provider_extra_body = self._providers[self._active_provider]
             extra_body = self._build_extra_body(provider_extra_body)

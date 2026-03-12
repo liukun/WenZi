@@ -62,6 +62,8 @@ class ResultPreviewPanel:
         self._current_mode: str = "off"
         self._enhance_info: str = ""
         self._enhance_request_id: int = 0
+        self._system_prompt: str = ""
+        self._prompt_button = None
         self._delegate = None
         self._event_monitor = None
 
@@ -120,6 +122,7 @@ class ResultPreviewPanel:
         text: str,
         request_id: int = 0,
         usage: dict | None = None,
+        system_prompt: str = "",
     ) -> None:
         """Update the AI enhancement result.
 
@@ -130,6 +133,7 @@ class ResultPreviewPanel:
             text: The enhanced text.
             request_id: Request id to discard stale results.
             usage: Token usage dict with prompt_tokens, completion_tokens, total_tokens.
+            system_prompt: The system prompt used for this enhancement.
         """
         if self._enhance_text_view is None:
             return
@@ -143,6 +147,11 @@ class ResultPreviewPanel:
             if request_id != 0 and request_id != self._enhance_request_id:
                 return
             self._enhance_text_view.setString_(text)
+            # Store system prompt and enable button
+            if system_prompt:
+                self._system_prompt = system_prompt
+                if self._prompt_button is not None:
+                    self._prompt_button.setEnabled_(True)
             # Update label to remove spinner, include token usage
             if self._enhance_label is not None:
                 suffix = ""
@@ -405,10 +414,29 @@ class ResultPreviewPanel:
                 enhance_label_text = self._enhance_label_text("\u23f3 Processing...")
 
             enhance_label = NSTextField.labelWithString_(enhance_label_text)
-            enhance_label.setFrame_(NSMakeRect(self._PADDING, y + self._TEXT_HEIGHT, inner_width, self._LABEL_HEIGHT))
+            enhance_label.setFrame_(NSMakeRect(self._PADDING, y + self._TEXT_HEIGHT, inner_width - 80, self._LABEL_HEIGHT))
             enhance_label.setFont_(NSFont.boldSystemFontOfSize_(12))
             content_view.addSubview_(enhance_label)
             self._enhance_label = enhance_label
+
+            # "Prompt ⓘ" button to view system prompt
+            prompt_btn = NSButton.alloc().initWithFrame_(
+                NSMakeRect(
+                    self._PANEL_WIDTH - self._PADDING - 72,
+                    y + self._TEXT_HEIGHT,
+                    72,
+                    self._LABEL_HEIGHT,
+                )
+            )
+            prompt_btn.setTitle_("Prompt \u24d8")
+            prompt_btn.setBezelStyle_(1)
+            prompt_btn.setBordered_(True)
+            prompt_btn.setFont_(NSFont.systemFontOfSize_(10))
+            prompt_btn.setEnabled_(bool(self._system_prompt))
+            prompt_btn.setTarget_(self)
+            prompt_btn.setAction_(b"promptInfoClicked:")
+            content_view.addSubview_(prompt_btn)
+            self._prompt_button = prompt_btn
 
             enhance_scroll, enhance_tv = self._make_text_view(
                 NSMakeRect(self._PADDING, y, inner_width, self._TEXT_HEIGHT),
@@ -423,6 +451,7 @@ class ResultPreviewPanel:
             self._enhance_label = None
             self._enhance_text_view = None
             self._enhance_scroll = None
+            self._prompt_button = None
 
         # Mode segmented control
         if has_modes:
@@ -529,6 +558,61 @@ class ResultPreviewPanel:
         self.close()
         if self._on_cancel is not None:
             self._on_cancel()
+
+    def promptInfoClicked_(self, sender) -> None:
+        """Handle Prompt ⓘ button click — show system prompt in a popup panel."""
+        if not self._system_prompt:
+            return
+        self._show_system_prompt_panel()
+
+    def _show_system_prompt_panel(self) -> None:
+        """Display the system prompt in a read-only scrollable panel."""
+        from AppKit import (
+            NSBackingStoreBuffered,
+            NSClosableWindowMask,
+            NSFont,
+            NSPanel,
+            NSResizableWindowMask,
+            NSScrollView,
+            NSStatusWindowLevel,
+            NSTextView,
+            NSTitledWindowMask,
+        )
+        from Foundation import NSMakeRect
+
+        width, height = 520, 400
+        panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, width, height),
+            NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask,
+            NSBackingStoreBuffered,
+            False,
+        )
+        panel.setTitle_("System Prompt")
+        panel.setLevel_(NSStatusWindowLevel)
+        panel.setFloatingPanel_(True)
+        panel.setHidesOnDeactivate_(False)
+        panel.center()
+
+        scroll = NSScrollView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, width, height)
+        )
+        scroll.setHasVerticalScroller_(True)
+        scroll.setAutoresizingMask_(0x12)  # NSViewWidthSizable | NSViewHeightSizable
+
+        tv = NSTextView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, width, height)
+        )
+        tv.setEditable_(False)
+        tv.setFont_(NSFont.userFixedPitchFontOfSize_(12.0))
+        tv.setString_(self._system_prompt)
+        tv.setVerticallyResizable_(True)
+        tv.setHorizontallyResizable_(False)
+        tv.textContainer().setWidthTracksTextView_(True)
+        tv.setAutoresizingMask_(0x10)  # NSViewWidthSizable
+
+        scroll.setDocumentView_(tv)
+        panel.contentView().addSubview_(scroll)
+        panel.makeKeyAndOrderFront_(None)
 
 
 def _create_text_field_delegate_class():
