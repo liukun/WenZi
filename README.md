@@ -63,15 +63,22 @@ On first launch the app will prompt for:
 2. Hold the hotkey (default: `fn`) to record.
 3. Release to transcribe — the recognized text is typed into the active window.
 
+When **Preview** is enabled, a floating panel shows the result for review before input. In the preview panel you can:
+
+- Edit the text before confirming
+- Use `⌘1` ~ `⌘9` to quickly switch AI enhancement modes and re-enhance with the selected mode
+
 ### Menubar Controls
 
-- **ASR Model**: Switch between FunASR and MLX-Whisper models at runtime (models download on first use with progress display)
-- **AI Enhance**: Select enhancement mode (proofread, format, complete, enhance, translate, commandline, etc.)
+- **Model**: Switch between FunASR and MLX-Whisper models at runtime (models download on first use with progress display)
+- **AI Enhance**: Select enhancement mode (proofread, translate, commandline, custom modes, etc.) and add new modes
 - **Preview**: Toggle the floating preview panel for reviewing and editing results before input
-- **Vocabulary / Conversation History**: Top-level toggles for vocabulary retrieval and conversation history injection
+- **Vocabulary**: Toggle vocabulary retrieval for improving correction of proper nouns and domain terms
+- **Conversation History**: Toggle conversation history injection for topic continuity
 - **AI Settings**: Configure provider, model, thinking mode, build vocabulary, and manage providers
-- **Debug**: Debug toggles (print prompt, print request body) and copy log path
+- **Debug**: Log level, debug toggles (print prompt, print request body), and copy log path
 - **Show Config...**: Open the current config file
+- **Usage Stats**: View cumulative and today's usage statistics
 - **About VoiceText**: Show version and build info
 
 ## ASR Backends
@@ -101,11 +108,11 @@ Optional post-processing of transcribed text using any OpenAI-compatible API (cl
 | Mode | Description |
 |------|-------------|
 | Off | No enhancement |
-| Proofread | Fix typos, grammar, and punctuation |
-| Translate to English | Translate Chinese text to English |
-| Commandline Master | Convert natural language to shell commands |
+| Proofread (纠错润色) | Fix typos, grammar, and punctuation |
+| Translate to English (翻译为英文) | Translate Chinese text to English |
+| Commandline Master (命令行大神) | Convert natural language to shell commands |
 
-Additional modes (format, complete, enhance, etc.) can be added via Markdown files — see [docs/enhance-modes.md](docs/enhance-modes.md).
+Additional modes can be added via Markdown files or the **AI Enhance > Add Mode...** menu — see [docs/enhance-modes.md](docs/enhance-modes.md).
 
 ### Multi-Provider Support
 
@@ -123,8 +130,8 @@ Providers can be added, removed, and verified directly from the menubar UI.
 
 VoiceText can build a personal vocabulary index from your correction history to improve recognition of proper nouns, technical terms, and domain-specific words. When enabled, relevant vocabulary entries are retrieved via embedding similarity and injected into the LLM prompt as context.
 
-- **Build**: Click **AI Enhance > Build Vocabulary...** to extract terms from `corrections.jsonl` using LLM
-- **Toggle**: Click **AI Enhance > Vocabulary** to enable/disable retrieval during enhancement
+- **Build**: Click **AI Settings > Build Vocabulary...** to extract terms from `corrections.jsonl` using LLM
+- **Toggle**: Click **Vocabulary** in the menubar to enable/disable retrieval during enhancement
 - Uses `fastembed` with a multilingual embedding model for local, offline semantic matching
 
 See [docs/vocabulary-embedding-retrieval.md](docs/vocabulary-embedding-retrieval.md) for detailed design and motivation.
@@ -133,7 +140,7 @@ See [docs/vocabulary-embedding-retrieval.md](docs/vocabulary-embedding-retrieval
 
 VoiceText can inject recent conversation history into the AI enhancement prompt, enabling the LLM to understand the current topic and resolve recurring entities consistently. For example, if the user confirmed "萍萍" in a previous turn, subsequent ASR errors like "平平" can be correctly resolved.
 
-- **Toggle**: Click **AI Enhance > Conversation History** to enable/disable
+- **Toggle**: Click **Conversation History** in the menubar to enable/disable
 - Only preview-confirmed records (where the user reviewed and approved the output) are injected — ensuring data quality
 - Token-efficient format: identical ASR/output shown once, corrections shown with arrow notation (e.g., `平平 → 萍萍`)
 
@@ -174,6 +181,8 @@ src/voicetext/
 ├── vocabulary_builder.py # Extract vocabulary from correction logs via LLM
 ├── vocab_build_window.py # Vocabulary build progress UI
 ├── conversation_history.py # Conversation history recording and context injection
+├── correction_log.py   # User-edited text logging (JSONL)
+├── usage_stats.py      # Usage statistics with cumulative and daily breakdown
 ├── punctuation.py      # Punctuation restoration (CT-Transformer)
 └── input.py            # Text injection (clipboard / AppleScript)
 ```

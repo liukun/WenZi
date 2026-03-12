@@ -25,7 +25,8 @@ Default config path: `~/.config/VoiceText/config.json`. Pass a JSON config file 
   },
   "output": {
     "method": "auto",
-    "append_newline": false
+    "append_newline": false,
+    "preview": true
   },
   "ai_enhance": {
     "enabled": false,
@@ -94,13 +95,14 @@ Default config path: `~/.config/VoiceText/config.json`. Pass a JSON config file 
 |-----|---------|-------------|
 | `output.method` | `"auto"` | Text injection method: `auto`, `clipboard`, or `applescript` |
 | `output.append_newline` | `false` | Append a newline after typed text |
+| `output.preview` | `true` | Show floating preview panel for reviewing results before input |
 
 ### AI Enhancement
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `ai_enhance.enabled` | `false` | Enable AI text enhancement |
-| `ai_enhance.mode` | `"proofread"` | Enhancement mode: `off`, `proofread`, `format`, `complete`, `enhance`, `translate_en` |
+| `ai_enhance.mode` | `"proofread"` | Enhancement mode: `off`, `proofread`, `translate_en`, `commandline_master`, or custom mode IDs |
 | `ai_enhance.default_provider` | `"ollama"` | Default LLM provider name |
 | `ai_enhance.default_model` | `"qwen2.5:7b"` | Default LLM model |
 | `ai_enhance.thinking` | `false` | Enable extended thinking for supported models |
