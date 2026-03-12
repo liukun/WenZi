@@ -223,6 +223,66 @@ class ResultPreviewPanel:
 
         AppHelper.callAfter(_update)
 
+    def append_enhance_text(self, chunk: str, request_id: int = 0) -> None:
+        """Append a text chunk to the AI enhancement text view (streaming).
+
+        Also updates the final text field if user hasn't edited.
+        Stale results (mismatched request_id) are discarded.
+        """
+        if self._enhance_text_view is None:
+            return
+
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._enhance_text_view is None:
+                return
+            if request_id != 0 and request_id != self._enhance_request_id:
+                return
+            # Append chunk to existing text
+            storage = self._enhance_text_view.textStorage()
+            from AppKit import NSAttributedString, NSFont, NSFontAttributeName
+            font = NSFont.systemFontOfSize_(13)
+            attrs = {NSFontAttributeName: font}
+            attr_str = NSAttributedString.alloc().initWithString_attributes_(chunk, attrs)
+            storage.appendAttributedString_(attr_str)
+
+        AppHelper.callAfter(_update)
+
+    def set_enhance_complete(
+        self, request_id: int = 0, usage: dict | None = None,
+        system_prompt: str = "",
+    ) -> None:
+        """Mark streaming enhancement as complete, updating label with token info."""
+        if self._enhance_text_view is None:
+            return
+
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._enhance_text_view is None:
+                return
+            if request_id != 0 and request_id != self._enhance_request_id:
+                return
+            if system_prompt:
+                self._system_prompt = system_prompt
+                if self._prompt_button is not None:
+                    self._prompt_button.setEnabled_(True)
+            if self._enhance_label is not None:
+                suffix = ""
+                if usage and usage.get("total_tokens"):
+                    total = usage["total_tokens"]
+                    prompt = usage.get("prompt_tokens", 0)
+                    completion = usage.get("completion_tokens", 0)
+                    suffix = f"Tokens: {total:,} (\u2191{prompt:,} \u2193{completion:,})"
+                self._enhance_label.setStringValue_(self._enhance_label_text(suffix))
+            # Final sync of final text field
+            if not self._user_edited and self._final_text_field is not None:
+                text = self._enhance_text_view.string()
+                self._final_text_field.setStringValue_(text)
+
+        AppHelper.callAfter(_update)
+
     def set_enhance_loading(self) -> None:
         """Show loading state in the enhancement section."""
         from PyObjCTools import AppHelper

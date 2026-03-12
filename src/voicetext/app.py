@@ -836,15 +836,29 @@ class VoiceTextApp(rumps.App):
     def _run_enhance_in_background(
         self, asr_text: str, request_id: int, result_holder: dict | None = None
     ) -> None:
-        """Run AI enhancement in a background thread."""
+        """Run AI enhancement in a background thread with streaming."""
 
         def _enhance():
             try:
                 loop = asyncio.new_event_loop()
-                enhanced, usage = loop.run_until_complete(
-                    self._enhancer.enhance(asr_text)
-                )
+                collected: list[str] = []
+                usage = None
+
+                async def _stream():
+                    nonlocal usage
+                    async for chunk, chunk_usage in self._enhancer.enhance_stream(asr_text):
+                        if chunk:
+                            collected.append(chunk)
+                            self._preview_panel.append_enhance_text(
+                                chunk, request_id=request_id
+                            )
+                        if chunk_usage is not None:
+                            usage = chunk_usage
+
+                loop.run_until_complete(_stream())
                 loop.close()
+
+                enhanced = "".join(collected).strip() or asr_text
                 if result_holder is not None:
                     result_holder["enhanced_text"] = enhanced
                 try:
@@ -852,8 +866,8 @@ class VoiceTextApp(rumps.App):
                 except Exception as e:
                     logger.error("Failed to record token usage: %s", e)
                 system_prompt = self._enhancer.last_system_prompt
-                self._preview_panel.set_enhance_result(
-                    enhanced, request_id=request_id, usage=usage,
+                self._preview_panel.set_enhance_complete(
+                    request_id=request_id, usage=usage,
                     system_prompt=system_prompt,
                 )
             except Exception as e:
@@ -3005,13 +3019,18 @@ models:
         alert.addButtonWithTitle_("OK")
         alert.setAlertStyle_(0)
 
-        text_field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 380, 380))
+        field_width = 480
+        text_field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, field_width, 0))
         text_field.setStringValue_(text)
         text_field.setEditable_(False)
         text_field.setBezeled_(False)
         text_field.setDrawsBackground_(False)
         text_field.setSelectable_(True)
         text_field.setFont_(NSFont.monospacedSystemFontOfSize_weight_(12.0, 0.0))
+        # Auto-size height to fit content
+        text_field.sizeToFit()
+        frame = text_field.frame()
+        text_field.setFrame_(NSMakeRect(0, 0, field_width, frame.size.height))
         alert.setAccessoryView_(text_field)
 
         alert.window().setLevel_(NSStatusWindowLevel)

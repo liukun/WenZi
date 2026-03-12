@@ -1199,3 +1199,146 @@ class TestLastSystemPrompt:
 
         assert "proofread prompt" in enhancer.last_system_prompt
         assert "Vocabulary" in enhancer.last_system_prompt
+
+
+def _make_mock_stream_client(chunks, usage=None):
+    """Create a mock AsyncOpenAI client that returns a streaming response."""
+    async def _async_iter():
+        for text in chunks:
+            chunk = MagicMock()
+            chunk.usage = None
+            delta = MagicMock()
+            delta.content = text
+            choice = MagicMock()
+            choice.delta = delta
+            chunk.choices = [choice]
+            yield chunk
+        # Final chunk with usage
+        final = MagicMock()
+        if usage is not None:
+            final.usage.prompt_tokens = usage.get("prompt_tokens", 0)
+            final.usage.completion_tokens = usage.get("completion_tokens", 0)
+            final.usage.total_tokens = usage.get("total_tokens", 0)
+        else:
+            final.usage = None
+        final.choices = []
+        yield final
+
+    mock_client = MagicMock()
+    mock_create = AsyncMock(return_value=_async_iter())
+    mock_client.chat.completions.create = mock_create
+    return mock_client
+
+
+class TestTextEnhancerEnhanceStream:
+    def test_returns_original_when_inactive(self):
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=False))
+
+        results = []
+        async def collect():
+            async for chunk, usage in enhancer.enhance_stream("hello"):
+                results.append((chunk, usage))
+
+        asyncio.get_event_loop().run_until_complete(collect())
+        assert len(results) == 1
+        assert results[0] == ("hello", None)
+
+    def test_returns_original_when_empty(self):
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (MagicMock(), ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+
+        results = []
+        async def collect():
+            async for chunk, usage in enhancer.enhance_stream(""):
+                results.append((chunk, usage))
+
+        asyncio.get_event_loop().run_until_complete(collect())
+        assert len(results) == 1
+        assert results[0] == ("", None)
+
+    def test_successful_streaming(self):
+        mock_client = _make_mock_stream_client(
+            ["enhanced", " ", "text"],
+            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        )
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (mock_client, ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+            enhancer._active_model = "qwen2.5:7b"
+
+        results = []
+        async def collect():
+            async for chunk, usage in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage))
+
+        asyncio.get_event_loop().run_until_complete(collect())
+        # 3 content chunks + 1 final empty with usage
+        text_chunks = [r[0] for r in results if r[0]]
+        assert "".join(text_chunks) == "enhanced text"
+        # Last result should have usage
+        final = results[-1]
+        assert final[1] == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+    def test_fallback_on_empty_stream(self):
+        mock_client = _make_mock_stream_client([], usage=None)
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (mock_client, ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+            enhancer._active_model = "qwen2.5:7b"
+
+        results = []
+        async def collect():
+            async for chunk, usage in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage))
+
+        asyncio.get_event_loop().run_until_complete(collect())
+        # Should yield original text as fallback
+        text_chunks = [r[0] for r in results if r[0]]
+        assert "".join(text_chunks) == "original text"
+
+    @patch("voicetext.enhancer.asyncio.wait_for", side_effect=Exception("stream error"))
+    def test_fallback_on_exception(self, mock_wait_for):
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (MagicMock(), ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+
+        results = []
+        async def collect():
+            async for chunk, usage in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage))
+
+        asyncio.get_event_loop().run_until_complete(collect())
+        assert len(results) == 1
+        assert "(error:" in results[0][0]
+
+    @patch("voicetext.enhancer.asyncio.wait_for", side_effect=asyncio.TimeoutError)
+    def test_fallback_on_timeout(self, mock_wait_for):
+        with patch("voicetext.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (MagicMock(), ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+
+        results = []
+        async def collect():
+            async for chunk, usage in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage))
+
+        asyncio.get_event_loop().run_until_complete(collect())
+        assert len(results) == 1
+        assert results[0] == ("original text", None)

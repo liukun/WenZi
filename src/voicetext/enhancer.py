@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from .mode_loader import (
     MODE_OFF,
@@ -452,6 +452,141 @@ class TextEnhancer:
         except Exception as e:
             logger.error("AI enhancement failed: %s", e)
             return text, None
+
+    async def enhance_stream(
+        self, text: str
+    ) -> AsyncIterator[Tuple[str, Optional[Dict[str, int]]]]:
+        """Stream-enhance text using LLM.
+
+        Yields (chunk, None) for each text delta, then a final
+        ("", usage) with token usage when the stream completes.
+        Falls back to non-streaming enhance() on error.
+        """
+        if not self.is_active or not text or not text.strip():
+            yield text or "", None
+            return
+
+        if not self._providers or self._active_provider not in self._providers:
+            logger.warning("AI enhancer not available, returning original text")
+            yield text, None
+            return
+
+        mode_def = self._modes.get(self._mode)
+        if not mode_def:
+            yield text, None
+            return
+
+        try:
+            # Build system prompt (same logic as enhance())
+            system_content = mode_def.prompt
+            if self._vocab_enabled and self._vocab_index is not None:
+                try:
+                    if not self._vocab_index.is_loaded:
+                        self._vocab_index.load()
+                    entries = self._vocab_index.retrieve(
+                        text.strip(), top_k=self._vocab_top_k
+                    )
+                    if entries:
+                        vocab_context = self._vocab_index.format_for_prompt(entries)
+                        system_content = f"{mode_def.prompt}\n\n{vocab_context}"
+                        logger.info(
+                            "Vocabulary matched: %s",
+                            ", ".join(e.term for e in entries),
+                        )
+                except Exception as e:
+                    logger.warning("Vocabulary retrieval failed: %s", e)
+
+            if self._history_enabled:
+                try:
+                    entries = self._conversation_history.get_recent(
+                        max_entries=self._history_max_entries
+                    )
+                    if entries:
+                        history_context = self._conversation_history.format_for_prompt(
+                            entries
+                        )
+                        system_content = f"{system_content}\n\n{history_context}"
+                        logger.info(
+                            "Conversation history injected: %d entries",
+                            len(entries),
+                        )
+                except Exception as e:
+                    logger.warning("Conversation history retrieval failed: %s", e)
+
+            self._last_system_prompt = system_content
+
+            client, _, provider_extra_body = self._providers[self._active_provider]
+            extra_body = self._build_extra_body(provider_extra_body)
+            kwargs: Dict[str, Any] = {
+                "model": self._active_model,
+                "messages": [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": text.strip()},
+                ],
+                "stream": True,
+                "stream_options": {"include_usage": True},
+            }
+            if extra_body:
+                kwargs["extra_body"] = extra_body
+
+            if self._debug_print_prompt:
+                logger.info("[DEBUG] System prompt:\n%s", system_content)
+                logger.info("[DEBUG] User message:\n%s", text.strip())
+            if self._debug_print_request_body:
+                import json as _json
+                logger.info(
+                    "[DEBUG] Request body:\n%s",
+                    _json.dumps(kwargs, ensure_ascii=False, default=str, indent=2),
+                )
+
+            # Timeout for initial connection
+            stream = await asyncio.wait_for(
+                client.chat.completions.create(**kwargs),
+                timeout=self._timeout,
+            )
+
+            collected = []
+            usage = None
+            # Timeout applies between chunks: resets on each received chunk
+            aiter = stream.__aiter__()
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        aiter.__anext__(), timeout=self._timeout
+                    )
+                except StopAsyncIteration:
+                    break
+                if chunk.usage is not None:
+                    usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                        "completion_tokens": chunk.usage.completion_tokens or 0,
+                        "total_tokens": chunk.usage.total_tokens or 0,
+                    }
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if delta and delta.content:
+                        collected.append(delta.content)
+                        yield delta.content, None
+
+            full_text = "".join(collected).strip()
+            if not full_text:
+                logger.warning("LLM stream returned empty text, using original")
+                yield text, usage
+            else:
+                logger.info(
+                    "Text stream-enhanced: '%s' -> '%s'",
+                    text.strip()[:50],
+                    full_text[:50],
+                )
+                # Final yield with usage only
+                yield "", usage
+
+        except asyncio.TimeoutError:
+            logger.error("AI stream enhancement timed out after %ds", self._timeout)
+            yield text, None
+        except Exception as e:
+            logger.error("AI stream enhancement failed: %s", e)
+            yield f"(error: {e})", None
 
 
 def create_enhancer(config: Dict[str, Any]) -> Optional[TextEnhancer]:
