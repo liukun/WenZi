@@ -130,7 +130,10 @@ Providers can be added, removed, and verified directly from the menubar UI.
 
 VoiceText can build a personal vocabulary index from your correction history to improve recognition of proper nouns, technical terms, and domain-specific words. When enabled, relevant vocabulary entries are retrieved via embedding similarity and injected into the LLM prompt as context.
 
-- **Build**: Click **AI Settings > Build Vocabulary...** to extract terms from `corrections.jsonl` using LLM
+The vocabulary is not built automatically — you should accumulate a number of corrections first (by editing AI-enhanced text in the preview window), then manually trigger a build when ready. The more corrections you accumulate before building, the richer and more useful the vocabulary becomes.
+
+- **Accumulate corrections**: Edit AI-enhanced text in the preview window; each edit is logged to `corrections.jsonl`
+- **Build**: When you have enough corrections, click **AI Settings > Build Vocabulary...** to extract terms using LLM. Supports incremental builds — only new corrections since the last build are processed
 - **Toggle**: Click **Vocabulary** in the menubar to enable/disable retrieval during enhancement
 - Uses `fastembed` with a multilingual embedding model for local, offline semantic matching
 
