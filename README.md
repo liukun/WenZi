@@ -124,7 +124,7 @@ Configure multiple LLM providers and switch between them at runtime from the men
 - Optional extended thinking mode
 - Configurable timeout
 
-Providers can be added, removed, and verified directly from the menubar UI.
+Providers can be added, removed, and verified directly from the menubar UI. See [docs/provider-model-guide.md](docs/provider-model-guide.md) for step-by-step setup instructions covering both GUI and config file approaches.
 
 ### Vocabulary Retrieval
 
