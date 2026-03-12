@@ -19,6 +19,7 @@ class ModelPreset:
     backend: str
     model: Optional[str]
     language: Optional[str]
+    base_url: Optional[str] = None
 
 
 PRESETS = [
@@ -64,6 +65,14 @@ PRESETS = [
         model="mlx-community/whisper-large-v3-turbo",
         language=None,
     ),
+    ModelPreset(
+        id="groq-whisper-large-v3-turbo",
+        display_name="Whisper large-v3-turbo (Groq API)",
+        backend="whisper-api",
+        model="whisper-large-v3-turbo",
+        language=None,
+        base_url="https://api.groq.com/openai/v1",
+    ),
 ]
 
 PRESET_BY_ID: Dict[str, ModelPreset] = {p.id: p for p in PRESETS}
@@ -82,6 +91,11 @@ def is_backend_available(backend: str) -> bool:
         return _backend_available[backend]
 
     import importlib.util
+
+    # whisper-api only needs openai which is always available
+    if backend == "whisper-api":
+        _backend_available[backend] = True
+        return True
 
     _BACKEND_MODULES = {
         "funasr": "funasr_onnx",
@@ -109,7 +123,7 @@ def resolve_preset_from_config(
             continue
         if backend_norm == "funasr" and preset.model is None and model is None:
             return preset.id
-        if backend_norm == "mlx-whisper" and preset.model == model:
+        if backend_norm in ("mlx-whisper", "whisper-api") and preset.model == model:
             return preset.id
 
     return None
@@ -139,6 +153,10 @@ def get_model_cache_dir(preset: ModelPreset) -> Path:
 
 def is_model_cached(preset: ModelPreset) -> bool:
     """Check if a preset's model files are already downloaded."""
+    # API backends don't need local model files
+    if preset.backend == "whisper-api":
+        return True
+
     if preset.backend == "mlx-whisper" and preset.model:
         try:
             from huggingface_hub import try_to_load_from_cache

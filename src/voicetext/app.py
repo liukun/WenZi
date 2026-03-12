@@ -74,6 +74,8 @@ class VoiceTextApp(rumps.App):
             language=asr_cfg.get("language"),
             model=asr_cfg.get("model"),
             temperature=asr_cfg.get("temperature"),
+            base_url=asr_cfg.get("base_url"),
+            api_key=asr_cfg.get("api_key"),
         )
 
         self._output_method = self._config["output"]["method"]
@@ -1563,6 +1565,8 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
                     language=preset.language or asr_cfg.get("language"),
                     model=preset.model,
                     temperature=asr_cfg.get("temperature"),
+                    base_url=preset.base_url or asr_cfg.get("base_url"),
+                    api_key=asr_cfg.get("api_key"),
                 )
                 new_transcriber.initialize()
 
@@ -1581,15 +1585,20 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
                 self._config["asr"]["backend"] = preset.backend
                 self._config["asr"]["model"] = preset.model
                 self._config["asr"]["language"] = preset.language
+                if preset.base_url:
+                    self._config["asr"]["base_url"] = preset.base_url
                 save_config(self._config, self._config_path)
 
                 self._set_status("VT")
-                rumps.notification(
-                    "VoiceText",
-                    "Model switched",
-                    f"Now using: {preset.display_name}",
-                )
                 logger.info("Switched to model: %s", preset.display_name)
+                try:
+                    rumps.notification(
+                        "VoiceText",
+                        "Model switched",
+                        f"Now using: {preset.display_name}",
+                    )
+                except Exception:
+                    logger.debug("Notification unavailable, skipping")
 
             except Exception as e:
                 stop_event.set()
@@ -1598,11 +1607,14 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
 
                 logger.error("Model switch failed: %s", e)
                 self._set_status("Error")
-                rumps.notification(
-                    "VoiceText",
-                    "Model switch failed",
-                    str(e)[:100],
-                )
+                try:
+                    rumps.notification(
+                        "VoiceText",
+                        "Model switch failed",
+                        str(e)[:100],
+                    )
+                except Exception:
+                    logger.debug("Notification unavailable, skipping")
 
                 # Try to restore previous model
                 self._try_restore_previous_model(old_preset_id)
@@ -1677,6 +1689,8 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
                 language=old_preset.language or asr_cfg.get("language"),
                 model=old_preset.model,
                 temperature=asr_cfg.get("temperature"),
+                base_url=asr_cfg.get("base_url"),
+                api_key=asr_cfg.get("api_key"),
             )
             restored.initialize()
             self._transcriber = restored

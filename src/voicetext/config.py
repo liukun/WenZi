@@ -31,6 +31,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "model": None,
         "preset": None,
         "temperature": 0.0,
+        "base_url": None,
+        "api_key": None,
     },
     "output": {
         "method": "auto",

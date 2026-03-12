@@ -38,16 +38,20 @@ def create_transcriber(
     language: Optional[str] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> BaseTranscriber:
     """Create a transcriber for the given backend.
 
     Args:
-        backend: "funasr" or "mlx-whisper".
+        backend: "funasr", "mlx-whisper", or "whisper-api".
         use_vad: Enable voice activity detection (funasr only).
         use_punc: Enable punctuation restoration.
-        language: Language hint (mlx-whisper only, e.g. "zh", "en").
+        language: Language hint (mlx-whisper / whisper-api, e.g. "zh", "en").
         model: Override default model name/path.
-        temperature: Decoding temperature (mlx-whisper only, 0.0 disables fallback).
+        temperature: Decoding temperature (mlx-whisper / whisper-api).
+        base_url: API base URL (whisper-api only).
+        api_key: API key (whisper-api only).
     """
     backend = backend.lower().replace("_", "-")
 
@@ -61,4 +65,14 @@ def create_transcriber(
             language=language, model=model, use_punc=use_punc, temperature=temperature,
         )
 
-    raise ValueError(f"Unknown ASR backend: {backend!r}. Use 'funasr' or 'mlx-whisper'.")
+    if backend in ("whisper-api", "groq"):
+        from .transcriber_whisper_api import WhisperAPITranscriber
+        return WhisperAPITranscriber(
+            base_url=base_url, api_key=api_key, model=model,
+            language=language, temperature=temperature,
+        )
+
+    raise ValueError(
+        f"Unknown ASR backend: {backend!r}. "
+        "Use 'funasr', 'mlx-whisper', or 'whisper-api'."
+    )
