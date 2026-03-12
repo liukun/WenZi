@@ -59,8 +59,14 @@ jobs:
 
           security list-keychains -d user -s "$KEYCHAIN_FILE" login.keychain-db
 
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_FILE" | head -1 | sed 's/.*"\(.*\)"/\1/')
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_FILE" \
+            | grep -m1 '"' | sed 's/.*"\(.*\)"/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No codesigning identity found in imported certificate"
+            exit 1
+          fi
           echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "Using signing identity: $IDENTITY"
 
           rm -f "$CERT_FILE"
 
