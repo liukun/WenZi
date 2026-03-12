@@ -68,7 +68,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
     },
     "clipboard_enhance": {
-        "hotkey": "",
+        "hotkey": "ctrl+cmd+v",
         "output": "clipboard",
     },
     "logging": {

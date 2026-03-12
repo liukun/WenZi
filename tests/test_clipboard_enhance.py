@@ -130,7 +130,7 @@ class TestClipboardEnhanceConfig:
         from voicetext.config import DEFAULT_CONFIG
 
         assert "clipboard_enhance" in DEFAULT_CONFIG
-        assert DEFAULT_CONFIG["clipboard_enhance"]["hotkey"] == ""
+        assert DEFAULT_CONFIG["clipboard_enhance"]["hotkey"] == "ctrl+cmd+v"
         assert DEFAULT_CONFIG["clipboard_enhance"]["output"] == "clipboard"
 
     def test_config_merge_preserves_clipboard_enhance(self):

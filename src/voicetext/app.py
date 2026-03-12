@@ -299,9 +299,12 @@ class VoiceTextApp(rumps.App):
         )
         self._debug_menu.add(self._copy_log_item)
 
-        # Show Config item
+        # Show Config / Reload Config items
         self._show_config_item = rumps.MenuItem(
             "Show Config...", callback=self._on_show_config
+        )
+        self._reload_config_item = rumps.MenuItem(
+            "Reload Config", callback=self._on_reload_config
         )
 
         # Usage Stats item
@@ -329,6 +332,7 @@ class VoiceTextApp(rumps.App):
             self._debug_menu,
             None,
             self._show_config_item,
+            self._reload_config_item,
             self._usage_stats_item,
             self._about_item,
         ]
@@ -2568,6 +2572,91 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
         alert.window().setLevel_(NSStatusWindowLevel)
         alert.runModal()
         self._restore_accessory()
+
+    def _on_reload_config(self, _) -> None:
+        """Reload configuration from disk and apply changes."""
+        try:
+            new_config = load_config(self._config_path)
+        except Exception as e:
+            logger.error("Failed to reload config: %s", e)
+            rumps.notification("VoiceText", "Reload Failed", str(e))
+            return
+
+        self._config = new_config
+
+        # Output settings
+        self._output_method = new_config["output"]["method"]
+        self._append_newline = new_config["output"]["append_newline"]
+        self._preview_enabled = new_config["output"].get("preview", True)
+        self._preview_item.state = 1 if self._preview_enabled else 0
+
+        # Logging level
+        level_name = new_config["logging"]["level"]
+        log_level = getattr(logging, level_name, logging.INFO)
+        logging.getLogger().setLevel(log_level)
+        for handler in logging.getLogger().handlers:
+            handler.setLevel(log_level)
+        for item in self._debug_level_items.values():
+            item.state = 1 if item._log_level == level_name else 0
+
+        # AI enhance settings
+        ai_cfg = new_config.get("ai_enhance", {})
+        if self._enhancer:
+            new_mode = ai_cfg.get("mode", "proofread")
+            if not ai_cfg.get("enabled", False):
+                new_mode = MODE_OFF
+            self._enhance_mode = new_mode
+            if new_mode == MODE_OFF:
+                self._enhancer._enabled = False
+            else:
+                self._enhancer._enabled = True
+                self._enhancer.mode = new_mode
+            for m, item in self._enhance_menu_items.items():
+                item.state = 1 if m == new_mode else 0
+
+            # Thinking
+            self._enhancer.thinking = ai_cfg.get("thinking", False)
+            self._enhance_thinking_item.state = 1 if self._enhancer.thinking else 0
+
+            # Vocabulary
+            vocab_cfg = ai_cfg.get("vocabulary", {})
+            self._enhancer.vocab_enabled = vocab_cfg.get("enabled", False)
+            self._enhance_vocab_item.state = 1 if self._enhancer.vocab_enabled else 0
+
+            # Conversation history
+            hist_cfg = ai_cfg.get("conversation_history", {})
+            self._enhancer.history_enabled = hist_cfg.get("enabled", False)
+            self._enhance_history_item.state = 1 if self._enhancer.history_enabled else 0
+
+            # LLM provider/model
+            new_provider = ai_cfg.get("default_provider")
+            new_model = ai_cfg.get("default_model")
+            if new_provider and new_model:
+                self._enhancer.provider_name = new_provider
+                self._enhancer.model_name = new_model
+                current_key = (new_provider, new_model)
+                for key, item in self._llm_model_menu_items.items():
+                    item.state = 1 if key == current_key else 0
+
+        # Clipboard enhance hotkey
+        clip_cfg = new_config.get("clipboard_enhance", {})
+        new_clip_hotkey = clip_cfg.get("hotkey", "")
+        old_clip_hotkey = ""
+        if self._clipboard_hotkey_listener:
+            old_clip_hotkey = self._clipboard_hotkey_listener._hotkey_str
+        if new_clip_hotkey != old_clip_hotkey:
+            if self._clipboard_hotkey_listener:
+                self._clipboard_hotkey_listener.stop()
+                self._clipboard_hotkey_listener = None
+            if new_clip_hotkey:
+                self._clipboard_hotkey_listener = TapHotkeyListener(
+                    hotkey_str=new_clip_hotkey,
+                    on_activate=self._on_clipboard_enhance,
+                )
+                self._clipboard_hotkey_listener.start()
+
+        logger.info("Configuration reloaded successfully")
+        rumps.notification("VoiceText", "Config Reloaded", "Configuration has been reloaded.")
 
     def _on_show_usage_stats(self, _) -> None:
         """Show usage statistics in a large dialog with today + cumulative stats."""
