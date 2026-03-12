@@ -10,14 +10,32 @@ DIST_DIR="$PROJECT_DIR/dist"
 APP_PATH="$DIST_DIR/VoiceText.app"
 SIGN_IDENTITY="${CODESIGN_IDENTITY:-VoiceText Dev}"
 
+# Read version from pyproject.toml
+PYPROJECT_VERSION=$(python3 -c "
+import sys
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+with open('$PROJECT_DIR/pyproject.toml', 'rb') as f:
+    print(tomllib.load(f)['project']['version'])
+")
+
 VERSION="${1:-}"
 if [ -z "$VERSION" ]; then
     # Try to extract from git tag
     VERSION=$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "")
 fi
 if [ -z "$VERSION" ]; then
-    echo "Usage: $0 <version>"
-    echo "Example: $0 0.1.0"
+    VERSION="$PYPROJECT_VERSION"
+fi
+
+# Validate version matches pyproject.toml
+if [ "$VERSION" != "$PYPROJECT_VERSION" ]; then
+    echo "ERROR: Version mismatch!"
+    echo "  Requested: $VERSION"
+    echo "  pyproject.toml: $PYPROJECT_VERSION"
+    echo "Update pyproject.toml or use matching version."
     exit 1
 fi
 
@@ -27,9 +45,8 @@ cd "$PROJECT_DIR"
 
 echo "==> Building VoiceText v${VERSION}..."
 
-echo "==> Updating version in spec..."
-sed -i '' "s/'CFBundleVersion': '.*'/'CFBundleVersion': '${VERSION}'/" VoiceText.spec
-sed -i '' "s/'CFBundleShortVersionString': '.*'/'CFBundleShortVersionString': '${VERSION}'/" VoiceText.spec
+echo "==> Injecting build info..."
+uv run python scripts/inject_build_info.py
 
 echo "==> Cleaning previous build..."
 rm -rf build dist

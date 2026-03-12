@@ -263,6 +263,9 @@ class VoiceTextApp(rumps.App):
         )
         self._debug_menu.add(self._debug_print_request_body_item)
 
+        # About item
+        self._about_item = rumps.MenuItem("About VoiceText", callback=self._on_about)
+
         self.menu = [
             self._status_item,
             self._hotkey_item,
@@ -273,6 +276,7 @@ class VoiceTextApp(rumps.App):
             self._copy_log_item,
             self._debug_menu,
             None,
+            self._about_item,
         ]
         self.quit_button.set_callback(self._on_quit_click)
 
@@ -1545,6 +1549,13 @@ extra_body: {"chat_template_kwargs": {"enable_thinking": false}}"""
         except Exception as e2:
             logger.error("Failed to restore previous model: %s", e2)
             self._set_status("Error")
+
+    def _on_about(self, _) -> None:
+        from . import __version__
+        from ._build_info import BUILD_DATE, GIT_HASH
+
+        message = f"Version: {__version__}\nBuild:   {GIT_HASH}\nDate:    {BUILD_DATE}"
+        rumps.alert(title="VoiceText", message=message)
 
     def _on_quit_click(self, _) -> None:
         if self._hotkey_listener:

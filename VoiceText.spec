@@ -4,7 +4,18 @@
 import os
 import sys
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
+
+# Read version from pyproject.toml (single source of truth)
+_spec_dir = os.path.dirname(os.path.abspath(SPEC))
+with open(os.path.join(_spec_dir, 'pyproject.toml'), 'rb') as _f:
+    _pyproject = tomllib.load(_f)
+_version = _pyproject['project']['version']
 
 block_cipher = None
 
@@ -98,8 +109,8 @@ app = BUNDLE(
     info_plist={
         'CFBundleName': 'VoiceText',
         'CFBundleDisplayName': 'VoiceText',
-        'CFBundleVersion': '0.1.0',
-        'CFBundleShortVersionString': '0.1.0',
+        'CFBundleVersion': _version,
+        'CFBundleShortVersionString': _version,
         'LSUIElement': True,
         'NSMicrophoneUsageDescription': 'VoiceText needs microphone access to record speech for transcription.',
         'NSAppleEventsUsageDescription': 'VoiceText needs accessibility access to type transcribed text.',
