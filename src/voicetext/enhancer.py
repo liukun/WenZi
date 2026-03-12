@@ -18,6 +18,13 @@ from .vocabulary import VocabularyIndex
 
 logger = logging.getLogger(__name__)
 
+# Appended to system prompt when thinking mode is enabled to keep reasoning concise
+THINKING_BREVITY_HINT = (
+    "Keep your internal reasoning very brief and concise. "
+    "Do not over-analyze or deliberate at length. "
+    "Quickly arrive at the result with minimal thinking steps."
+)
+
 
 def build_disable_thinking_body(model: str) -> Dict[str, Any]:
     """Build extra_body parameters to disable thinking for a given model.
@@ -395,6 +402,9 @@ class TextEnhancer:
                 except Exception as e:
                     logger.warning("Conversation history retrieval failed: %s", e)
 
+            if self._thinking:
+                system_content = f"{system_content}\n\n{THINKING_BREVITY_HINT}"
+
             self._last_system_prompt = system_content
 
             client, _, provider_extra_body = self._providers[self._active_provider]
@@ -457,15 +467,16 @@ class TextEnhancer:
 
     async def enhance_stream(
         self, text: str
-    ) -> AsyncIterator[Tuple[str, Optional[Dict[str, int]]]]:
+    ) -> AsyncIterator[Tuple[str, Optional[Dict[str, int]], bool]]:
         """Stream-enhance text using LLM.
 
-        Yields (chunk, None) for each text delta, then a final
-        ("", usage) with token usage when the stream completes.
+        Yields (chunk, None, is_thinking) for each text delta, then a final
+        ("", usage, False) with token usage when the stream completes.
+        ``is_thinking`` is True for reasoning/thinking tokens.
         Falls back to non-streaming enhance() on error.
         """
         if not self.is_active or not text or not text.strip():
-            yield text or "", None
+            yield text or "", None, False
             return
 
         if not self._providers or self._active_provider not in self._providers:
@@ -514,6 +525,9 @@ class TextEnhancer:
                         )
                 except Exception as e:
                     logger.warning("Conversation history retrieval failed: %s", e)
+
+            if self._thinking:
+                system_content = f"{system_content}\n\n{THINKING_BREVITY_HINT}"
 
             self._last_system_prompt = system_content
 
@@ -569,9 +583,14 @@ class TextEnhancer:
                         }
                     if chunk.choices:
                         delta = chunk.choices[0].delta
-                        if delta and delta.content:
-                            collected.append(delta.content)
-                            yield delta.content, None
+                        if delta:
+                            # Thinking/reasoning tokens (Qwen, GLM, DeepSeek)
+                            reasoning = getattr(delta, "reasoning_content", None)
+                            if reasoning:
+                                yield reasoning, None, True
+                            if delta.content:
+                                collected.append(delta.content)
+                                yield delta.content, None, False
             finally:
                 self._active_stream = None
                 if hasattr(stream, 'close'):
@@ -583,7 +602,7 @@ class TextEnhancer:
             full_text = "".join(collected).strip()
             if not full_text:
                 logger.warning("LLM stream returned empty text, using original")
-                yield text, usage
+                yield text, usage, False
             else:
                 logger.info(
                     "Text stream-enhanced: '%s' -> '%s'",
@@ -591,14 +610,14 @@ class TextEnhancer:
                     full_text[:50],
                 )
                 # Final yield with usage only
-                yield "", usage
+                yield "", usage, False
 
         except asyncio.TimeoutError:
             logger.error("AI stream enhancement timed out after %ds", self._timeout)
-            yield text, None
+            yield text, None, False
         except Exception as e:
             logger.error("AI stream enhancement failed: %s", e)
-            yield f"(error: {e})", None
+            yield f"(error: {e})", None, False
 
 
 def create_enhancer(config: Dict[str, Any]) -> Optional[TextEnhancer]:

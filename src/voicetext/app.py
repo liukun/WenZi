@@ -946,16 +946,34 @@ class VoiceTextApp(rumps.App):
                 async def _stream():
                     nonlocal usage, cancelled
                     gen = self._enhancer.enhance_stream(asr_text)
+                    completion_tokens = 0
+                    thinking_tokens = 0
+                    had_thinking = False
                     try:
-                        async for chunk, chunk_usage in gen:
+                        async for chunk, chunk_usage, is_thinking in gen:
                             # Check cancellation between chunks
                             if cancel_event is not None and cancel_event.is_set():
                                 cancelled = True
                                 return
-                            if chunk:
+                            if is_thinking and chunk:
+                                had_thinking = True
+                                thinking_tokens += 1
+                                self._preview_panel.append_thinking_text(
+                                    chunk, request_id=request_id,
+                                    thinking_tokens=thinking_tokens,
+                                )
+                            elif chunk:
+                                # Clear thinking content when first real content arrives
+                                if had_thinking:
+                                    had_thinking = False
+                                    self._preview_panel.clear_enhance_text(
+                                        request_id=request_id,
+                                    )
                                 collected.append(chunk)
+                                completion_tokens += 1
                                 self._preview_panel.append_enhance_text(
-                                    chunk, request_id=request_id
+                                    chunk, request_id=request_id,
+                                    completion_tokens=completion_tokens,
                                 )
                             if chunk_usage is not None:
                                 usage = chunk_usage
@@ -1442,6 +1460,8 @@ Output only the processed text without any explanation."""
 
     def _on_preview_thinking_toggle(self, enabled: bool) -> None:
         """Handle Thinking checkbox toggle from preview panel."""
+        from PyObjCTools import AppHelper
+
         if not self._enhancer:
             return
 
@@ -1453,6 +1473,15 @@ Output only the processed text without any explanation."""
         self._config["ai_enhance"]["thinking"] = enabled
         save_config(self._config, self._config_path)
         logger.info("AI thinking set to: %s (from preview panel)", enabled)
+
+        # Re-trigger enhancement if currently active
+        if self._enhance_mode != MODE_OFF:
+            AppHelper.callAfter(self._preview_panel.set_enhance_loading)
+            self._preview_panel.enhance_request_id += 1
+            asr_text = getattr(self, "_current_preview_asr_text", "")
+            self._run_enhance_in_background(
+                asr_text, self._preview_panel.enhance_request_id
+            )
 
     def _update_vocab_title(self) -> None:
         """Update the Vocabulary menu item title with the current entry count."""

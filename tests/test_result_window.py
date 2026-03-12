@@ -873,11 +873,11 @@ class TestResultPreviewPanelSystemPrompt:
 
         panel = ResultPreviewPanel()
         panel._system_prompt = "You are a helpful assistant."
-        panel._show_system_prompt_panel = MagicMock()
+        panel._show_info_panel = MagicMock()
 
         panel.promptInfoClicked_(None)
 
-        panel._show_system_prompt_panel.assert_called_once()
+        panel._show_info_panel.assert_called_once_with("System Prompt", "You are a helpful assistant.")
 
     def test_system_prompt_default_empty(self):
         from voicetext.result_window import ResultPreviewPanel

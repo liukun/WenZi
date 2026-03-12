@@ -91,6 +91,8 @@ class ResultPreviewPanel:
         self._thinking_checkbox = None
         self._thinking_checkbox_target = None
         self._on_thinking_toggle: Optional[Callable[[bool], None]] = None
+        self._thinking_text: str = ""
+        self._thinking_button = None
 
     def show(
         self,
@@ -232,11 +234,86 @@ class ResultPreviewPanel:
 
         AppHelper.callAfter(_update)
 
-    def append_enhance_text(self, chunk: str, request_id: int = 0) -> None:
+    def append_thinking_text(
+        self, chunk: str, request_id: int = 0,
+        thinking_tokens: int = 0,
+    ) -> None:
+        """Append a thinking/reasoning text chunk to the enhancement text view.
+
+        Displayed in gray italic to distinguish from final content.
+        Also accumulates text for later viewing via the Thinking button.
+        """
+        if self._enhance_text_view is None:
+            return
+
+        self._thinking_text += chunk
+
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._enhance_text_view is None:
+                return
+            if request_id != 0 and request_id != self._enhance_request_id:
+                return
+            storage = self._enhance_text_view.textStorage()
+            from AppKit import (
+                NSAttributedString,
+                NSColor,
+                NSFont,
+                NSFontAttributeName,
+                NSForegroundColorAttributeName,
+            )
+            font = NSFont.systemFontOfSize_(13)
+            italic_font = NSFont.fontWithName_size_(
+                font.fontName().replace("Regular", "Italic") or font.fontName(),
+                13,
+            ) or font
+            # Use NSFontManager to get a proper italic variant
+            from AppKit import NSFontManager
+            fm = NSFontManager.sharedFontManager()
+            italic_font = fm.convertFont_toHaveTrait_(font, 0x01)  # NSItalicFontMask
+            attrs = {
+                NSFontAttributeName: italic_font,
+                NSForegroundColorAttributeName: NSColor.grayColor(),
+            }
+            attr_str = NSAttributedString.alloc().initWithString_attributes_(chunk, attrs)
+            storage.appendAttributedString_(attr_str)
+            # Update label with thinking token count
+            if thinking_tokens > 0 and self._enhance_label is not None:
+                suffix = f"\u25b6 Thinking: {thinking_tokens:,}"
+                self._enhance_label.setStringValue_(self._enhance_label_text(suffix))
+
+        AppHelper.callAfter(_update)
+
+    def clear_enhance_text(self, request_id: int = 0) -> None:
+        """Clear the enhancement text view content."""
+        if self._enhance_text_view is None:
+            return
+
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._enhance_text_view is None:
+                return
+            if request_id != 0 and request_id != self._enhance_request_id:
+                return
+            self._enhance_text_view.setString_("")
+
+        AppHelper.callAfter(_update)
+
+    def append_enhance_text(
+        self, chunk: str, request_id: int = 0,
+        completion_tokens: int = 0,
+    ) -> None:
         """Append a text chunk to the AI enhancement text view (streaming).
 
         Also updates the final text field if user hasn't edited.
         Stale results (mismatched request_id) are discarded.
+
+        Args:
+            chunk: Text chunk to append.
+            request_id: Request identifier for stale detection.
+            completion_tokens: Running count of completion tokens received so far.
         """
         if self._enhance_text_view is None:
             return
@@ -255,6 +332,10 @@ class ResultPreviewPanel:
             attrs = {NSFontAttributeName: font}
             attr_str = NSAttributedString.alloc().initWithString_attributes_(chunk, attrs)
             storage.appendAttributedString_(attr_str)
+            # Update label with streaming token count
+            if completion_tokens > 0 and self._enhance_label is not None:
+                suffix = f"\u25b6 Tokens: \u2193{completion_tokens:,}"
+                self._enhance_label.setStringValue_(self._enhance_label_text(suffix))
 
         AppHelper.callAfter(_update)
 
@@ -285,6 +366,9 @@ class ResultPreviewPanel:
                     completion = usage.get("completion_tokens", 0)
                     suffix = f"Tokens: {total:,} (\u2191{prompt:,} \u2193{completion:,})"
                 self._enhance_label.setStringValue_(self._enhance_label_text(suffix))
+            # Enable Thinking button when thinking text was collected
+            if self._thinking_button is not None:
+                self._thinking_button.setEnabled_(bool(self._thinking_text))
             # Final sync of final text field
             if not self._user_edited and self._final_text_field is not None:
                 text = self._enhance_text_view.string()
@@ -303,6 +387,9 @@ class ResultPreviewPanel:
                 self._enhance_text_view.setString_("")
             self._user_edited = False
             self._show_enhance = True
+            self._thinking_text = ""
+            if self._thinking_button is not None:
+                self._thinking_button.setEnabled_(False)
 
         AppHelper.callAfter(_update)
 
@@ -635,8 +722,8 @@ class ResultPreviewPanel:
             has_llm_popup = len(self._llm_models) > 0
             enhance_label_y = y + self._TEXT_HEIGHT
             prompt_btn_width = 72
-
-            thinking_cb_width = 72
+            thinking_btn_width = 34
+            thinking_cb_width = 40
 
             if has_llm_popup:
                 # "AI" fixed label
@@ -668,7 +755,10 @@ class ResultPreviewPanel:
 
                 # Token/status info label (between popup and thinking checkbox)
                 info_x = llm_popup_x + llm_popup_width + 4
-                right_controls_width = prompt_btn_width + 4 + thinking_cb_width + 4
+                right_controls_width = (
+                    prompt_btn_width + 4 + thinking_cb_width + 4
+                    + thinking_btn_width + 4
+                )
                 info_width = self._PANEL_WIDTH - self._PADDING - right_controls_width - info_x
 
                 # Determine initial label text
@@ -696,18 +786,24 @@ class ResultPreviewPanel:
                 self._llm_popup = None
                 self._llm_popup_target = None
 
-            # "Thinking" checkbox
+            # "🧠" checkbox for thinking toggle
+            thinking_group_x = (
+                self._PANEL_WIDTH - self._PADDING
+                - prompt_btn_width - 4
+                - thinking_btn_width
+                - thinking_cb_width
+            )
             thinking_cb = NSButton.alloc().initWithFrame_(
                 NSMakeRect(
-                    self._PANEL_WIDTH - self._PADDING - prompt_btn_width - thinking_cb_width - 4,
+                    thinking_group_x,
                     enhance_label_y,
                     thinking_cb_width,
                     self._LABEL_HEIGHT,
                 )
             )
             thinking_cb.setButtonType_(NSSwitchButton)
-            thinking_cb.setTitle_("Thinking")
-            thinking_cb.setFont_(NSFont.systemFontOfSize_(10))
+            thinking_cb.setTitle_("\U0001f9e0")
+            thinking_cb.setFont_(NSFont.systemFontOfSize_(11))
             thinking_cb.setState_(1 if self._thinking_enabled else 0)
             self._thinking_checkbox_target = _ThinkingCheckboxTarget.alloc().init()
             self._thinking_checkbox_target._panel_ref = self
@@ -715,6 +811,25 @@ class ResultPreviewPanel:
             thinking_cb.setAction_(b"thinkingToggled:")
             content_view.addSubview_(thinking_cb)
             self._thinking_checkbox = thinking_cb
+
+            # "?" button to view thinking output (right after checkbox)
+            thinking_btn = NSButton.alloc().initWithFrame_(
+                NSMakeRect(
+                    thinking_group_x + thinking_cb_width,
+                    enhance_label_y,
+                    thinking_btn_width,
+                    self._LABEL_HEIGHT,
+                )
+            )
+            thinking_btn.setTitle_("\u24d8")
+            thinking_btn.setBezelStyle_(1)
+            thinking_btn.setBordered_(True)
+            thinking_btn.setFont_(NSFont.systemFontOfSize_(10))
+            thinking_btn.setEnabled_(False)
+            thinking_btn.setTarget_(self)
+            thinking_btn.setAction_(b"thinkingInfoClicked:")
+            content_view.addSubview_(thinking_btn)
+            self._thinking_button = thinking_btn
 
             # "Prompt ⓘ" button to view system prompt
             prompt_btn = NSButton.alloc().initWithFrame_(
@@ -753,6 +868,7 @@ class ResultPreviewPanel:
             self._llm_popup_target = None
             self._thinking_checkbox = None
             self._thinking_checkbox_target = None
+            self._thinking_button = None
 
         # Mode segmented control
         if has_modes:
@@ -1045,14 +1161,20 @@ class ResultPreviewPanel:
                 pass
             self._asr_sound = None
 
+    def thinkingInfoClicked_(self, sender) -> None:
+        """Handle Thinking ⓘ button click — show thinking output in a popup panel."""
+        if not self._thinking_text:
+            return
+        self._show_info_panel("Thinking", self._thinking_text)
+
     def promptInfoClicked_(self, sender) -> None:
         """Handle Prompt ⓘ button click — show system prompt in a popup panel."""
         if not self._system_prompt:
             return
-        self._show_system_prompt_panel()
+        self._show_info_panel("System Prompt", self._system_prompt)
 
-    def _show_system_prompt_panel(self) -> None:
-        """Display the system prompt in a read-only scrollable panel."""
+    def _show_info_panel(self, title: str, content: str) -> None:
+        """Display text content in a read-only scrollable panel."""
         from AppKit import (
             NSBackingStoreBuffered,
             NSClosableWindowMask,
@@ -1073,7 +1195,7 @@ class ResultPreviewPanel:
             NSBackingStoreBuffered,
             False,
         )
-        panel.setTitle_("System Prompt")
+        panel.setTitle_(title)
         panel.setLevel_(NSStatusWindowLevel)
         panel.setFloatingPanel_(True)
         panel.setHidesOnDeactivate_(False)
@@ -1090,7 +1212,7 @@ class ResultPreviewPanel:
         )
         tv.setEditable_(False)
         tv.setFont_(NSFont.userFixedPitchFontOfSize_(12.0))
-        tv.setString_(self._system_prompt)
+        tv.setString_(content)
         tv.setVerticallyResizable_(True)
         tv.setHorizontallyResizable_(False)
         tv.textContainer().setWidthTracksTextView_(True)

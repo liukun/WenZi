@@ -1207,8 +1207,9 @@ def _make_mock_stream_client(chunks, usage=None):
         for text in chunks:
             chunk = MagicMock()
             chunk.usage = None
-            delta = MagicMock()
+            delta = MagicMock(spec=["content", "reasoning_content"])
             delta.content = text
+            delta.reasoning_content = None
             choice = MagicMock()
             choice.delta = delta
             chunk.choices = [choice]
@@ -1237,12 +1238,12 @@ class TestTextEnhancerEnhanceStream:
 
         results = []
         async def collect():
-            async for chunk, usage in enhancer.enhance_stream("hello"):
-                results.append((chunk, usage))
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("hello"):
+                results.append((chunk, usage, is_thinking))
 
         asyncio.get_event_loop().run_until_complete(collect())
         assert len(results) == 1
-        assert results[0] == ("hello", None)
+        assert results[0] == ("hello", None, False)
 
     def test_returns_original_when_empty(self):
         with patch("voicetext.enhancer.TextEnhancer._init_providers"):
@@ -1254,12 +1255,12 @@ class TestTextEnhancerEnhanceStream:
 
         results = []
         async def collect():
-            async for chunk, usage in enhancer.enhance_stream(""):
-                results.append((chunk, usage))
+            async for chunk, usage, is_thinking in enhancer.enhance_stream(""):
+                results.append((chunk, usage, is_thinking))
 
         asyncio.get_event_loop().run_until_complete(collect())
         assert len(results) == 1
-        assert results[0] == ("", None)
+        assert results[0] == ("", None, False)
 
     def test_successful_streaming(self):
         mock_client = _make_mock_stream_client(
@@ -1276,8 +1277,8 @@ class TestTextEnhancerEnhanceStream:
 
         results = []
         async def collect():
-            async for chunk, usage in enhancer.enhance_stream("original text"):
-                results.append((chunk, usage))
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage, is_thinking))
 
         asyncio.get_event_loop().run_until_complete(collect())
         # 3 content chunks + 1 final empty with usage
@@ -1286,6 +1287,8 @@ class TestTextEnhancerEnhanceStream:
         # Last result should have usage
         final = results[-1]
         assert final[1] == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        # All chunks should have is_thinking=False (no reasoning_content in mock)
+        assert all(r[2] is False for r in results)
 
     def test_fallback_on_empty_stream(self):
         mock_client = _make_mock_stream_client([], usage=None)
@@ -1299,8 +1302,8 @@ class TestTextEnhancerEnhanceStream:
 
         results = []
         async def collect():
-            async for chunk, usage in enhancer.enhance_stream("original text"):
-                results.append((chunk, usage))
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage, is_thinking))
 
         asyncio.get_event_loop().run_until_complete(collect())
         # Should yield original text as fallback
@@ -1318,8 +1321,8 @@ class TestTextEnhancerEnhanceStream:
 
         results = []
         async def collect():
-            async for chunk, usage in enhancer.enhance_stream("original text"):
-                results.append((chunk, usage))
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage, is_thinking))
 
         asyncio.get_event_loop().run_until_complete(collect())
         assert len(results) == 1
@@ -1336,9 +1339,9 @@ class TestTextEnhancerEnhanceStream:
 
         results = []
         async def collect():
-            async for chunk, usage in enhancer.enhance_stream("original text"):
-                results.append((chunk, usage))
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("original text"):
+                results.append((chunk, usage, is_thinking))
 
         asyncio.get_event_loop().run_until_complete(collect())
         assert len(results) == 1
-        assert results[0] == ("original text", None)
+        assert results[0] == ("original text", None, False)
