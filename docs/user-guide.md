@@ -62,14 +62,40 @@ On first launch, macOS will ask for:
 
 Grant all requested permissions in **System Settings → Privacy & Security**.
 
+### First Launch: Model Download
+
+**Important:** On first launch, VoiceText needs to download the default FunASR speech recognition model (~500 MB). During download:
+
+- The menubar icon changes to a **download icon** (⬇) with a percentage like `DL 45%`
+- **Please wait for the download to complete** before trying to transcribe — this may take a few minutes depending on your network speed
+- Click menubar → **View Logs...** to open the built-in log viewer and monitor download progress in real time
+- Once loading finishes, the icon changes back to a **microphone icon** (🎙) and the status shows "Ready"
+
+> **Tip:** If the download fails or is interrupted, delete `~/.cache/modelscope/` and restart VoiceText to retry.
+
 ### Your First Transcription
 
-1. Look for the **VT** icon in the menubar — that means VoiceText is running.
+1. Look for the **microphone icon** (🎙) in the menubar — that means VoiceText is ready.
 2. Open any text input (Notes, browser, editor, terminal…).
 3. **Hold** the `fn` key and speak.
 4. **Release** `fn` — the transcribed text appears.
 
-That's it! You've completed the basic workflow. The default backend is FunASR (offline Chinese). Models (~500 MB) download automatically on first use.
+That's it! You've completed the basic workflow.
+
+### Understanding the Menubar Icon
+
+The menubar icon changes to reflect the current status:
+
+| Icon | Status | Meaning |
+|---|---|---|
+| 🎙 (mic.fill) | Ready | Idle, ready to record |
+| 〰 (waveform) | Recording... | Capturing audio |
+| 💬 (text.bubble) | Transcribing... | Processing speech to text |
+| ✨ (sparkles) | Enhancing... | AI enhancement in progress |
+| 👁 (eye) | Preview... | Preview panel is open |
+| ⬇ (arrow.down) + DL X% | Downloading... | Model download in progress |
+| ⚙ (cpu) | Loading... | Loading model into memory |
+| ⚠ (triangle) | Error | Something went wrong |
 
 ---
 
@@ -86,42 +112,40 @@ VoiceText has two ways to deliver results:
 | **Preview** (default) | Shows a floating panel — review and edit before confirming | When accuracy matters, or you want to check before typing |
 | **Direct** | Types text immediately into the active app | When speed matters and you trust the transcription |
 
-Toggle via menubar: click **VT** → **Preview** (checkmark = on).
+Toggle via: menubar → **Settings...** → General tab → **Preview** checkbox.
 
 ### Preview Panel Basics
 
 When Preview is on, after recording you'll see a floating panel:
 
-- **Confirm** (Enter) — types the text and closes the panel
-- **Cancel** (Esc) — discards the text
+- **Confirm** (`Enter`) — types the text and closes the panel
+- **Copy to clipboard** (`⌘+Enter`) — copies the text to clipboard instead of typing
+- **Cancel** (`Esc`) — discards the text
 - **Edit** — click the text area to modify before confirming
 
 ### Menubar Overview
 
-Click the **VT** icon to see the full menu:
+Click the **microphone icon** in the menubar to see the menu:
 
 ```
-VT
-├── STT Model          → Choose speech recognition engine
-├── LLM Model          → Choose AI enhancement model
-├── AI Enhance         → Select enhancement mode
-├── Enhance Clipboard  → AI-enhance selected text
-├── Preview ✓          → Toggle preview panel
-├── Vocabulary (N)     → Toggle personal vocabulary
-├── Conversation History → Toggle context injection
-├── History Browser    → Browse past transcriptions
-├── Settings...        → Open settings panel
-├── AI Settings        → Thinking mode, vocabulary build, config
-├── Debug              → Log level, debug toggles
-├── Show Config...     → View current config
-├── Reload Config      → Apply config changes without restart
-├── Usage Stats        → View usage statistics
-└── About VoiceText    → Version info
+🎙
+├── Ready                    (status indicator)
+├── ─────────────────────
+├── Enhance Clipboard        AI-enhance selected text (Ctrl+Cmd+V)
+├── Browse History...        Search and browse past transcriptions
+├── Settings...              Open the settings panel (4 tabs)
+├── ─────────────────────
+├── View Logs...             Open log viewer
+├── Usage Stats              View usage statistics
+├── About VoiceText          Version info
+└── Quit
 ```
+
+All model selection, AI enhancement configuration, and hotkey management are done through the **Settings** panel — not the menubar menu directly.
 
 ### Recording Feedback
 
-While holding `fn`, a floating indicator with audio level bars shows you're recording. A sound plays on start and stop (configurable).
+While holding `fn`, a floating indicator with audio level bars shows you're recording. A sound plays on start and stop (configurable in Settings → General).
 
 ---
 
@@ -131,26 +155,23 @@ While holding `fn`, a floating indicator with audio level bars shows you're reco
 
 ### Backend Comparison
 
-| Backend | Language | Speed | Accuracy | Requires |
+| Backend | Language | Speed | Accuracy | Download Size |
 |---|---|---|---|---|
-| **FunASR** (default) | Chinese | Fast | High (Chinese) | ~500 MB download |
-| **MLX-Whisper** | 99 languages | Medium | High | Apple Silicon, 75 MB–1.6 GB |
-| **Apple Speech** | Multiple | Fast | Good | Nothing (built-in) |
-| **Whisper API** | Multiple | Depends on network | High | API key, internet |
+| **FunASR** (default) | Chinese | Fast | High (Chinese) | ~500 MB |
+| **MLX-Whisper** | 99 languages | Medium | High | 75 MB – 1.6 GB |
+| **Apple Speech** | Multiple | Fast | Good | None (built-in) |
+| **Whisper API** | Multiple | Depends on network | High | None (cloud) |
 
 ### How to Switch
 
-**Via menubar:** Click **STT Model** → select one.
+Open **Settings...** → **STT** tab. You'll see:
 
-```
-STT Model
-├── ✓ FunASR Paraformer (Chinese)
-├──   Whisper tiny (MLX)
-├──   Whisper small (MLX)
-├──   Whisper large-v3-turbo (MLX)
-├──   Apple Speech (macOS built-in)
-└──   ...
-```
+- **Local** section: Radio buttons for all available local ASR presets (FunASR, MLX-Whisper variants, Apple Speech)
+- **Remote** section: Cloud-based ASR providers you've configured
+
+Click a radio button to switch. The model will start loading (or downloading if not yet cached).
+
+> **First download reminder:** When switching to a new MLX-Whisper model for the first time, the model needs to download. Watch the menubar icon for `DL X%` progress. Model sizes range from ~75 MB (tiny) to ~1.6 GB (large-v3-turbo).
 
 ### Recommendations
 
@@ -158,8 +179,6 @@ STT Model
 - **English or multilingual** → MLX-Whisper small or large-v3-turbo
 - **Quick test, no download** → Apple Speech
 - **Best accuracy, don't mind latency** → Whisper API via Groq (free tier available)
-
-MLX-Whisper models download automatically when first selected. Larger models = better accuracy but more memory and slower.
 
 ---
 
@@ -180,7 +199,7 @@ You need an LLM backend. Two easy options:
 
 **Option B — Cloud API (e.g., DeepSeek, OpenAI):**
 
-1. Menubar → **LLM Model** → **Add Provider...**
+1. Open **Settings...** → **LLM** tab → **Add Provider...**
 2. Fill in provider details:
    ```
    name: deepseek
@@ -191,9 +210,9 @@ You need an LLM backend. Two easy options:
    ```
 3. Click **Verify** → **Save**
 
-### Step 2: Enable Enhancement
+### Step 2: Select an Enhancement Mode
 
-Menubar → **AI Enhance** → select a mode:
+Open **Settings...** → **AI** tab. Select a mode:
 
 | Mode | What it does |
 |---|---|
@@ -222,7 +241,7 @@ With Preview mode on and AI enhancement active, the preview panel becomes a powe
 
 Press `⌘1` through `⌘9` to instantly switch enhancement modes and re-process the same audio:
 
-- `⌘1` = first mode in menu (e.g., Proofread)
+- `⌘1` = first mode in list (e.g., Proofread)
 - `⌘2` = second mode (e.g., Translate EN)
 - `⌘3` = third mode (e.g., Commandline)
 - …and so on for custom modes
@@ -238,6 +257,7 @@ The cache is cleared when new audio is recorded.
 | Feature | How |
 |---|---|
 | **Edit text** | Click the text area and type |
+| **Copy to clipboard** | `⌘+Enter` — copies instead of typing into the active app |
 | **Toggle punctuation** | Check/uncheck the **Punc** checkbox to re-transcribe with/without punctuation |
 | **Switch STT model** | Use the STT dropdown in the panel |
 | **Switch LLM model** | Use the LLM dropdown in the panel |
@@ -253,7 +273,7 @@ The cache is cleared when new audio is recorded.
 
 ### Enable Direct Mode
 
-Turn off Preview: menubar → uncheck **Preview**.
+Turn off Preview: **Settings...** → General tab → uncheck **Preview**.
 
 Now when you release the hotkey, text is typed directly into the active app — no panel, no confirmation needed.
 
@@ -283,6 +303,8 @@ With AI enhancement active in direct mode, a **streaming overlay** appears showi
 2. Press `Ctrl+Cmd+V` (default hotkey).
 3. VoiceText copies the selection, sends it to the LLM with the current enhancement mode, and outputs the result.
 
+You can also trigger it from the menubar: click **Enhance Clipboard**.
+
 ### Use Cases
 
 - Select a rough draft → enhance with Proofread mode
@@ -306,6 +328,8 @@ Edit `~/.config/VoiceText/config.json`:
 }
 ```
 
+The hotkey format is `modifier+modifier+key`. See [Level 11](#hotkey-configuration) for format details and examples.
+
 ---
 
 ## Level 8: Custom Enhancement Modes
@@ -314,9 +338,9 @@ Edit `~/.config/VoiceText/config.json`:
 
 ### Create a Custom Mode
 
-**Via menu (easy):**
+**Via Settings (easy):**
 
-1. Menubar → **AI Enhance** → **Add Mode...**
+1. Open **Settings...** → **AI** tab → **Add Mode...**
 2. Edit the template, click **Save**, enter a mode ID.
 
 **Via file (flexible):**
@@ -371,11 +395,11 @@ See [Enhancement Mode Examples](enhance-mode-examples.md) for ready-to-use templ
 - Have a backup when one provider is down
 - Compare results across different models
 
-### Add Providers
+### Add Providers via Settings
 
-**LLM providers:** Menubar → **LLM Model** → **Add Provider...**
+**LLM providers:** Settings → **LLM** tab → **Add Provider...**
 
-**ASR providers:** Menubar → **STT Model** → **Add ASR Provider...**
+**ASR providers:** Settings → **STT** tab → **Add Provider...**
 
 Both use the same dialog format:
 
@@ -390,7 +414,7 @@ models:
 
 ### Switch at Runtime
 
-All configured models appear in a flat list under **LLM Model** or **STT Model**. Click to switch — no restart needed.
+In the **Settings** panel, all configured models appear as radio buttons. Click to switch — no restart needed.
 
 ### In Preview Panel
 
@@ -413,15 +437,15 @@ See [Provider & Model Setup Guide](provider-model-guide.md) for detailed example
 #### How to Build Vocabulary
 
 1. **Use Preview mode with AI enhancement** — edit the result when the AI gets a term wrong.
-2. Each edit is logged to `~/.config/VoiceText/corrections.jsonl`.
+2. Each edit is logged to `~/.config/VoiceText/conversation_history.jsonl` with a `user_corrected` flag.
 3. **Auto build** (default): After every 10 corrections, vocabulary is rebuilt automatically in the background.
-4. **Manual build:** Menubar → **AI Settings** → **Build Vocabulary...**
+4. **Manual build:** Settings → **AI** tab → **Build Vocabulary...**
 
 #### Enable Vocabulary
 
-Menubar → click **Vocabulary (N)** to toggle. The number shows how many entries are indexed.
+Settings → **AI** tab → toggle **Vocabulary (N)**. The number shows how many entries are indexed.
 
-When enabled, relevant vocabulary entries are retrieved and injected into the LLM prompt, helping it correct domain-specific terms.
+When enabled, relevant vocabulary entries are retrieved via embedding similarity and injected into the LLM prompt, helping it correct domain-specific terms.
 
 ### Conversation History
 
@@ -431,7 +455,7 @@ When enabled, relevant vocabulary entries are retrieved and injected into the LL
 
 #### Enable
 
-Menubar → click **Conversation History**.
+Settings → **AI** tab → toggle **Conversation History**.
 
 #### How It Works
 
@@ -441,7 +465,7 @@ Menubar → click **Conversation History**.
 
 #### Browse History
 
-Menubar → **History Browser** opens a searchable, filterable view of all past transcriptions. You can filter by mode, model, and whether corrections were made.
+Menubar → **Browse History...** opens a searchable, filterable view of all past transcriptions. You can filter by mode, model, and whether corrections were made.
 
 See [Vocabulary Embedding Retrieval](vocabulary-embedding-retrieval.md) and [Conversation History Enhancement](conversation-history-enhancement.md) for technical details.
 
@@ -453,19 +477,63 @@ See [Vocabulary Embedding Retrieval](vocabulary-embedding-retrieval.md) and [Con
 
 ### Settings Panel
 
-Menubar → **Settings...** opens a tabbed panel:
+Menubar → **Settings...** opens a panel with 4 tabs:
 
 | Tab | What you can configure |
 |---|---|
-| **General** | Hotkey, output method, append newline, sound, visual indicator |
-| **Models** | ASR backend and model, LLM provider and model |
-| **AI** | Enhancement mode, thinking mode, vocabulary, conversation history |
+| **General** | Recording hotkeys, sound feedback, visual indicator, preview toggle |
+| **STT** | Local ASR model selection, remote ASR provider management |
+| **LLM** | LLM provider and model selection, provider management |
+| **AI** | Enhancement mode, thinking mode, vocabulary, conversation history, auto build |
+
+At the bottom, toolbar buttons provide quick access to **Show Config**, **Edit Config**, and **Reload Config**.
+
+### Hotkey Configuration
+
+VoiceText supports flexible hotkey configuration. The recording hotkey is configured in the **Settings** panel (General tab), while the clipboard enhance hotkey is set in the config file.
+
+#### Hotkey Format
+
+Hotkeys use the format `modifier+modifier+key`, where:
+
+- **Modifiers:** `cmd` (or `command`), `ctrl`, `alt` (or `option`), `shift`
+- **Regular keys:** `a`–`z`, `0`–`9`
+- **Special keys:** `fn`, `f1`–`f12`, `esc`, `space`
+- **Right-side modifiers:** `cmd_r`, `ctrl_r`, `alt_r`, `shift_r`
+
+#### Examples
+
+| Hotkey | Config value | Description |
+|---|---|---|
+| Fn key (hold to record) | `"fn"` | Default recording hotkey — single special key |
+| F5 key | `"f5"` | Use a function key to record |
+| Ctrl+Cmd+V | `"ctrl+cmd+v"` | Default clipboard enhance hotkey |
+| Shift+Cmd+Space | `"shift+cmd+space"` | Alternative with Space key |
+| Alt+D | `"alt+d"` | Option+D combination |
+| Ctrl+Shift+R | `"ctrl+shift+r"` | Triple modifier example |
+| Ctrl+Cmd+1 | `"ctrl+cmd+1"` | Number key combination |
+
+#### Config File Examples
+
+```json
+{
+  "hotkeys": {
+    "fn": true,
+    "f5": true
+  },
+  "clipboard_enhance": {
+    "hotkey": "shift+cmd+space"
+  }
+}
+```
+
+Multiple recording hotkeys can be enabled simultaneously by adding entries to the `hotkeys` map with `true` values. Set to `false` to disable a hotkey without removing it.
 
 ### Configuration File
 
 Location: `~/.config/VoiceText/config.json`
 
-You only need to include fields you want to change — everything else uses defaults. After editing, use menubar → **Reload Config** to apply without restarting.
+You only need to include fields you want to change — everything else uses defaults. After editing, click **Reload Config** in the Settings toolbar to apply without restarting.
 
 See [Configuration Reference](configuration.md) for all options.
 
@@ -473,31 +541,28 @@ See [Configuration Reference](configuration.md) for all options.
 
 Logs are saved to `~/Library/Logs/VoiceText/voicetext.log` (5 MB rotation, 3 backups).
 
-**Copy log path:** Menubar → **Debug** → copy log path
+**View logs (recommended):** Menubar → **View Logs...** opens the built-in log viewer — the easiest way to check logs, monitor model download/loading progress, and diagnose issues in real time.
 
-**Change log level:** Menubar → **Debug** → select level (DEBUG for maximum detail)
-
-**Debug toggles:**
-- **Print Prompt** — shows the full LLM prompt in logs
-- **Print Request Body** — shows the raw API request
+Log files are also available on disk at the path above if you prefer an external editor.
 
 ### Usage Statistics
 
 Menubar → **Usage Stats** shows:
 - Total and today's transcription count
 - Enhancement usage by mode
-- Stored data counts (conversations, corrections, vocabulary entries)
+- Stored data counts (conversations, vocabulary entries)
 
 ### Common Issues
 
 #### Text doesn't type into the app
 - Check **Accessibility** permission in System Settings
-- Try switching output method: Settings → General → Output Method → `clipboard`
+- Try switching output method in config: `"output": {"method": "clipboard"}`
 
-#### FunASR model download fails
-- Models are cached in `~/.cache/modelscope/`
-- Check your internet connection; the first download is ~500 MB
-- If partially downloaded, delete the cache directory and retry
+#### Model download takes too long
+- The menubar shows `DL X%` during download — this is normal for first launch
+- FunASR: ~500 MB, MLX-Whisper large-v3-turbo: ~1.6 GB
+- Check the log viewer for detailed progress
+- If partially downloaded, delete the cache directory (`~/.cache/modelscope/` for FunASR, `~/.cache/huggingface/` for MLX-Whisper) and restart
 
 #### LLM enhancement times out
 - Increase timeout: edit `config.json` → `ai_enhance.timeout` (default: 30s)
@@ -505,8 +570,8 @@ Menubar → **Usage Stats** shows:
 - For Ollama, ensure it's running: `ollama serve`
 
 #### Preview panel doesn't appear
-- Make sure **Preview** is checked in the menubar
-- Try clicking the VT menubar icon to bring the app to focus
+- Make sure **Preview** is enabled in Settings → General
+- Try clicking the menubar icon to bring the app to focus
 
 #### Notifications don't work during development
 - Expected when running via `uv run` without app bundling
@@ -516,12 +581,14 @@ Menubar → **Usage Stats** shows:
 
 | Shortcut | Context | Action |
 |---|---|---|
-| `fn` (hold) | Global | Record audio |
-| `fn` (release) | Global | Stop recording and transcribe |
+| `fn` (hold/release) | Global | Record / stop and transcribe |
 | `Ctrl+Cmd+V` | Global | Clipboard enhancement |
 | `Enter` | Preview panel | Confirm and type text |
+| `⌘+Enter` | Preview panel | Copy to clipboard |
 | `Esc` | Preview panel / Streaming overlay | Cancel |
 | `⌘1` – `⌘9` | Preview panel | Switch enhancement mode |
+| `⌘A/C/V/X` | Preview panel | Standard edit shortcuts |
+| `⌘Z` / `⌘⇧Z` | Preview panel | Undo / Redo |
 
 ---
 

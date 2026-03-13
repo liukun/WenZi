@@ -60,7 +60,7 @@ uv run python -m voicetext path/to/config.json
 - Option 1: no additional requirements
 - Options 2 & 3: Python 3.13+ and [uv](https://github.com/astral-sh/uv)
 
-ASR models will be downloaded automatically on first launch (FunASR ~500 MB cached in `~/.cache/modelscope/`, MLX-Whisper models cached in `~/.cache/huggingface/`).
+ASR models will be downloaded automatically on first launch (FunASR ~500 MB cached in `~/.cache/modelscope/`, MLX-Whisper models cached in `~/.cache/huggingface/`). The menubar icon shows download progress (`DL X%`) — please wait for the download to complete before trying to transcribe.
 
 ### Permissions
 
@@ -72,7 +72,7 @@ On first launch the app will prompt for:
 
 ## Usage
 
-1. The app starts with a **VT** icon in the menubar.
+1. The app starts with a **microphone icon** (🎙) in the menubar. On first launch, it downloads the default ASR model (~500 MB) — the icon shows a download indicator with progress percentage. Wait for the icon to return to the microphone and the status to show "Ready".
 2. Hold the hotkey (default: `fn`) to record — a floating indicator with audio level bars shows recording status.
 3. Release to transcribe — the recognized text is typed into the active window.
 
@@ -85,6 +85,7 @@ When **Preview** is disabled, results are typed directly. If AI enhancement is a
 When **Preview** is enabled, a floating panel shows the result for review before input. In the preview panel you can:
 
 - Edit the text before confirming
+- Press `Enter` to confirm and type, or `⌘+Enter` to copy to clipboard
 - Use `⌘1` ~ `⌘9` to quickly switch AI enhancement modes and re-enhance with the selected mode
 - Toggle the **Punc** checkbox to enable/disable punctuation restoration and re-transcribe
 - Switch STT or LLM model via dropdown popups
@@ -103,23 +104,32 @@ Press the clipboard enhance hotkey (default: `Ctrl+Cmd+V`) to AI-enhance selecte
 
 Configure the hotkey and output method in `config.json` under `clipboard_enhance`.
 
-### Menubar Controls
+### Menubar & Settings
 
-- **STT Model**: Switch between local ASR models (FunASR, MLX-Whisper, Apple Speech) and remote Whisper API providers. Add or remove ASR providers at runtime
-- **LLM Model**: Switch between AI enhancement LLM providers and models. Add or remove LLM providers at runtime
-- **AI Enhance**: Select enhancement mode (proofread, translate, commandline, chain modes, custom modes, etc.) and add new modes
-- **Enhance Clipboard**: Trigger clipboard AI enhancement from the menu
-- **Preview**: Toggle the floating preview panel for reviewing and editing results before input
-- **Vocabulary (N)**: Toggle vocabulary retrieval for improving correction of proper nouns and domain terms. Entry count shown in title
-- **Conversation History**: Toggle conversation history injection for topic continuity
-- **History Browser**: Browse and search conversation history with mode/model filters and corrected-only filtering
-- **Settings...**: Tabbed settings panel (General, Models, AI) for configuring all options via GUI
-- **AI Settings**: Configure thinking mode, build vocabulary, auto build toggle, and edit config
-- **Debug**: Log level, debug toggles (print prompt, print request body), and copy log path
-- **Show Config...**: Display the current configuration
-- **Reload Config**: Reload config from disk and apply changes without restarting
-- **Usage Stats**: View cumulative and today's usage statistics, plus stored data counts (conversations, corrections, vocabulary entries)
-- **About VoiceText**: Show version and build info
+Click the menubar icon to access:
+
+```
+🎙
+├── Ready                    (status indicator)
+├── ─────────────────────
+├── Enhance Clipboard        AI-enhance selected text (Ctrl+Cmd+V)
+├── Browse History...        Search and browse past transcriptions
+├── Settings...              Open the settings panel
+├── ─────────────────────
+├── View Logs...             Open log viewer
+├── Usage Stats              View usage statistics
+├── About VoiceText          Version info
+└── Quit
+```
+
+The **Settings** panel (4 tabs) centralizes all configuration:
+
+| Tab | Controls |
+|-----|----------|
+| **General** | Recording hotkeys, sound feedback, visual indicator, preview toggle |
+| **STT** | Local ASR model selection (FunASR, MLX-Whisper, Apple Speech), remote ASR provider management |
+| **LLM** | LLM provider/model selection, add/remove providers |
+| **AI** | Enhancement mode, thinking mode, vocabulary, conversation history, auto build |
 
 ## ASR Backends
 
@@ -145,7 +155,7 @@ macOS built-in speech recognition using the SFSpeechRecognizer framework. Suppor
 
 ### Whisper API (Remote)
 
-OpenAI-compatible audio transcription API. Works with cloud providers like Groq, OpenAI, and any compatible endpoint. Configure remote ASR providers from the **STT Model** menu or in `config.json` under `asr.providers`. See [docs/provider-model-guide.md](docs/provider-model-guide.md) for setup details.
+OpenAI-compatible audio transcription API. Works with cloud providers like Groq, OpenAI, and any compatible endpoint. Configure remote ASR providers from the **Settings** panel (STT tab) or in `config.json` under `asr.providers`. See [docs/provider-model-guide.md](docs/provider-model-guide.md) for setup details.
 
 ## AI Text Enhancement
 
@@ -160,7 +170,7 @@ Optional post-processing of transcribed text using any OpenAI-compatible API (cl
 | Translate to English (翻译为英文) | Translate Chinese text to English |
 | Commandline Master (命令行大神) | Convert natural language to shell commands |
 
-Additional modes can be added via Markdown files or the **AI Enhance > Add Mode...** menu — see [docs/enhance-modes.md](docs/enhance-modes.md).
+Additional modes can be added via Markdown files or the Settings panel (AI tab → **Add Mode...**) — see [docs/enhance-modes.md](docs/enhance-modes.md).
 
 ### Chain Modes
 
@@ -172,7 +182,7 @@ Within a preview panel session, completed enhancement results are cached. Switch
 
 ### Multi-Provider Support
 
-Configure multiple LLM providers and switch between them at runtime from the menubar. Each provider supports:
+Configure multiple LLM providers and switch between them at runtime. Each provider supports:
 
 - Custom base URL and API key
 - Multiple models per provider
@@ -180,7 +190,7 @@ Configure multiple LLM providers and switch between them at runtime from the men
 - Optional extended thinking mode
 - Configurable timeout
 
-Providers can be added, removed, and verified directly from the **LLM Model** menubar submenu. See [docs/provider-model-guide.md](docs/provider-model-guide.md) for step-by-step setup instructions covering both GUI and config file approaches.
+Providers can be added, removed, and verified from the **Settings** panel (LLM tab). See [docs/provider-model-guide.md](docs/provider-model-guide.md) for step-by-step setup instructions covering both GUI and config file approaches.
 
 ### Vocabulary Retrieval
 
@@ -188,10 +198,10 @@ VoiceText can build a personal vocabulary index from your correction history to 
 
 The vocabulary supports both automatic and manual building:
 
-- **Accumulate corrections**: Edit AI-enhanced text in the preview window; each edit is logged to `corrections.jsonl`
-- **Auto build**: By default, vocabulary is automatically rebuilt in the background after every 10 corrections. A macOS notification shows the result. Toggle via **AI Settings > Auto Build Vocabulary**
-- **Manual build**: Click **AI Settings > Build Vocabulary...** to trigger a build on demand. Supports incremental builds — only new corrections since the last build are processed
-- **Toggle**: Click **Vocabulary (N)** in the menubar to enable/disable retrieval during enhancement. The entry count is shown in the menu title
+- **Accumulate corrections**: Edit AI-enhanced text in the preview window; each edit is logged to `conversation_history.jsonl` with a `user_corrected` flag
+- **Auto build**: By default, vocabulary is automatically rebuilt in the background after every 10 corrections. A macOS notification shows the result. Toggle via Settings → AI tab → **Auto Build Vocabulary**
+- **Manual build**: Click Settings → AI tab → **Build Vocabulary...** to trigger a build on demand. Supports incremental builds — only new corrections since the last build are processed
+- **Toggle**: Enable/disable in the Settings panel (AI tab). The entry count is shown next to the toggle
 - Uses `fastembed` with a multilingual embedding model for local, offline semantic matching
 
 See [docs/vocabulary-embedding-retrieval.md](docs/vocabulary-embedding-retrieval.md) for detailed design and motivation.
@@ -200,7 +210,7 @@ See [docs/vocabulary-embedding-retrieval.md](docs/vocabulary-embedding-retrieval
 
 VoiceText can inject recent conversation history into the AI enhancement prompt, enabling the LLM to understand the current topic and resolve recurring entities consistently. For example, if the user confirmed "萍萍" in a previous turn, subsequent ASR errors like "平平" can be correctly resolved.
 
-- **Toggle**: Click **Conversation History** in the menubar to enable/disable
+- **Toggle**: Enable/disable in the Settings panel (AI tab)
 - Only preview-confirmed records (where the user reviewed and approved the output) are injected — ensuring data quality
 - Token-efficient format: identical ASR/output shown once, corrections shown with arrow notation (e.g., `平平 → 萍萍`)
 
@@ -220,15 +230,15 @@ uv run pytest
 
 ## Logging
 
-Logs are saved to `~/Library/Logs/VoiceText/voicetext.log` with rotation (5 MB per file, 3 backups). The log path can be copied from the menubar menu.
+Logs are saved to `~/Library/Logs/VoiceText/voicetext.log` with rotation (5 MB per file, 3 backups). View logs in-app via menubar → **View Logs...**.
 
 ## Project Structure
 
 ```
 src/voicetext/
-├── app.py                    # Menubar application (rumps) with enhancement caching
+├── app.py                    # Menubar application with enhancement caching
 ├── config.py                 # Configuration loading and defaults
-├── hotkey.py                 # Global hotkey listener (Quartz / pynput)
+├── hotkey.py                 # Global hotkey listener (Quartz)
 ├── recorder.py               # Audio recording (sounddevice)
 ├── sound_manager.py          # Sound feedback for recording start/stop
 ├── recording_indicator.py    # Floating recording indicator with audio level bars
@@ -243,12 +253,12 @@ src/voicetext/
 ├── auto_vocab_builder.py     # Automatic vocabulary building triggered by correction count
 ├── result_window.py          # Floating preview panel with cached result replay
 ├── streaming_overlay.py      # Floating overlay for direct mode AI streaming
-├── settings_window.py        # Tabbed settings panel (General, Models, AI)
+├── settings_window.py        # Tabbed settings panel (General, STT, LLM, AI)
 ├── history_browser_window.py # Conversation history browser with search and filters
 ├── log_viewer_window.py      # Log viewer panel
 ├── translate_webview.py      # Google Translate webview for quick translation
 ├── vocabulary.py             # Vocabulary embedding index and retrieval
-├── vocabulary_builder.py     # Extract vocabulary from correction logs via LLM
+├── vocabulary_builder.py     # Extract vocabulary from conversation history via LLM
 ├── vocab_build_window.py     # Vocabulary build progress UI
 ├── conversation_history.py   # Conversation history recording and context injection
 ├── usage_stats.py            # Usage statistics with cumulative and daily breakdown

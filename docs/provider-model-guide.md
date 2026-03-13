@@ -1,6 +1,6 @@
 # Provider & Model Setup Guide
 
-This guide explains how to configure ASR (speech recognition) models and AI enhancement providers in VoiceText. Both GUI (menubar) and config file approaches are covered.
+This guide explains how to configure ASR (speech recognition) models and AI enhancement providers in VoiceText. Both GUI (Settings panel) and config file approaches are covered.
 
 ## Table of Contents
 
@@ -36,25 +36,9 @@ VoiceText supports four ASR backends:
 
 ### ASR Via GUI
 
-Click the **STT Model** submenu in the menubar. Select any model — a checkmark indicates the active one:
+Open **Settings...** → **STT** tab. All available local and remote ASR models are listed as radio buttons. Select one to switch — the active model is highlighted.
 
-```
-STT Model
-├── ✓ FunASR Paraformer (Chinese)
-├──   Whisper tiny (MLX)
-├──   Whisper base (MLX)
-├──   Whisper small (MLX)
-├──   Whisper medium (MLX)
-├──   Whisper large-v3-turbo (MLX)
-├──   Apple Speech (macOS built-in)
-├──   ─────────────────
-├──   groq / whisper-large-v3       (remote, if configured)
-├──   ─────────────────
-├──   Add ASR Provider...
-└──   Remove ASR Provider
-```
-
-If the selected MLX-Whisper model hasn't been downloaded yet, VoiceText will download it automatically on first use. Remote ASR models from configured providers also appear in this menu.
+If the selected MLX-Whisper model hasn't been downloaded yet, VoiceText will download it automatically on first use (the menubar icon shows `DL X%` progress). Remote ASR models from configured providers also appear in this tab.
 
 ### ASR Via Config File
 
@@ -103,7 +87,7 @@ In addition to local ASR backends, VoiceText supports remote ASR via OpenAI-comp
 
 ### Remote ASR Via GUI
 
-1. Open menubar → **STT Model** → **Add ASR Provider...**
+1. Open **Settings...** → **STT** tab → **Add Provider...**
 
 2. Fill in the provider details (same dialog format as LLM providers):
 
@@ -117,7 +101,7 @@ In addition to local ASR backends, VoiceText supports remote ASR via OpenAI-comp
 
 3. Click **Verify** — VoiceText will test the connection by sending a short silent audio clip.
 
-4. If verification passes, click **Save**. The new models appear in the **STT Model** menu.
+4. If verification passes, click **Save**. The new models appear in the **STT** tab.
 
 ### Remote ASR Via Config File
 
@@ -169,7 +153,7 @@ AI enhancement uses OpenAI-compatible LLM providers. You can configure multiple 
 
 ### Provider Via GUI
 
-1. Open menubar → **LLM Model** → **Add Provider...**
+1. Open **Settings...** → **LLM** tab → **Add Provider...**
 
 2. A text editor dialog appears with a template:
 
@@ -281,24 +265,15 @@ After editing, restart VoiceText for changes to take effect.
 
 ### Switching Via GUI
 
-**Switch LLM provider/model:** Menubar → **LLM Model** → select one
+**Switch LLM provider/model:** Open **Settings...** → **LLM** tab → select from the list of available models.
 
-```
-LLM Model
-├── ✓ ollama / qwen2.5:7b
-├──   ollama / llama3.1:8b
-├──   openai / gpt-4o
-├──   openai / gpt-4o-mini
-├──   ─────────────────
-├──   Add Provider...
-└──   Remove Provider
-```
+All models from all configured providers are shown as radio buttons. The active model is highlighted.
 
-All models from all configured providers are shown in a flat list. The active model has a checkmark.
+**Switch STT model:** Open **Settings...** → **STT** tab → select one (local or remote).
 
-**Switch STT model:** Menubar → **STT Model** → select one (local or remote)
+**Toggle thinking mode:** Open **Settings...** → **AI** tab → **Thinking** checkbox.
 
-**Toggle thinking mode:** Menubar → **AI Settings** → **Thinking** (checkbox)
+You can also switch STT and LLM models directly from the **preview panel** dropdowns without opening the Settings panel.
 
 ### Switching Via Config File
 
@@ -322,13 +297,13 @@ Update `default_provider` and `default_model` in `config.json`:
 
 ### LLM Provider
 
-**Via GUI:** Menubar → **LLM Model** → **Remove Provider** → select the provider to remove → confirm in the dialog.
+**Via GUI:** Open **Settings...** → **LLM** tab → **Remove...** → select the provider to remove → confirm in the dialog.
 
 **Via Config File:** Delete the provider entry from `ai_enhance.providers` in `config.json`. If it was the active provider, update `default_provider` and `default_model` to point to a remaining provider.
 
 ### ASR Provider
 
-**Via GUI:** Menubar → **STT Model** → **Remove ASR Provider** → select the provider to remove → confirm in the dialog.
+**Via GUI:** Open **Settings...** → **STT** tab → **Remove...** → select the provider to remove → confirm in the dialog.
 
 **Via Config File:** Delete the provider entry from `asr.providers` in `config.json`. If it was the active provider, update `asr.default_provider` and `asr.default_model` to `null`.
 
@@ -378,4 +353,4 @@ Or with local Ollama (no API key needed):
 }
 ```
 
-Then select an enhancement mode from menubar → **AI Enhance** (e.g. "纠错润色") to activate.
+Then select an enhancement mode from **Settings...** → **AI** tab (e.g. "纠错润色") to activate.

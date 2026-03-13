@@ -21,9 +21,9 @@ The system consists of two stages: **vocabulary building** and **real-time retri
 
 ### Stage 1: Vocabulary Building
 
-VoiceText already logs every correction the user makes (original ASR text → user-confirmed final text) in `corrections.jsonl`. The vocabulary builder leverages these logs:
+VoiceText logs every user correction in `conversation_history.jsonl` — entries where the user edited the AI-enhanced text in the preview panel are marked with `user_corrected: true`. The vocabulary builder leverages these records:
 
-1. Read correction records from `corrections.jsonl` (supports incremental builds via timestamp filtering).
+1. Read corrected records from `conversation_history.jsonl` (supports incremental builds via timestamp filtering).
 2. Batch records and send them to an LLM with a structured extraction prompt.
 3. The LLM identifies proper nouns, technical terms, and frequently misrecognized words, returning structured entries with:
    - `term` — the correct form of the word
@@ -92,7 +92,7 @@ The embedding approach is particularly effective for this use case because:
 ## Architecture Diagram
 
 ```
-corrections.jsonl
+conversation_history.jsonl (user_corrected entries)
        │
        ▼
 ┌─────────────────┐     LLM extraction      ┌──────────────────┐
@@ -151,7 +151,7 @@ In `config.json` under `ai_enhance`:
 
 | File | Purpose |
 |---|---|
-| `src/voicetext/vocabulary_builder.py` | Extracts vocabulary from correction logs via LLM |
+| `src/voicetext/vocabulary_builder.py` | Extracts vocabulary from conversation history corrections via LLM |
 | `src/voicetext/vocabulary.py` | Embedding index construction and retrieval |
 | `src/voicetext/auto_vocab_builder.py` | Automatic vocabulary building triggered by correction count |
 | `src/voicetext/enhancer.py` | Integrates vocabulary context into enhancement prompts |

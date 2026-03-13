@@ -102,8 +102,8 @@ These 3 modes are created automatically on first launch:
 
 ### Option A: From the Menu
 
-1. Click the **VT** icon in the menu bar.
-2. Go to **AI Enhance** > **Add Mode...**.
+1. Open **Settings...** → **AI** tab.
+2. Click **Add Mode...**.
 3. Edit the template in the dialog and click **Save**.
 4. Enter a mode ID (e.g., `summarize`) and confirm.
 5. The new mode appears in the menu immediately.
