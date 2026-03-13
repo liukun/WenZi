@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceText — macOS Speech-to-Text</title>
+  <meta name="description" content="A macOS menubar speech-to-text app. Hold a hotkey to record, release to transcribe and type. Offline-first, multi-engine, AI-enhanced." />
+  <link rel="icon" href="images/icon.png" />
+  <link rel="alternate" hreflang="zh" href="zh/" />
+  <link rel="alternate" hreflang="en" href="./" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ========== Header ========== -->
+<header class="site-header">
+  <nav class="nav container">
+    <a class="nav-brand" href="./">
+      <img src="images/icon.png" alt="VoiceText icon" />
+      VoiceText
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features" class="nav-link-text">Features</a></li>
+      <li><a href="#how-it-works" class="nav-link-text">How It Works</a></li>
+      <li><a href="#backends" class="nav-link-text">Backends</a></li>
+      <li><a href="#installation" class="nav-link-text">Install</a></li>
+      <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      <li><a href="zh/" class="lang-switch">中文</a></li>
+    </ul>
+  </nav>
+</header>
+
+<!-- ========== Hero ========== -->
+<section class="hero">
+  <div class="container">
+    <img src="images/icon.png" alt="VoiceText" class="hero-icon" />
+    <h1>Speech to Text, <span>Instantly</span></h1>
+    <p class="tagline">
+      A macOS menubar app — hold a hotkey to record, release to transcribe and type.
+      Offline-first, multi-engine, AI-enhanced.
+    </p>
+    <div class="hero-buttons">
+      <a id="download-btn" href="https://github.com/Airead/VoiceText/releases/latest" class="btn btn-primary">
+        &#11015; Download
+      </a>
+      <a href="https://github.com/Airead/VoiceText" class="btn btn-secondary" target="_blank">
+        &#9733; GitHub
+      </a>
+    </div>
+    <span id="version-badge" class="version-badge">Latest release</span>
+  </div>
+</section>
+
+<!-- ========== Features ========== -->
+<section id="features">
+  <div class="container">
+    <h2 class="section-title fade-in">Features</h2>
+    <p class="section-subtitle fade-in">Everything you need for voice input on macOS</p>
+    <div class="features-grid">
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#128268;</div>
+        <h3>Offline-First</h3>
+        <p>Uses FunASR ONNX models by default — no cloud dependency, full privacy. Works without an internet connection.</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#127911;</div>
+        <h3>Multi-Engine</h3>
+        <p>FunASR (Chinese), MLX-Whisper (99 languages, Apple GPU), Apple Speech (built-in), and remote Whisper API.</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#10024;</div>
+        <h3>AI Enhancement</h3>
+        <p>Optional LLM-powered proofreading, formatting, completion, and translation via any OpenAI-compatible API.</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#128279;</div>
+        <h3>Chain Modes</h3>
+        <p>Multi-step enhancement pipelines — e.g., proofread then translate — defined via simple Markdown files.</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#128218;</div>
+        <h3>Personal Vocabulary</h3>
+        <p>Embedding-based vocabulary retrieval learns your proper nouns and domain terms from correction history.</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#9889;</div>
+        <h3>Lightweight</h3>
+        <p>Runs as a menubar-only app — hidden from Dock. Minimal resource usage with instant hotkey response.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== How it works ========== -->
+<section id="how-it-works">
+  <div class="container">
+    <h2 class="section-title fade-in">How It Works</h2>
+    <p class="section-subtitle fade-in">Three simple steps — no window switching needed</p>
+    <div class="steps">
+      <div class="step fade-in">
+        <div class="step-number">1</div>
+        <h3>Hold to Record</h3>
+        <p>Hold the <code>fn</code> key (or your custom hotkey) and speak. A floating indicator shows recording status with audio level bars.</p>
+      </div>
+      <div class="step fade-in">
+        <div class="step-number">2</div>
+        <h3>Release to Transcribe</h3>
+        <p>Release the key — VoiceText transcribes your speech using the selected ASR engine, optionally enhanced by AI.</p>
+      </div>
+      <div class="step fade-in">
+        <div class="step-number">3</div>
+        <h3>Text is Typed</h3>
+        <p>The result is automatically typed into the active application, or shown in a preview panel for review and editing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ASR Backends ========== -->
+<section id="backends">
+  <div class="container">
+    <h2 class="section-title fade-in">ASR Backends</h2>
+    <p class="section-subtitle fade-in">Choose the best engine for your language and hardware</p>
+    <div class="table-wrapper fade-in">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Backend</th>
+            <th>Language</th>
+            <th>Speed</th>
+            <th>Accuracy</th>
+            <th>Download</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>FunASR</strong> <span class="badge">Default</span></td>
+            <td>Chinese</td>
+            <td>Fast</td>
+            <td>High</td>
+            <td>~500 MB</td>
+          </tr>
+          <tr>
+            <td><strong>MLX-Whisper</strong></td>
+            <td>99 languages</td>
+            <td>Medium</td>
+            <td>High</td>
+            <td>75 MB – 1.6 GB</td>
+          </tr>
+          <tr>
+            <td><strong>Apple Speech</strong></td>
+            <td>Multiple</td>
+            <td>Fast</td>
+            <td>Good</td>
+            <td>None (built-in)</td>
+          </tr>
+          <tr>
+            <td><strong>Whisper API</strong></td>
+            <td>Multiple</td>
+            <td>Depends on network</td>
+            <td>High</td>
+            <td>None (cloud)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Installation ========== -->
+<section id="installation">
+  <div class="container">
+    <h2 class="section-title fade-in">Installation</h2>
+    <p class="section-subtitle fade-in">Three ways to get started</p>
+    <div class="install-grid">
+
+      <div class="install-card install-featured fade-in">
+        <div class="install-featured-inner">
+          <div class="install-featured-left">
+            <span class="install-badge">Recommended</span>
+            <h3>Download Release</h3>
+            <p class="install-desc">The easiest way to get started. No Python, no build tools — just download, drag, and go.</p>
+            <a id="download-btn-install" href="https://github.com/Airead/VoiceText/releases/latest" class="btn btn-primary">
+              &#11015; Download Latest Release
+            </a>
+          </div>
+          <div class="install-featured-right">
+            <div class="install-steps">
+              <div class="install-step"><span class="install-step-num">1</span> Download <code>VoiceText.app</code> from <a href="https://github.com/Airead/VoiceText/releases/latest">Releases</a></div>
+              <div class="install-step"><span class="install-step-num">2</span> Drag to <code>/Applications</code></div>
+              <div class="install-step"><span class="install-step-num">3</span> Double-click to launch</div>
+              <div class="install-step"><span class="install-step-num">4</span> Grant <strong>Microphone</strong> &amp; <strong>Accessibility</strong> permissions</div>
+            </div>
+            <p class="install-note">First launch: macOS blocks unsigned apps. Go to <strong>System Settings &rarr; Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="install-card fade-in">
+        <div class="install-header">
+          <span class="install-icon">&#128296;</span>
+          <div>
+            <h3>Build from Source</h3>
+            <p class="install-label">Requires Python 3.13+ and uv</p>
+          </div>
+        </div>
+        <div class="install-body">
+          <pre class="code-block">git clone https://github.com/Airead/VoiceText
+cd VoiceText
+uv sync
+./scripts/build.sh</pre>
+        </div>
+      </div>
+
+      <div class="install-card fade-in">
+        <div class="install-header">
+          <span class="install-icon">&#128187;</span>
+          <div>
+            <h3>Run from Source</h3>
+            <p class="install-label">For development and debugging</p>
+          </div>
+        </div>
+        <div class="install-body">
+          <pre class="code-block">git clone https://github.com/Airead/VoiceText
+cd VoiceText
+uv sync
+uv run python -m voicetext</pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== Footer ========== -->
+<footer class="site-footer">
+  <div class="container">
+    <ul class="footer-links">
+      <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      <li><a href="https://github.com/Airead/VoiceText/releases" target="_blank">Releases</a></li>
+      <li><a href="https://github.com/Airead/VoiceText/tree/main/docs" target="_blank">Documentation</a></li>
+      <li><a href="zh/">中文</a></li>
+    </ul>
+    <p>MIT License &copy; VoiceText</p>
+  </div>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>

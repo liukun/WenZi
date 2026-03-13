@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceText — macOS 语音转文字</title>
+  <meta name="description" content="macOS 菜单栏语音转文字应用。按住快捷键录音，松开即转写并自动输入。离线优先、多引擎、AI 增强。" />
+  <link rel="icon" href="../images/icon.png" />
+  <link rel="alternate" hreflang="en" href="../" />
+  <link rel="alternate" hreflang="zh" href="./" />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+
+<!-- ========== Header ========== -->
+<header class="site-header">
+  <nav class="nav container">
+    <a class="nav-brand" href="./">
+      <img src="../images/icon.png" alt="VoiceText 图标" />
+      VoiceText
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features" class="nav-link-text">功能特性</a></li>
+      <li><a href="#how-it-works" class="nav-link-text">使用方式</a></li>
+      <li><a href="#backends" class="nav-link-text">语音引擎</a></li>
+      <li><a href="#installation" class="nav-link-text">安装</a></li>
+      <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      <li><a href="../" class="lang-switch">English</a></li>
+    </ul>
+  </nav>
+</header>
+
+<!-- ========== Hero ========== -->
+<section class="hero">
+  <div class="container">
+    <img src="../images/icon.png" alt="VoiceText" class="hero-icon" />
+    <h1>语音转文字，<span>即时输入</span></h1>
+    <p class="tagline">
+      macOS 菜单栏应用 — 按住快捷键录音，松开即转写并自动输入到当前应用。
+      离线优先、多引擎、AI 增强。
+    </p>
+    <div class="hero-buttons">
+      <a id="download-btn" href="https://github.com/Airead/VoiceText/releases/latest" class="btn btn-primary">
+        &#11015; 下载
+      </a>
+      <a href="https://github.com/Airead/VoiceText" class="btn btn-secondary" target="_blank">
+        &#9733; GitHub
+      </a>
+    </div>
+    <span id="version-badge" class="version-badge">最新版本</span>
+  </div>
+</section>
+
+<!-- ========== Features ========== -->
+<section id="features">
+  <div class="container">
+    <h2 class="section-title fade-in">功能特性</h2>
+    <p class="section-subtitle fade-in">macOS 上最全面的语音输入工具</p>
+    <div class="features-grid">
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#128268;</div>
+        <h3>离线优先</h3>
+        <p>默认使用 FunASR ONNX 模型 — 无需联网，完全离线，保护隐私。</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#127911;</div>
+        <h3>多引擎支持</h3>
+        <p>FunASR（中文优化）、MLX-Whisper（99 种语言，Apple GPU 加速）、Apple Speech（系统内置）及远程 Whisper API。</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#10024;</div>
+        <h3>AI 增强</h3>
+        <p>可选的 LLM 驱动文本纠错、润色、补全和翻译，支持任何 OpenAI 兼容 API。</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#128279;</div>
+        <h3>链式模式</h3>
+        <p>多步骤增强管道 — 例如先纠错润色再翻译 — 通过 Markdown 文件灵活定义。</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#128218;</div>
+        <h3>个人词库</h3>
+        <p>基于向量检索的个人词库，从纠正历史中学习专有名词和领域术语，越用越准确。</p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#9889;</div>
+        <h3>轻量级</h3>
+        <p>仅在菜单栏运行，不占 Dock 位置。资源占用极小，快捷键即时响应。</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== How it works ========== -->
+<section id="how-it-works">
+  <div class="container">
+    <h2 class="section-title fade-in">使用方式</h2>
+    <p class="section-subtitle fade-in">三步操作，无需切换窗口</p>
+    <div class="steps">
+      <div class="step fade-in">
+        <div class="step-number">1</div>
+        <h3>按住录音</h3>
+        <p>按住 <code>fn</code> 键（或自定义快捷键）开始说话。浮动指示器显示录音状态和音量条。</p>
+      </div>
+      <div class="step fade-in">
+        <div class="step-number">2</div>
+        <h3>松开转写</h3>
+        <p>松开按键 — VoiceText 使用选定的语音引擎转写语音，可选 AI 增强处理。</p>
+      </div>
+      <div class="step fade-in">
+        <div class="step-number">3</div>
+        <h3>自动输入</h3>
+        <p>转写结果自动输入到当前活动应用，或在预览面板中显示供编辑和确认。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ASR Backends ========== -->
+<section id="backends">
+  <div class="container">
+    <h2 class="section-title fade-in">语音识别引擎</h2>
+    <p class="section-subtitle fade-in">根据语言和硬件选择最佳引擎</p>
+    <div class="table-wrapper fade-in">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>引擎</th>
+            <th>语言</th>
+            <th>速度</th>
+            <th>准确度</th>
+            <th>下载大小</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>FunASR</strong> <span class="badge">默认</span></td>
+            <td>中文</td>
+            <td>快</td>
+            <td>高</td>
+            <td>~500 MB</td>
+          </tr>
+          <tr>
+            <td><strong>MLX-Whisper</strong></td>
+            <td>99 种语言</td>
+            <td>中等</td>
+            <td>高</td>
+            <td>75 MB – 1.6 GB</td>
+          </tr>
+          <tr>
+            <td><strong>Apple Speech</strong></td>
+            <td>多语言</td>
+            <td>快</td>
+            <td>良好</td>
+            <td>无需下载（系统内置）</td>
+          </tr>
+          <tr>
+            <td><strong>Whisper API</strong></td>
+            <td>多语言</td>
+            <td>取决于网络</td>
+            <td>高</td>
+            <td>无需下载（云端）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Installation ========== -->
+<section id="installation">
+  <div class="container">
+    <h2 class="section-title fade-in">安装方式</h2>
+    <p class="section-subtitle fade-in">三种方式，任选其一</p>
+    <div class="install-grid">
+
+      <div class="install-card install-featured fade-in">
+        <div class="install-featured-inner">
+          <div class="install-featured-left">
+            <span class="install-badge">推荐</span>
+            <h3>下载安装</h3>
+            <p class="install-desc">最简单的方式。无需 Python、无需构建工具 — 下载、拖入、启动，即刻使用。</p>
+            <a id="download-btn-install" href="https://github.com/Airead/VoiceText/releases/latest" class="btn btn-primary">
+              &#11015; 下载最新版本
+            </a>
+          </div>
+          <div class="install-featured-right">
+            <div class="install-steps">
+              <div class="install-step"><span class="install-step-num">1</span> 从 <a href="https://github.com/Airead/VoiceText/releases/latest">Releases</a> 下载 <code>VoiceText.app</code></div>
+              <div class="install-step"><span class="install-step-num">2</span> 拖入 <code>/Applications</code></div>
+              <div class="install-step"><span class="install-step-num">3</span> 双击启动</div>
+              <div class="install-step"><span class="install-step-num">4</span> 授予<strong>麦克风</strong>和<strong>辅助功能</strong>权限</div>
+            </div>
+            <p class="install-note">首次启动：macOS 会阻止未签名应用。前往<strong>系统设置 &rarr; 隐私与安全性</strong>，点击<strong>仍要打开</strong>即可。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="install-card fade-in">
+        <div class="install-header">
+          <span class="install-icon">&#128296;</span>
+          <div>
+            <h3>从源码构建</h3>
+            <p class="install-label">需要 Python 3.13+ 和 uv</p>
+          </div>
+        </div>
+        <div class="install-body">
+          <pre class="code-block">git clone https://github.com/Airead/VoiceText
+cd VoiceText
+uv sync
+./scripts/build.sh</pre>
+        </div>
+      </div>
+
+      <div class="install-card fade-in">
+        <div class="install-header">
+          <span class="install-icon">&#128187;</span>
+          <div>
+            <h3>从源码运行</h3>
+            <p class="install-label">用于开发和调试</p>
+          </div>
+        </div>
+        <div class="install-body">
+          <pre class="code-block">git clone https://github.com/Airead/VoiceText
+cd VoiceText
+uv sync
+uv run python -m voicetext</pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== Footer ========== -->
+<footer class="site-footer">
+  <div class="container">
+    <ul class="footer-links">
+      <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      <li><a href="https://github.com/Airead/VoiceText/releases" target="_blank">版本发布</a></li>
+      <li><a href="https://github.com/Airead/VoiceText/tree/main/docs" target="_blank">文档</a></li>
+      <li><a href="../">English</a></li>
+    </ul>
+    <p>MIT License &copy; VoiceText</p>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+</body>
+</html>
