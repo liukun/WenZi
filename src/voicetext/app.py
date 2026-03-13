@@ -47,6 +47,7 @@ from .model_registry import (
 from .recorder import Recorder
 from .recording_indicator import RecordingIndicatorPanel
 from .sound_manager import SoundManager
+from .streaming_overlay import StreamingOverlayPanel
 from .transcriber import create_transcriber
 
 
@@ -167,6 +168,7 @@ class VoiceTextApp(rumps.App):
         )
         self._recording_indicator = RecordingIndicatorPanel()
         self._recording_indicator.enabled = fb_cfg.get("visual_indicator", True)
+        self._streaming_overlay = StreamingOverlayPanel()
         self._level_poll_stop: threading.Event | None = None
         self._recording_started = threading.Event()
 
@@ -541,7 +543,11 @@ class VoiceTextApp(rumps.App):
             self._stop_recording_indicator()
             self._set_status("VT")
             return
-        self._stop_recording_indicator(animate=self._preview_enabled)
+        use_enhance = bool(self._enhancer and self._enhancer.is_active)
+        # Keep indicator alive for animation when preview or direct+enhance
+        self._stop_recording_indicator(
+            animate=self._preview_enabled or use_enhance
+        )
 
         self._busy = True
 
@@ -748,6 +754,8 @@ class VoiceTextApp(rumps.App):
 
     def _do_transcribe_direct(self, asr_text: str, use_enhance: bool) -> None:
         """Original flow: enhance (if enabled) and type directly."""
+        from PyObjCTools import AppHelper
+
         try:
             self._usage_stats.record_transcription(
                 mode="direct", enhance_mode=self._enhance_mode
@@ -757,8 +765,29 @@ class VoiceTextApp(rumps.App):
 
         text = asr_text
         enhanced_text = None
+        cancel_event = threading.Event()
+
         if use_enhance:
             self._set_status("Enhancing...")
+            # Animate recording indicator out, then show streaming overlay
+            indicator_frame = self._recording_indicator.current_frame
+
+            stt_info = self._current_stt_model()
+            llm_info = self._current_llm_model()
+
+            def _show_overlay():
+                self._recording_indicator.animate_out(
+                    completion=lambda: self._streaming_overlay.show(
+                        asr_text=asr_text,
+                        cancel_event=cancel_event,
+                        animate_from_frame=indicator_frame,
+                        stt_info=stt_info,
+                        llm_info=llm_info,
+                    )
+                )
+
+            AppHelper.callAfter(_show_overlay)
+
             try:
                 current_mode_def = self._enhancer.get_mode_definition(self._enhance_mode)
                 chain_steps: list[str] = []
@@ -771,34 +800,26 @@ class VoiceTextApp(rumps.App):
                             logger.warning("Chain step '%s' not found, skipping", step_id)
 
                 if chain_steps:
-                    # Chain mode: run each step sequentially
-                    original_mode = self._enhancer.mode
-                    try:
-                        loop = asyncio.new_event_loop()
-                        for step_id in chain_steps:
-                            self._enhancer.mode = step_id
-                            text, _usage = loop.run_until_complete(
-                                self._enhancer.enhance(text)
-                            )
-                            try:
-                                self._usage_stats.record_token_usage(_usage)
-                            except Exception as e:
-                                logger.error("Failed to record token usage: %s", e)
-                        loop.close()
-                        enhanced_text = text
-                    finally:
-                        self._enhancer.mode = original_mode
+                    text = self._run_direct_chain_stream(
+                        asr_text, chain_steps, cancel_event
+                    )
                 else:
-                    loop = asyncio.new_event_loop()
-                    text, _usage = loop.run_until_complete(self._enhancer.enhance(text))
-                    loop.close()
+                    text = self._run_direct_single_stream(asr_text, cancel_event)
+
+                if cancel_event.is_set():
+                    text = asr_text
+                    enhanced_text = None
+                else:
                     enhanced_text = text
-                    try:
-                        self._usage_stats.record_token_usage(_usage)
-                    except Exception as e:
-                        logger.error("Failed to record token usage: %s", e)
             except Exception as e:
                 logger.error("AI enhancement failed: %s", e)
+                text = asr_text
+            finally:
+                AppHelper.callAfter(self._streaming_overlay.close)
+
+        if cancel_event.is_set():
+            self._set_status("VT")
+            return
 
         type_text(
             text.strip(),
@@ -829,6 +850,161 @@ class VoiceTextApp(rumps.App):
             )
         except Exception as e:
             logger.error("Failed to log conversation: %s", e)
+
+    def _run_direct_single_stream(
+        self, asr_text: str, cancel_event: threading.Event
+    ) -> str:
+        """Run single-step streaming enhancement, updating overlay."""
+        loop = asyncio.new_event_loop()
+        collected: list[str] = []
+        usage = None
+
+        async def _stream():
+            nonlocal usage
+            gen = self._enhancer.enhance_stream(asr_text)
+            completion_tokens = 0
+            thinking_tokens = 0
+            had_thinking = False
+            try:
+                async for chunk, chunk_usage, is_thinking in gen:
+                    if cancel_event.is_set():
+                        return
+                    if is_thinking == "retry" and chunk:
+                        had_thinking = True
+                        self._streaming_overlay.append_thinking_text(chunk)
+                        label = chunk.strip().strip("()\n")
+                        self._streaming_overlay.set_status(f"\u23f3 {label}")
+                    elif is_thinking and chunk:
+                        had_thinking = True
+                        thinking_tokens += 1
+                        self._streaming_overlay.append_thinking_text(
+                            chunk, thinking_tokens=thinking_tokens
+                        )
+                    elif chunk:
+                        if had_thinking:
+                            had_thinking = False
+                            self._streaming_overlay.clear_text()
+                        collected.append(chunk)
+                        completion_tokens += 1
+                        self._streaming_overlay.append_text(
+                            chunk, completion_tokens=completion_tokens
+                        )
+                    if chunk_usage is not None:
+                        usage = chunk_usage
+            finally:
+                await gen.aclose()
+
+        loop.run_until_complete(_stream())
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+
+        if usage:
+            try:
+                self._usage_stats.record_token_usage(usage)
+            except Exception as e:
+                logger.error("Failed to record token usage: %s", e)
+            self._streaming_overlay.set_complete(usage)
+
+        return "".join(collected).strip() or asr_text
+
+    def _run_direct_chain_stream(
+        self,
+        asr_text: str,
+        chain_steps: list[str],
+        cancel_event: threading.Event,
+    ) -> str:
+        """Run multi-step chain streaming enhancement, updating overlay."""
+        loop = asyncio.new_event_loop()
+        total_steps = len(chain_steps)
+        input_text = asr_text
+        original_mode = self._enhancer.mode
+        total_usage: dict[str, int] = {
+            "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+        }
+
+        try:
+            for step_idx, step_id in enumerate(chain_steps, 1):
+                if cancel_event.is_set():
+                    break
+
+                step_def = self._enhancer.get_mode_definition(step_id)
+                step_label = step_def.label if step_def else step_id
+
+                self._streaming_overlay.set_status(
+                    f"\u23f3 Step {step_idx}/{total_steps}: {step_label}"
+                )
+
+                if step_idx > 1:
+                    self._streaming_overlay.clear_text()
+
+                self._enhancer.mode = step_id
+                collected: list[str] = []
+                step_usage = None
+
+                async def _stream_step(text_input: str) -> None:
+                    nonlocal step_usage
+                    gen = self._enhancer.enhance_stream(text_input)
+                    completion_tokens = 0
+                    thinking_tokens = 0
+                    had_thinking = False
+                    try:
+                        async for chunk, chunk_usage, is_thinking in gen:
+                            if cancel_event.is_set():
+                                return
+                            if is_thinking == "retry" and chunk:
+                                had_thinking = True
+                                self._streaming_overlay.append_thinking_text(chunk)
+                                label = chunk.strip().strip("()\n")
+                                self._streaming_overlay.set_status(
+                                    f"\u23f3 Step {step_idx}/{total_steps}: {label}"
+                                )
+                            elif is_thinking and chunk:
+                                had_thinking = True
+                                thinking_tokens += 1
+                                self._streaming_overlay.append_thinking_text(
+                                    chunk, thinking_tokens=thinking_tokens
+                                )
+                            elif chunk:
+                                if had_thinking:
+                                    had_thinking = False
+                                    # Don't clear previous steps' content
+                                collected.append(chunk)
+                                completion_tokens += 1
+                                self._streaming_overlay.append_text(
+                                    chunk, completion_tokens=completion_tokens
+                                )
+                            if chunk_usage is not None:
+                                step_usage = chunk_usage
+                    finally:
+                        await gen.aclose()
+
+                loop.run_until_complete(_stream_step(input_text))
+
+                if cancel_event.is_set():
+                    break
+
+                step_result = "".join(collected).strip()
+                if step_result:
+                    input_text = step_result
+
+                if step_usage:
+                    total_usage["prompt_tokens"] += step_usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += step_usage.get("completion_tokens", 0)
+                    total_usage["total_tokens"] += step_usage.get("total_tokens", 0)
+                try:
+                    self._usage_stats.record_token_usage(step_usage)
+                except Exception as e:
+                    logger.error("Failed to record token usage: %s", e)
+
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+
+            if total_usage["total_tokens"] > 0:
+                self._streaming_overlay.set_complete(total_usage)
+
+            return input_text.strip() or asr_text
+        finally:
+            self._enhancer.mode = original_mode
 
     def _current_stt_model(self) -> str:
         """Return display name of the current STT model."""
