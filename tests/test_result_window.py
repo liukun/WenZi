@@ -893,6 +893,21 @@ class TestResultPreviewPanelKeyboardShortcuts:
         assert result is event
         assert changed_modes == []
 
+    def test_special_key_without_characters_passthrough(self):
+        """Special keys (Caps Lock, input switch) that raise on charactersIgnoringModifiers should pass through."""
+        panel, changed_modes = _make_panel_with_modes()
+        panel._panel.isKeyWindow.return_value = True
+
+        event = MagicMock()
+        event.modifierFlags.return_value = 1 << 20  # NSCommandKeyMask
+        event.charactersIgnoringModifiers.side_effect = Exception(
+            "NSInternalInconsistencyException"
+        )
+        result = panel._handle_key_event(event)
+
+        assert result is event
+        assert changed_modes == []
+
 
 class TestResultPreviewPanelSystemPrompt:
     """Test system prompt viewing functionality."""

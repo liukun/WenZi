@@ -539,7 +539,7 @@ class VoiceTextApp(rumps.App):
             def _update():
                 alert.setInformativeText_(
                     f"Unsupported key: {debug_info}\n"
-                    "Add it to _SPECIAL_KEYS in hotkey.py, then retry."
+                    "Add it to _SPECIAL_VK in hotkey.py, then retry."
                 )
             AppHelper.callAfter(_update)
 

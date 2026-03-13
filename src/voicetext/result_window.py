@@ -599,34 +599,37 @@ class ResultPreviewPanel:
 
     def _handle_key_event(self, event):
         """Handle key events for ⌘Enter (copy to clipboard) and ⌘1~⌘9 mode switching."""
-        if self._panel is None or not self._panel.isKeyWindow():
-            return event
+        try:
+            if self._panel is None or not self._panel.isKeyWindow():
+                return event
 
-        from AppKit import NSCommandKeyMask, NSDeviceIndependentModifierFlagsMask
+            from AppKit import NSCommandKeyMask, NSDeviceIndependentModifierFlagsMask
 
-        modifier_flags = event.modifierFlags() & NSDeviceIndependentModifierFlagsMask
-        if not (modifier_flags & NSCommandKeyMask):
-            return event
+            modifier_flags = event.modifierFlags() & NSDeviceIndependentModifierFlagsMask
+            if not (modifier_flags & NSCommandKeyMask):
+                return event
 
-        chars = event.charactersIgnoringModifiers()
-        if not chars:
-            return event
+            chars = event.charactersIgnoringModifiers()
+            if not chars:
+                return event
 
-        char = chars[0] if isinstance(chars, str) else str(chars)
+            char = chars[0] if isinstance(chars, str) else str(chars)
 
-        # ⌘Enter — confirm and copy to clipboard
-        if char == "\r":
-            self._cmd_held = True
-            self.confirmClicked_(None)
-            return None  # Consume the event
+            # ⌘Enter — confirm and copy to clipboard
+            if char == "\r":
+                self._cmd_held = True
+                self.confirmClicked_(None)
+                return None  # Consume the event
 
-        # ⌘1~⌘9 — mode switching (only when exact ⌘, no other modifiers)
-        if modifier_flags == NSCommandKeyMask and len(chars) == 1:
-            if "1" <= char <= "9":
-                index = int(char) - 1
-                if index < len(self._available_modes):
-                    self._switch_to_mode(index)
-                    return None
+            # ⌘1~⌘9 — mode switching (only when exact ⌘, no other modifiers)
+            if modifier_flags == NSCommandKeyMask and len(chars) == 1:
+                if "1" <= char <= "9":
+                    index = int(char) - 1
+                    if index < len(self._available_modes):
+                        self._switch_to_mode(index)
+                        return None
+        except Exception:
+            logger.debug("Exception in _handle_key_event, passing event through", exc_info=True)
 
         return event
 
@@ -674,21 +677,24 @@ class ResultPreviewPanel:
 
     def _handle_flags_changed(self, event):
         """Update Confirm button appearance based on Command key state."""
-        if self._panel is None or not self._panel.isKeyWindow():
-            return event
+        try:
+            if self._panel is None or not self._panel.isKeyWindow():
+                return event
 
-        from AppKit import NSCommandKeyMask, NSDeviceIndependentModifierFlagsMask
+            from AppKit import NSCommandKeyMask, NSDeviceIndependentModifierFlagsMask
 
-        modifier_flags = event.modifierFlags() & NSDeviceIndependentModifierFlagsMask
-        cmd_pressed = bool(modifier_flags & NSCommandKeyMask)
+            modifier_flags = event.modifierFlags() & NSDeviceIndependentModifierFlagsMask
+            cmd_pressed = bool(modifier_flags & NSCommandKeyMask)
 
-        if cmd_pressed != self._cmd_held:
-            self._cmd_held = cmd_pressed
-            if self._confirm_btn is not None:
-                if cmd_pressed:
-                    self._confirm_btn.setTitle_("Copy \u2318\u23ce")
-                else:
-                    self._confirm_btn.setTitle_("Confirm \u23ce")
+            if cmd_pressed != self._cmd_held:
+                self._cmd_held = cmd_pressed
+                if self._confirm_btn is not None:
+                    if cmd_pressed:
+                        self._confirm_btn.setTitle_("Copy \u2318\u23ce")
+                    else:
+                        self._confirm_btn.setTitle_("Confirm \u23ce")
+        except Exception:
+            logger.debug("Exception in _handle_flags_changed", exc_info=True)
 
         return event
 

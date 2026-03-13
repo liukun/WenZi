@@ -4,43 +4,47 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from voicetext.hotkey import (
-    _parse_key,
     _is_fn_key,
-    _convert_hotkey_to_pynput,
+    _name_to_vk,
     _parse_hotkey_for_quartz,
     _KEYCODE_MAP,
     _MOD_FLAGS,
-    _QuartzFnListener,
-    _PynputListener,
+    _SPECIAL_VK,
+    _MOD_VK,
+    _VK_TO_NAME,
     HoldHotkeyListener,
     TapHotkeyListener,
+    MultiHotkeyListener,
 )
 
 
-class TestParseKey:
+class TestNameToVk:
+    def test_regular_key(self):
+        assert _name_to_vk("a") == 0
+        assert _name_to_vk("v") == 9
+
     def test_special_key(self):
-        from pynput import keyboard
-        assert _parse_key("f2") == keyboard.Key.f2
-        assert _parse_key("cmd") == keyboard.Key.cmd
+        assert _name_to_vk("f2") == 120
+        assert _name_to_vk("esc") == 53
+        assert _name_to_vk("fn") == 63
+        assert _name_to_vk("space") == 49
 
-    def test_fn_key(self):
-        from pynput import keyboard
-        result = _parse_key("fn")
-        assert isinstance(result, keyboard.KeyCode)
-        assert result.vk == 0x3F
+    def test_modifier_key(self):
+        assert _name_to_vk("cmd") == 55
+        assert _name_to_vk("ctrl") == 59
+        assert _name_to_vk("alt") == 58
+        assert _name_to_vk("shift") == 56
 
-    def test_char_key(self):
-        from pynput import keyboard
-        result = _parse_key("a")
-        assert isinstance(result, keyboard.KeyCode)
-
-    def test_unknown_key_raises(self):
-        with pytest.raises(ValueError, match="Unknown key"):
-            _parse_key("nonexistent")
+    def test_aliases(self):
+        assert _name_to_vk("option") == _name_to_vk("alt")
+        assert _name_to_vk("command") == _name_to_vk("cmd")
 
     def test_case_insensitive(self):
-        from pynput import keyboard
-        assert _parse_key("F2") == keyboard.Key.f2
+        assert _name_to_vk("F2") == 120
+
+    def test_unknown_raises(self):
+        with pytest.raises(ValueError, match="Unknown key"):
+            _name_to_vk("nonexistent")
 
 
 class TestIsFnKey:
@@ -54,66 +58,51 @@ class TestIsFnKey:
         assert _is_fn_key("cmd") is False
 
 
+class TestVkToName:
+    def test_reverse_lookup(self):
+        assert _VK_TO_NAME[0] == "a"
+        assert _VK_TO_NAME[120] == "f2"
+        assert _VK_TO_NAME[63] == "fn"
+        assert _VK_TO_NAME[55] == "cmd"
+
+
 class TestHoldHotkeyListener:
-    def test_fn_uses_quartz_backend(self):
+    def test_fn_key_creates_listener(self):
         listener = HoldHotkeyListener("fn", MagicMock(), MagicMock())
-        assert isinstance(listener._impl, _QuartzFnListener)
+        assert listener._target_vk == 63
 
-    def test_regular_key_uses_pynput_backend(self):
+    def test_regular_key_creates_listener(self):
         listener = HoldHotkeyListener("f2", MagicMock(), MagicMock())
-        assert isinstance(listener._impl, _PynputListener)
+        assert listener._target_vk == 120
 
-    def test_pynput_press_and_release(self):
+    def test_press_and_release(self):
         on_press = MagicMock()
         on_release = MagicMock()
 
         listener = HoldHotkeyListener("f2", on_press, on_release)
 
-        from pynput import keyboard
-        listener._impl._handle_press(keyboard.Key.f2)
+        listener._handle_press("f2")
         on_press.assert_called_once()
-        assert listener._impl._held is True
+        assert listener._held is True
 
-        listener._impl._handle_release(keyboard.Key.f2)
+        listener._handle_release("f2")
         on_release.assert_called_once()
-        assert listener._impl._held is False
+        assert listener._held is False
 
-    def test_pynput_repeated_press_ignored(self):
+    def test_repeated_press_ignored(self):
         on_press = MagicMock()
         listener = HoldHotkeyListener("f2", on_press, MagicMock())
 
-        from pynput import keyboard
-        listener._impl._handle_press(keyboard.Key.f2)
-        listener._impl._handle_press(keyboard.Key.f2)
+        listener._handle_press("f2")
+        listener._handle_press("f2")
         assert on_press.call_count == 1
 
-    def test_pynput_wrong_key_ignored(self):
+    def test_wrong_key_ignored(self):
         on_press = MagicMock()
         listener = HoldHotkeyListener("f2", on_press, MagicMock())
 
-        from pynput import keyboard
-        listener._impl._handle_press(keyboard.Key.f3)
+        listener._handle_press("f3")
         on_press.assert_not_called()
-
-
-class TestConvertHotkeyToPynput:
-    def test_simple_combo(self):
-        assert _convert_hotkey_to_pynput("ctrl+shift+v") == "<ctrl>+<shift>+v"
-
-    def test_cmd(self):
-        assert _convert_hotkey_to_pynput("cmd+c") == "<cmd>+c"
-
-    def test_option_maps_to_alt(self):
-        assert _convert_hotkey_to_pynput("option+shift+e") == "<alt>+<shift>+e"
-
-    def test_command_maps_to_cmd(self):
-        assert _convert_hotkey_to_pynput("command+v") == "<cmd>+v"
-
-    def test_strips_spaces(self):
-        assert _convert_hotkey_to_pynput(" ctrl + shift + v ") == "<ctrl>+<shift>+v"
-
-    def test_case_insensitive(self):
-        assert _convert_hotkey_to_pynput("Ctrl+Shift+V") == "<ctrl>+<shift>+v"
 
 
 class TestParseHotkeyForQuartz:
@@ -176,3 +165,84 @@ class TestTapHotkeyListener:
         listener = TapHotkeyListener("ctrl+v", MagicMock())
         listener.stop()
         assert listener._tap is None
+
+
+class TestMultiHotkeyListener:
+    def test_creation_with_fn(self):
+        listener = MultiHotkeyListener(["fn", "f2"], MagicMock(), MagicMock())
+        assert "fn" in listener._enabled_names
+        assert "f2" in listener._enabled_names
+        assert 63 in listener._target_vks  # fn vk
+        assert 120 in listener._target_vks  # f2 vk
+
+    def test_press_release_target_key(self):
+        on_press = MagicMock()
+        on_release = MagicMock()
+        listener = MultiHotkeyListener(["f2"], on_press, on_release)
+
+        listener._handle_press("f2")
+        on_press.assert_called_once()
+        assert "f2" in listener._held
+
+        listener._handle_release("f2")
+        on_release.assert_called_once()
+        assert "f2" not in listener._held
+
+    def test_non_target_key_ignored(self):
+        on_press = MagicMock()
+        listener = MultiHotkeyListener(["f2"], on_press, MagicMock())
+
+        listener._handle_press("f3")
+        on_press.assert_not_called()
+
+    def test_repeated_press_ignored(self):
+        on_press = MagicMock()
+        listener = MultiHotkeyListener(["f2"], on_press, MagicMock())
+
+        listener._handle_press("f2")
+        listener._handle_press("f2")
+        assert on_press.call_count == 1
+
+    def test_enable_disable_key(self):
+        listener = MultiHotkeyListener(["f2"], MagicMock(), MagicMock())
+        assert "f2" in listener._enabled_names
+
+        listener.disable_key("f2")
+        assert "f2" not in listener._enabled_names
+
+        listener.enable_key("f3")
+        assert "f3" in listener._enabled_names
+
+    def test_recording_mode(self):
+        on_recorded = MagicMock()
+        on_timeout = MagicMock()
+        listener = MultiHotkeyListener(["f2"], MagicMock(), MagicMock())
+
+        listener.record_next_key(on_recorded, on_timeout, timeout=10.0)
+
+        # Pressing any recognized key should trigger recording
+        listener._handle_press("f5")
+        on_recorded.assert_called_once_with("f5")
+
+    def test_recording_mode_cancel(self):
+        on_recorded = MagicMock()
+        on_timeout = MagicMock()
+        listener = MultiHotkeyListener(["f2"], MagicMock(), MagicMock())
+
+        listener.record_next_key(on_recorded, on_timeout, timeout=10.0)
+        listener.cancel_record()
+
+        # After cancel, pressing key should not trigger recording
+        listener._handle_press("f5")
+        on_recorded.assert_not_called()
+
+    def test_fn_key_handling(self):
+        on_press = MagicMock()
+        on_release = MagicMock()
+        listener = MultiHotkeyListener(["fn"], on_press, on_release)
+
+        listener._handle_press("fn")
+        on_press.assert_called_once()
+
+        listener._handle_release("fn")
+        on_release.assert_called_once()
