@@ -58,12 +58,39 @@ LOG_FILE = LOG_DIR / "voicetext.log"
 # Approximate FunASR total model size in bytes (ASR + VAD + PUNC)
 _FUNASR_APPROX_SIZE = 502 * 1024 * 1024
 
+# Map status strings to SF Symbol names for menu bar icons
+_STATUS_ICONS: Dict[str, str] = {
+    "VT": "mic.fill",
+    "Recording...": "waveform",
+    "Transcribing...": "text.bubble",
+    "Enhancing...": "sparkles",
+    "Preview...": "eye",
+    "(empty)": "mic.slash",
+    "Error": "exclamationmark.triangle",
+    "Switching...": "arrow.triangle.2.circlepath",
+    "Loading...": "cpu",
+    "Unloading...": "arrow.up.circle",
+    "Downloading...": "arrow.down.circle",
+    "Restoring...": "arrow.counterclockwise",
+    "VT \u23f3": "book.fill",
+}
+
+# Cache for SF Symbol NSImage objects
+_sf_symbol_cache: Dict[str, Any] = {}
+
 
 class VoiceTextApp(rumps.App):
     """Menubar app: hold hotkey to record, release to transcribe and type."""
 
     def __init__(self, config_path: Optional[str] = None) -> None:
         super().__init__("VoiceText", icon=None, title="VT")
+        self._current_status = "VT"
+
+        # Seed the SF Symbol icon so the first render shows an icon, not text
+        nsimage = self._sf_symbol_image("mic.fill", "VoiceText")
+        if nsimage is not None:
+            self._icon_nsimage = nsimage
+            self._title = None  # clear text; icon takes over
 
         self._config_path = config_path
         self._config = load_config(config_path)
@@ -356,15 +383,61 @@ class VoiceTextApp(rumps.App):
             handlers=[logging.StreamHandler(), file_handler],
         )
 
+    @staticmethod
+    def _sf_symbol_image(name: str, description: str = "") -> Any:
+        """Create an NSImage from an SF Symbol name, or return None."""
+        cached = _sf_symbol_cache.get(name)
+        if cached is not None:
+            return cached
+        try:
+            from AppKit import NSImage, NSImageSymbolConfiguration
+            if not hasattr(NSImage, "imageWithSystemSymbolName_accessibilityDescription_"):
+                return None
+            img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(
+                name, description or name
+            )
+            if img is not None:
+                config = NSImageSymbolConfiguration.configurationWithPointSize_weight_(
+                    17.0, 0  # 0 = NSFontWeightRegular
+                )
+                img = img.imageWithSymbolConfiguration_(config)
+                img.setTemplate_(True)
+                _sf_symbol_cache[name] = img
+            return img
+        except Exception:
+            return None
+
     def _set_status(self, text: str) -> None:
-        """Update menu bar title and status menu item (thread-safe)."""
+        """Update menu bar icon/title and status menu item (thread-safe)."""
         import Foundation
         if not Foundation.NSThread.isMainThread():
             from PyObjCTools import AppHelper
             AppHelper.callAfter(self._set_status, text)
             return
-        self.title = text
-        self._status_item.title = text
+
+        self._current_status = text
+        self._status_item.title = text  # dropdown menu always shows text
+
+        # Resolve SF Symbol
+        symbol_name = _STATUS_ICONS.get(text)
+        bar_title = None
+        if symbol_name is None:
+            if text.startswith("DL "):
+                symbol_name = "arrow.down.circle"
+                bar_title = text[3:]  # show "X%" next to icon
+            else:
+                symbol_name = "mic.fill"  # safe fallback
+
+        nsimage = self._sf_symbol_image(symbol_name, text)
+        if nsimage is not None:
+            self._icon_nsimage = nsimage
+            try:
+                self._nsapp.setStatusBarIcon()
+            except AttributeError:
+                pass
+            self.title = bar_title  # clear text when icon is set
+        else:
+            self.title = text  # fallback to text-only if SF Symbols unavailable
 
     def _start_recording_indicator(self) -> None:
         """Show visual indicator and start polling audio level."""
@@ -2096,8 +2169,8 @@ Output only the processed text without any explanation."""
                 on_usage_update=lambda p, c, t: progress_panel.update_token_usage(p, c, t),
             )
 
-            old_title = self.title
-            self.title = "VT ⏳"
+            old_status = self._current_status
+            self._set_status("VT \u23f3")
             try:
                 loop = _asyncio.new_event_loop()
                 summary = loop.run_until_complete(
@@ -2134,7 +2207,7 @@ Output only the processed text without any explanation."""
                 except Exception:
                     logger.debug("Notification center unavailable, skipping notification")
             finally:
-                self.title = old_title
+                self._set_status(old_status or "VT")
                 progress_panel.close()
 
         t = threading.Thread(target=_build, daemon=True)
