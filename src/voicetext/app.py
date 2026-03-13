@@ -1711,7 +1711,13 @@ Output only the processed text without any explanation."""
         self._remote_asr_menu_items.clear()
 
         # Local presets
+        prev_backend = None
         for preset in PRESETS:
+            # Add separator between different backend groups
+            if prev_backend is not None and preset.backend != prev_backend:
+                self._model_menu.add(None)
+            prev_backend = preset.backend
+
             backend_ok = is_backend_available(preset.backend)
             if backend_ok:
                 title = preset.display_name

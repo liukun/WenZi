@@ -47,6 +47,27 @@ class TestCreateTranscriber:
         except ImportError:
             pytest.skip("mlx-whisper not installed")
 
+    def test_create_apple_speech_backend(self):
+        from voicetext.transcriber_apple import AppleSpeechTranscriber
+
+        t = create_transcriber(backend="apple-speech", model="on-device")
+        assert isinstance(t, AppleSpeechTranscriber)
+        assert isinstance(t, BaseTranscriber)
+        assert t._on_device is True
+
+    def test_create_apple_speech_server(self):
+        from voicetext.transcriber_apple import AppleSpeechTranscriber
+
+        t = create_transcriber(backend="apple-speech", model="server")
+        assert isinstance(t, AppleSpeechTranscriber)
+        assert t._on_device is False
+
+    def test_create_apple_speech_alias(self):
+        from voicetext.transcriber_apple import AppleSpeechTranscriber
+
+        t = create_transcriber(backend="apple")
+        assert isinstance(t, AppleSpeechTranscriber)
+
     def test_unknown_backend_raises(self):
         with pytest.raises(ValueError, match="Unknown ASR backend"):
             create_transcriber(backend="unknown")

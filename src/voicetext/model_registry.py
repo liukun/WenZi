@@ -41,24 +41,17 @@ PRESETS = [
         language=None,
     ),
     ModelPreset(
-        id="mlx-whisper-tiny",
-        display_name="Whisper tiny (MLX)",
-        backend="mlx-whisper",
-        model="mlx-community/whisper-tiny",
+        id="apple-speech-ondevice",
+        display_name="Apple Speech (On-Device)",
+        backend="apple-speech",
+        model="on-device",
         language=None,
     ),
     ModelPreset(
-        id="mlx-whisper-base",
-        display_name="Whisper base (MLX)",
-        backend="mlx-whisper",
-        model="mlx-community/whisper-base",
-        language=None,
-    ),
-    ModelPreset(
-        id="mlx-whisper-small",
-        display_name="Whisper small (MLX)",
-        backend="mlx-whisper",
-        model="mlx-community/whisper-small",
+        id="apple-speech-server",
+        display_name="Apple Speech (Server)",
+        backend="apple-speech",
+        model="server",
         language=None,
     ),
     ModelPreset(
@@ -97,7 +90,15 @@ def is_backend_available(backend: str) -> bool:
     _BACKEND_MODULES = {
         "funasr": "funasr_onnx",
         "mlx-whisper": "mlx_whisper",
+        "apple-speech": "Speech",
     }
+
+    # apple-speech requires macOS
+    if backend == "apple-speech":
+        import sys
+        if sys.platform != "darwin":
+            _backend_available[backend] = False
+            return False
 
     module_name = _BACKEND_MODULES.get(backend)
     available = module_name is not None and importlib.util.find_spec(module_name) is not None
@@ -121,6 +122,8 @@ def resolve_preset_from_config(
         if backend_norm == "funasr" and preset.model is None and model is None:
             return preset.id
         if backend_norm == "mlx-whisper" and preset.model == model:
+            return preset.id
+        if backend_norm == "apple-speech" and preset.model == model:
             return preset.id
 
     return None
@@ -150,6 +153,9 @@ def get_model_cache_dir(preset: ModelPreset) -> Path:
 
 def is_model_cached(preset: ModelPreset) -> bool:
     """Check if a preset's model files are already downloaded."""
+    if preset.backend == "apple-speech":
+        return True  # No model download needed
+
     if preset.backend == "mlx-whisper" and preset.model:
         try:
             from huggingface_hub import try_to_load_from_cache

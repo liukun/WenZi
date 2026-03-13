@@ -63,11 +63,11 @@ def create_transcriber(
     """Create a transcriber for the given backend.
 
     Args:
-        backend: "funasr", "mlx-whisper", or "whisper-api".
+        backend: "funasr", "mlx-whisper", "whisper-api", or "apple-speech".
         use_vad: Enable voice activity detection (funasr only).
         use_punc: Enable punctuation restoration.
-        language: Language hint (mlx-whisper / whisper-api, e.g. "zh", "en").
-        model: Override default model name/path.
+        language: Language hint (mlx-whisper / whisper-api / apple-speech, e.g. "zh", "en").
+        model: Override default model name/path. For apple-speech: "on-device" or "server".
         temperature: Decoding temperature (mlx-whisper / whisper-api).
         base_url: API base URL (whisper-api only).
         api_key: API key (whisper-api only).
@@ -91,7 +91,14 @@ def create_transcriber(
             language=language, temperature=temperature,
         )
 
+    if backend in ("apple-speech", "apple"):
+        from .transcriber_apple import AppleSpeechTranscriber
+        return AppleSpeechTranscriber(
+            language=language or "zh",
+            on_device=(model == "on-device"),
+        )
+
     raise ValueError(
         f"Unknown ASR backend: {backend!r}. "
-        "Use 'funasr', 'mlx-whisper', or 'whisper-api'."
+        "Use 'funasr', 'mlx-whisper', 'whisper-api', or 'apple-speech'."
     )
