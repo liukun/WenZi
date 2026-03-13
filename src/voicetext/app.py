@@ -334,7 +334,12 @@ class VoiceTextApp(rumps.App):
         )
 
     def _set_status(self, text: str) -> None:
-        """Update menu bar title and status menu item."""
+        """Update menu bar title and status menu item (thread-safe)."""
+        import Foundation
+        if not Foundation.NSThread.isMainThread():
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(self._set_status, text)
+            return
         self.title = text
         self._status_item.title = text
 
@@ -2906,7 +2911,12 @@ models:
         return None
 
     def _update_model_checkmarks(self) -> None:
-        """Update checkmark state on all model menu items (local + remote)."""
+        """Update checkmark state on all model menu items (thread-safe)."""
+        import Foundation
+        if not Foundation.NSThread.isMainThread():
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(self._update_model_checkmarks)
+            return
         for pid, item in self._model_menu_items.items():
             item.state = 1 if pid == self._current_preset_id else 0
         for key, item in self._remote_asr_menu_items.items():
