@@ -533,12 +533,12 @@ class SettingsController:
 
         save_config_dir_preference(new_dir)
         app._settings_panel.update_config_dir(new_dir)
-        send_notification(
-            "VoiceText",
-            "Config Directory Changed",
-            f"Restart the app to use: {new_dir}",
-        )
         logger.info("Config directory preference set to: %s", new_dir)
+
+        self._prompt_restart(
+            f"Config directory changed to:\n{new_dir}\n\n"
+            "A restart is required for this to take effect."
+        )
 
     def config_dir_reset(self) -> None:
         """Reset config directory to default."""
@@ -547,9 +547,48 @@ class SettingsController:
         reset_config_dir_preference()
         default_dir = os.path.expanduser(DEFAULT_CONFIG_DIR)
         self._app._settings_panel.update_config_dir(default_dir)
-        send_notification(
-            "VoiceText",
-            "Config Directory Reset",
-            f"Restart the app to use default: {default_dir}",
-        )
         logger.info("Config directory preference reset to default")
+
+        self._prompt_restart(
+            f"Config directory reset to default:\n{default_dir}\n\n"
+            "A restart is required for this to take effect."
+        )
+
+    def _prompt_restart(self, message: str) -> None:
+        """Show a dialog asking whether to restart now, and do so if confirmed."""
+        # Close settings panel first so the alert is not hidden behind it
+        self._app._settings_panel.close()
+
+        result = topmost_alert(
+            title="Restart Required",
+            message=message,
+            ok="Restart Now",
+            cancel="Later",
+        )
+        restore_accessory()
+        if result:
+            self._restart_app()
+
+    @staticmethod
+    def _restart_app() -> None:
+        """Spawn a shell watcher that waits for this process to exit, then relaunches."""
+        import shlex
+        import sys
+
+        pid = os.getpid()
+        cmd = shlex.join([sys.executable] + sys.argv)
+
+        # Use /bin/sh so the watcher is fully independent of the Python runtime.
+        # `kill -0` checks if the process is still alive; once it's gone, relaunch.
+        script = f"while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; exec {cmd}"
+        subprocess.Popen(
+            ["/bin/sh", "-c", script],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info("Restart watcher spawned (pid=%d), quitting...", pid)
+
+        from voicetext.statusbar import quit_application
+        quit_application()
