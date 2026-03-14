@@ -112,14 +112,14 @@ When adding new user-facing behaviors or interactions, always add corresponding 
 
 ## Pre-PR Local Verification
 
-Before creating a pull request, always run the CI checks locally to catch issues early:
+**MANDATORY gate before creating a pull request.** You MUST run both checks below and ensure they pass with zero errors BEFORE pushing or creating the PR. Do NOT proceed to `git push` or `gh pr create` until both pass:
 
 ```bash
-uv run ruff check              # Lint
-uv run pytest tests/ -v --cov=voicetext  # Tests with coverage
+uv run ruff check              # Lint — must have 0 errors
+uv run pytest tests/ -v --cov=voicetext  # Tests — must all pass
 ```
 
-**All tests must pass before creating the PR.** GitHub Actions branch protection requires CI to be green before merging. If there are pre-existing test failures unrelated to your changes, fix them first or coordinate with the team — do not create a PR with known failures.
+If either check fails, fix all errors first, commit the fixes, then re-run until both are clean. Do not create a PR with known failures — GitHub Actions branch protection requires CI to be green before merging.
 
 This mirrors the CI pipeline in `.github/workflows/test.yml`.
 
