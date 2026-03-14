@@ -580,6 +580,35 @@ init();
 
 
 # ---------------------------------------------------------------------------
+# WKNavigationDelegate (lazy-created to avoid PyObjC import at module level)
+# ---------------------------------------------------------------------------
+_NavigationDelegate = None
+
+
+def _get_navigation_delegate_class():
+    global _NavigationDelegate
+    if _NavigationDelegate is None:
+        import objc
+        from Foundation import NSObject
+
+        import WebKit  # noqa: F401
+
+        WKNavigationDelegate = objc.protocolNamed("WKNavigationDelegate")
+
+        class WebPreviewNavigationDelegate(
+            NSObject, protocols=[WKNavigationDelegate]
+        ):
+            _panel_ref = None
+
+            def webView_didFinishNavigation_(self, webview, navigation):
+                if self._panel_ref is not None:
+                    self._panel_ref._on_page_loaded()
+
+        _NavigationDelegate = WebPreviewNavigationDelegate
+    return _NavigationDelegate
+
+
+# ---------------------------------------------------------------------------
 # Close delegate (lazy-created to avoid PyObjC import at module level)
 # ---------------------------------------------------------------------------
 _PanelCloseDelegate = None
@@ -700,6 +729,9 @@ class ResultPreviewPanel:
         self._loading_timer = None
         self._loading_seconds: int = 0
         self._translate_webview = None
+        self._page_loaded: bool = False
+        self._pending_js: list[str] = []
+        self._navigation_delegate = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -1090,8 +1122,13 @@ class ResultPreviewPanel:
             self._close_delegate = None
             self._panel.orderOut_(None)
             self._panel = None
+        if self._webview is not None:
+            self._webview.setNavigationDelegate_(None)
         self._webview = None
         self._message_handler = None
+        self._navigation_delegate = None
+        self._page_loaded = False
+        self._pending_js = []
         self._on_confirm = None
         self._on_cancel = None
 
@@ -1198,9 +1235,27 @@ class ResultPreviewPanel:
     # ------------------------------------------------------------------
 
     def _eval_js(self, js_code: str) -> None:
-        """Evaluate JavaScript in the WKWebView."""
-        if self._webview is not None:
-            self._webview.evaluateJavaScript_completionHandler_(js_code, None)
+        """Evaluate JavaScript in the WKWebView.
+
+        If the page hasn't finished loading yet, the call is queued and
+        will be replayed in order once ``webView:didFinishNavigation:``
+        fires.  This prevents JS calls from being silently dropped when
+        fast STT backends (e.g. FunASR) complete before WKWebView is ready.
+        """
+        if self._webview is None:
+            return
+        if not self._page_loaded:
+            self._pending_js.append(js_code)
+            return
+        self._webview.evaluateJavaScript_completionHandler_(js_code, None)
+
+    def _on_page_loaded(self) -> None:
+        """Called by the WKNavigationDelegate when the page finishes loading."""
+        self._page_loaded = True
+        for js_code in self._pending_js:
+            if self._webview is not None:
+                self._webview.evaluateJavaScript_completionHandler_(js_code, None)
+        self._pending_js.clear()
 
     def _build_panel(self) -> None:
         """Build NSPanel + WKWebView."""
@@ -1280,9 +1335,18 @@ class ResultPreviewPanel:
         webview.setValue_forKey_(False, "drawsBackground")
         panel.contentView().addSubview_(webview)
 
+        # Navigation delegate — flush pending JS calls when page finishes loading
+        nav_delegate_cls = _get_navigation_delegate_class()
+        nav_delegate = nav_delegate_cls.alloc().init()
+        nav_delegate._panel_ref = self
+        webview.setNavigationDelegate_(nav_delegate)
+
         self._panel = panel
         self._webview = webview
         self._message_handler = handler
+        self._navigation_delegate = nav_delegate
+        self._page_loaded = False
+        self._pending_js = []
 
         # Build config JSON and load HTML
         # Detect if ASR text is empty (STT pending) — show loading in initial HTML

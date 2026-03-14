@@ -51,6 +51,8 @@ def _build_panel(panel):
     panel._build_panel = MagicMock()
     panel._panel = MagicMock()
     panel._webview = MagicMock()
+    # Simulate WKWebView page load completion so _eval_js works immediately
+    panel._page_loaded = True
     return panel
 
 
@@ -807,3 +809,128 @@ class TestBrowseHistoryAndTranslate:
 
         mock_twp.show.assert_called_once_with("hello")
         assert translate_called == [True]
+
+
+# ---------------------------------------------------------------------------
+# JS call queue (page load race condition fix)
+# ---------------------------------------------------------------------------
+
+
+class TestJsCallQueue:
+    """Tests for the JS call queue that prevents calls being dropped before
+    WKWebView finishes loading."""
+
+    def test_eval_js_queued_before_page_load(self):
+        """JS calls made before page load should be queued, not executed."""
+        from voicetext.ui.result_window_web import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._build_panel = MagicMock()
+        panel._panel = MagicMock()
+        panel._webview = MagicMock()
+        # _page_loaded defaults to False
+        panel._page_loaded = False
+
+        panel.show(
+            asr_text="text", show_enhance=False,
+            on_confirm=MagicMock(), on_cancel=MagicMock(),
+        )
+
+        panel._eval_js("setAsrResult('hello','')")
+
+        # Should NOT have been called on webview directly
+        panel._webview.evaluateJavaScript_completionHandler_.assert_not_called()
+        assert len(panel._pending_js) == 1
+        assert panel._pending_js[0] == "setAsrResult('hello','')"
+
+    def test_pending_js_flushed_on_page_load(self):
+        """Queued JS calls should be flushed when page finishes loading."""
+        from voicetext.ui.result_window_web import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._build_panel = MagicMock()
+        panel._panel = MagicMock()
+        panel._webview = MagicMock()
+        panel._page_loaded = False
+
+        panel.show(
+            asr_text="text", show_enhance=False,
+            on_confirm=MagicMock(), on_cancel=MagicMock(),
+        )
+
+        panel._eval_js("setAsrResult('a','')")
+        panel._eval_js("setEnhanceResult('b')")
+
+        assert len(panel._pending_js) == 2
+
+        # Simulate page load completion
+        panel._on_page_loaded()
+
+        assert panel._page_loaded is True
+        assert len(panel._pending_js) == 0
+        assert panel._webview.evaluateJavaScript_completionHandler_.call_count == 2
+
+    def test_eval_js_direct_after_page_load(self):
+        """JS calls after page load should execute immediately."""
+        from voicetext.ui.result_window_web import ResultPreviewPanel
+
+        panel = _build_panel(ResultPreviewPanel())  # _page_loaded = True
+        panel.show(
+            asr_text="text", show_enhance=False,
+            on_confirm=MagicMock(), on_cancel=MagicMock(),
+        )
+
+        panel._webview.reset_mock()
+        panel._eval_js("someCall()")
+
+        panel._webview.evaluateJavaScript_completionHandler_.assert_called_once()
+        assert len(panel._pending_js) == 0
+
+    def test_close_clears_pending_js(self):
+        """Closing the panel should discard any pending JS calls."""
+        from voicetext.ui.result_window_web import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._build_panel = MagicMock()
+        panel._panel = MagicMock()
+        panel._webview = MagicMock()
+        panel._page_loaded = False
+
+        panel.show(
+            asr_text="text", show_enhance=False,
+            on_confirm=MagicMock(), on_cancel=MagicMock(),
+        )
+
+        panel._eval_js("someCall()")
+        assert len(panel._pending_js) == 1
+
+        panel.close()
+
+        assert panel._page_loaded is False
+        assert len(panel._pending_js) == 0
+
+    def test_flush_order_preserved(self):
+        """Queued JS calls must be flushed in the order they were added."""
+        from voicetext.ui.result_window_web import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        panel._build_panel = MagicMock()
+        panel._panel = MagicMock()
+        panel._webview = MagicMock()
+        panel._page_loaded = False
+
+        panel.show(
+            asr_text="text", show_enhance=False,
+            on_confirm=MagicMock(), on_cancel=MagicMock(),
+        )
+
+        panel._eval_js("first()")
+        panel._eval_js("second()")
+        panel._eval_js("third()")
+
+        panel._on_page_loaded()
+
+        calls = panel._webview.evaluateJavaScript_completionHandler_.call_args_list
+        assert calls[0][0][0] == "first()"
+        assert calls[1][0][0] == "second()"
+        assert calls[2][0][0] == "third()"
