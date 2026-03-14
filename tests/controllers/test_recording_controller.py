@@ -159,19 +159,28 @@ class TestStreamingIntegration:
         assert ctrl._streaming_active is False
         mock_app._transcriber.start_streaming.assert_not_called()
 
+    @patch("voicetext.controllers.recording_controller.type_text")
     @patch("PyObjCTools.AppHelper")
-    def test_streaming_release_calls_stop_streaming(self, mock_apphelper, ctrl, mock_app):
+    def test_streaming_release_calls_stop_streaming(self, mock_apphelper, mock_type_text, ctrl, mock_app):
+        import time
+
         mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
         mock_app._transcriber.supports_streaming = True
-        mock_app._transcriber.stop_streaming.return_value = "[mock from tests/controllers/test_recording_controller.py]"
+        mock_app._transcriber.stop_streaming.return_value = "[mock from test_streaming_release_calls_stop_streaming]"
         mock_app._sound_manager.enabled = False
 
         # Press to start streaming
         ctrl.on_hotkey_press()
         assert ctrl._streaming_active is True
 
-        # Release: should use streaming path
+        # Release: should use streaming path (runs _do_streaming_stop in background thread)
         ctrl.on_hotkey_release()
+
+        # Wait for the entire background thread to finish (it sets _busy=False in finally)
+        for _ in range(50):
+            if not mock_app._busy:
+                break
+            time.sleep(0.02)
 
         mock_app._recorder.clear_on_audio_chunk.assert_called()
         mock_app._transcriber.stop_streaming.assert_called_once()
@@ -194,7 +203,7 @@ class TestStreamingIntegration:
 
         mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
         mock_app._transcriber.supports_streaming = True
-        mock_app._transcriber.stop_streaming.return_value = "[mock from tests/controllers/test_recording_controller.py]"
+        mock_app._transcriber.stop_streaming.return_value = "[mock from test_streaming_release_with_preview]"
         mock_app._sound_manager.enabled = False
         mock_app._preview_enabled = True
 
@@ -209,7 +218,7 @@ class TestStreamingIntegration:
 
         mock_app._do_transcribe_with_preview.assert_called_once()
         call_kwargs = mock_app._do_transcribe_with_preview.call_args[1]
-        assert call_kwargs["asr_text"] == "[mock from tests/controllers/test_recording_controller.py]"
+        assert call_kwargs["asr_text"] == "[mock from test_streaming_release_with_preview]"
 
     def test_init_streaming_state(self, ctrl):
         assert ctrl._streaming_active is False
