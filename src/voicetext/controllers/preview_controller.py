@@ -80,6 +80,8 @@ class PreviewController:
             result_holder["user_corrected"] = correction_info is not None
             if correction_info is not None:
                 app._auto_vocab_builder.on_correction_logged()
+            # Stop any in-flight streaming enhancement to save tokens
+            app._enhance_controller.cancel()
             try:
                 app._usage_stats.record_confirm(modified=correction_info is not None)
             except Exception as e:
@@ -427,6 +429,8 @@ class PreviewController:
             result_holder["user_corrected"] = correction_info is not None
             if correction_info is not None:
                 app._auto_vocab_builder.on_correction_logged()
+            # Stop any in-flight streaming enhancement to save tokens
+            app._enhance_controller.cancel()
             result_event.set()
 
         def on_cancel() -> None:
