@@ -88,8 +88,9 @@ class TestAppleSpeechStreaming:
 
         t.start_streaming(on_partial)
 
-        # Simulate final result arriving
-        t._stream_final_text = "hello world"
+        # Simulate accumulated text
+        t._stream_confirmed = "hello "
+        t._stream_seg_best = "world"
         t._stream_done.set()
 
         result = t.stop_streaming()
@@ -142,7 +143,6 @@ class TestAppleSpeechStreaming:
         def on_partial(text, is_final):
             partials.append((text, is_final))
 
-        # Capture the handler passed to recognitionTaskWithRequest_resultHandler_
         t.start_streaming(on_partial)
         call_args = t._recognizer.recognitionTaskWithRequest_resultHandler_.call_args
         handler = call_args[0][1]
@@ -155,14 +155,34 @@ class TestAppleSpeechStreaming:
 
         assert partials == [("hello", False)]
 
-        # Simulate a final result
+        # Simulate a mid-session final (pause segmentation)
         mock_result2 = MagicMock()
         mock_result2.bestTranscription().formattedString.return_value = "hello world"
         mock_result2.isFinal.return_value = True
         handler(mock_result2, None)
 
-        assert partials == [("hello", False), ("hello world", True)]
-        assert t._stream_final_text == "hello world"
+        # Mid-session final accumulates but doesn't set done
+        assert len(partials) == 2
+        assert partials[1] == ("hello world", False)  # displayed as non-final
+        assert t._stream_confirmed == "hello world"
+        assert not t._stream_done.is_set()
+
+        # Simulate new segment partial after pause
+        mock_result3 = MagicMock()
+        mock_result3.bestTranscription().formattedString.return_value = "foo"
+        mock_result3.isFinal.return_value = False
+        handler(mock_result3, None)
+
+        assert partials[2] == ("hello worldfoo", False)  # accumulated
+
+        # Simulate endAudio final
+        t._stream_ending = True
+        mock_result4 = MagicMock()
+        mock_result4.bestTranscription().formattedString.return_value = "foo bar"
+        mock_result4.isFinal.return_value = True
+        handler(mock_result4, None)
+
         assert t._stream_done.is_set()
+        assert t._stream_final_text == "hello worldfoo bar"
 
         t.cancel_streaming()

@@ -206,9 +206,13 @@ class AppleSpeechTranscriber(BaseTranscriber):
 
         self._stream_on_partial = on_partial
         self._stream_final_text: Optional[str] = None
-        self._stream_best_text: str = ""
+        # Accumulate confirmed segments (finalized by the recognizer on pauses)
+        self._stream_confirmed: str = ""
+        # Best partial within the current (unfinished) segment
+        self._stream_seg_best: str = ""
         self._stream_done = threading.Event()
         self._stream_cancelled = False
+        self._stream_ending = False  # True after endAudio() is called
 
         request = Speech.SFSpeechAudioBufferRecognitionRequest.alloc().init()
         if self._on_device:
@@ -235,24 +239,47 @@ class AppleSpeechTranscriber(BaseTranscriber):
             if result is not None:
                 text = result.bestTranscription().formattedString()
                 is_final = result.isFinal()
-                logger.debug(
-                    "Streaming result: text=%r (len=%d), best=%r (len=%d), final=%s",
-                    text[:50] if text else "", len(text) if text else 0,
-                    self._stream_best_text[:50], len(self._stream_best_text),
-                    is_final,
-                )
-                # Keep the best (longest) partial text seen so far.
-                # Apple Speech may send shorter/empty partials during
-                # silence, which would erase the displayed text.
-                if text and len(text) >= len(self._stream_best_text):
-                    self._stream_best_text = text
-                    try:
-                        on_partial(text, is_final)
-                    except Exception:
-                        logger.debug("on_partial callback error", exc_info=True)
+
+                # Apple Speech may auto-segment on pauses: when a segment
+                # finalizes, the next partial starts fresh (shorter text).
+                # We accumulate confirmed segments and track the current
+                # segment's best partial separately.
                 if is_final:
-                    self._stream_final_text = self._stream_best_text or text
-                    self._stream_done.set()
+                    if self._stream_ending:
+                        # endAudio() was called — this is the final result
+                        seg_text = text or self._stream_seg_best
+                        if seg_text:
+                            self._stream_confirmed = (
+                                self._stream_confirmed + seg_text
+                                if self._stream_confirmed else seg_text
+                            )
+                        self._stream_final_text = self._stream_confirmed
+                        self._stream_done.set()
+                    else:
+                        # Mid-session segment boundary (pause detected)
+                        seg_text = text or self._stream_seg_best
+                        if seg_text:
+                            self._stream_confirmed = (
+                                self._stream_confirmed + seg_text
+                                if self._stream_confirmed else seg_text
+                            )
+                        self._stream_seg_best = ""
+                        full = self._stream_confirmed
+                        logger.debug("Segment finalized: seg=%r, full=%r", seg_text, full)
+                        try:
+                            on_partial(full, False)
+                        except Exception:
+                            logger.debug("on_partial callback error", exc_info=True)
+                else:
+                    # Partial result — keep the longest within this segment
+                    if text and len(text) >= len(self._stream_seg_best):
+                        self._stream_seg_best = text
+                        full = self._stream_confirmed + text if self._stream_confirmed else text
+                        logger.debug("Partial: seg_best=%r, full=%r", text[:50], full[:80])
+                        try:
+                            on_partial(full, False)
+                        except Exception:
+                            logger.debug("on_partial callback error", exc_info=True)
             elif error is not None:
                 self._stream_done.set()
 
@@ -305,13 +332,16 @@ class AppleSpeechTranscriber(BaseTranscriber):
         if not hasattr(self, "_stream_request") or self._stream_request is None:
             return ""
 
+        self._stream_ending = True
         self._stream_request.endAudio()
         self._stream_done.wait(timeout=STREAMING_FINAL_TIMEOUT)
 
         # Cleanup
         self._stream_runloop_stop.set()
-        # Prefer the final result; fall back to the best partial seen
-        text = self._stream_final_text or self._stream_best_text or ""
+        # Combine confirmed segments + any remaining partial
+        confirmed = self._stream_confirmed or ""
+        remaining = self._stream_seg_best or ""
+        text = (confirmed + remaining).strip() if (confirmed or remaining) else ""
         self._cleanup_stream()
 
         logger.info("Streaming recognition stopped, result: %s", text[:100] if text else "(empty)")
@@ -333,7 +363,9 @@ class AppleSpeechTranscriber(BaseTranscriber):
         self._stream_task = None
         self._stream_audio_format = None
         self._stream_on_partial = None
-        self._stream_best_text = ""
+        self._stream_confirmed = ""
+        self._stream_seg_best = ""
+        self._stream_ending = False
 
     def cleanup(self) -> None:
         """Release the recognizer."""
