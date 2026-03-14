@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -119,6 +118,7 @@ def _ensure_default_config(config_path: str) -> None:
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(DEFAULT_CONFIG, f, indent=2, ensure_ascii=False)
         f.write("\n")
+    os.chmod(config_path, 0o600)
 
     logger.info("Created default config: %s", config_path)
 
@@ -138,8 +138,86 @@ def save_config(config: Dict[str, Any], path: Optional[str] = None) -> None:
     with open(expanded, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
         f.write("\n")
+    os.chmod(expanded, 0o600)
 
     logger.info("Config saved to %s", expanded)
+
+
+def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate config values and replace invalid ones with defaults.
+
+    Logs a warning for each invalid value found.  Never raises — the app
+    should always be able to start even with a broken config file.
+    """
+    rules = [
+        # (dotted_path, expected_type, constraint, default_value)
+        ("audio.sample_rate", int, lambda v: v > 0, DEFAULT_CONFIG["audio"]["sample_rate"]),
+        ("audio.block_ms", int, lambda v: v > 0, DEFAULT_CONFIG["audio"]["block_ms"]),
+        ("audio.max_session_bytes", int, lambda v: v > 0, DEFAULT_CONFIG["audio"]["max_session_bytes"]),
+        ("audio.silence_rms", (int, float), lambda v: v >= 0, DEFAULT_CONFIG["audio"]["silence_rms"]),
+        ("feedback.sound_enabled", bool, None, DEFAULT_CONFIG["feedback"]["sound_enabled"]),
+        ("feedback.sound_volume", (int, float), lambda v: 0.0 <= v <= 1.0, DEFAULT_CONFIG["feedback"]["sound_volume"]),
+        ("feedback.visual_indicator", bool, None, DEFAULT_CONFIG["feedback"]["visual_indicator"]),
+        ("output.method", str, lambda v: v in {"auto", "paste", "clipboard"}, DEFAULT_CONFIG["output"]["method"]),
+        ("output.append_newline", bool, None, DEFAULT_CONFIG["output"]["append_newline"]),
+        ("asr.backend", str, lambda v: v in {"funasr", "mlx_whisper", "apple", "api"},
+         DEFAULT_CONFIG["asr"]["backend"]),
+        ("asr.language", str, lambda v: len(v) > 0, DEFAULT_CONFIG["asr"]["language"]),
+        ("logging.level", str, lambda v: v in {"DEBUG", "INFO", "WARNING", "ERROR"},
+         DEFAULT_CONFIG["logging"]["level"]),
+        ("ai_enhance.timeout", (int, float), lambda v: v > 0, DEFAULT_CONFIG["ai_enhance"]["timeout"]),
+        ("ai_enhance.connection_timeout", (int, float), lambda v: v > 0,
+         DEFAULT_CONFIG["ai_enhance"]["connection_timeout"]),
+        ("ai_enhance.max_retries", int, lambda v: v >= 0, DEFAULT_CONFIG["ai_enhance"]["max_retries"]),
+    ]
+
+    for path, expected_type, constraint, default in rules:
+        keys = path.split(".")
+        # Navigate to the parent dict
+        parent = config
+        valid = True
+        for key in keys[:-1]:
+            if isinstance(parent, dict) and key in parent:
+                parent = parent[key]
+            else:
+                valid = False
+                break
+
+        if not valid:
+            continue
+
+        leaf_key = keys[-1]
+        if leaf_key not in parent:
+            continue
+
+        value = parent[leaf_key]
+
+        # Type check
+        if not isinstance(value, expected_type):
+            logger.warning(
+                "Config %s: invalid type %s (expected %s), using default: %r",
+                path, type(value).__name__, expected_type, default,
+            )
+            parent[leaf_key] = default
+            continue
+
+        # Constraint check
+        if constraint is not None:
+            try:
+                if not constraint(value):
+                    logger.warning(
+                        "Config %s: invalid value %r, using default: %r",
+                        path, value, default,
+                    )
+                    parent[leaf_key] = default
+            except Exception:
+                logger.warning(
+                    "Config %s: validation error for %r, using default: %r",
+                    path, value, default,
+                )
+                parent[leaf_key] = default
+
+    return config
 
 
 def load_config(path: Optional[str] = None) -> Dict[str, Any]:
@@ -170,4 +248,5 @@ def load_config(path: Optional[str] = None) -> Dict[str, Any]:
             save_config(config, path)
             logger.info("Migrated hotkey %r → hotkeys dict", old)
 
+    validate_config(config)
     return config

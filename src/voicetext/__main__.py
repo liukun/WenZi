@@ -1,6 +1,5 @@
 """PyInstaller entry point - uses absolute imports."""
 
-import sys
 
 
 def main():

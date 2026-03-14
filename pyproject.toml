@@ -36,6 +36,9 @@ packages = ["src/voicetext"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning:importlib._bootstrap",
+]
 
 [tool.uv]
 override-dependencies = ["numpy==1.26.4"]
@@ -45,4 +48,13 @@ dev = [
     "py2app>=0.28.10",
     "pyinstaller>=6.19.0",
     "pytest>=9.0.2",
+    "pytest-cov>=6.0",
+    "ruff>=0.9.0",
 ]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]

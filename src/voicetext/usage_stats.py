@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 from datetime import date, datetime, timezone
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from .config import DEFAULT_CONFIG_DIR
 
@@ -87,6 +87,7 @@ class UsageStats:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.write("\n")
+        os.chmod(tmp, 0o600)
         os.replace(tmp, path)
 
     def _load_cumulative(self) -> Dict[str, Any]:
@@ -122,8 +123,12 @@ class UsageStats:
     def _today(self) -> str:
         return date.today().isoformat()
 
-    def record_transcription(self, mode: str, enhance_mode: str = "") -> None:
-        """Record a transcription event. mode is 'direct' or 'preview'."""
+    def _record(
+        self,
+        updater: Callable[[Dict[str, Any]], None],
+        set_first_recorded: bool = False,
+    ) -> None:
+        """Apply *updater* to both cumulative and daily data, then persist."""
         with self._lock:
             now = self._now_iso()
             day = self._today()
@@ -132,227 +137,105 @@ class UsageStats:
             daily = self._load_daily(day)
 
             for data in (cum, daily):
-                data["totals"]["transcriptions"] += 1
-                if mode == "direct":
-                    data["totals"]["direct_mode"] += 1
-                elif mode == "preview":
-                    data["totals"]["preview_mode"] += 1
+                updater(data)
 
-                if enhance_mode and enhance_mode != "off":
-                    data.setdefault("enhance_mode_usage", {})
-                    data["enhance_mode_usage"][enhance_mode] = (
-                        data["enhance_mode_usage"].get(enhance_mode, 0) + 1
-                    )
-
-            if cum.get("first_recorded") is None:
+            if set_first_recorded and cum.get("first_recorded") is None:
                 cum["first_recorded"] = now
             cum["last_updated"] = now
 
             self._write_json(self._cumulative_path, cum)
             self._write_json(self._daily_path(day), daily)
 
+    def record_transcription(self, mode: str, enhance_mode: str = "") -> None:
+        """Record a transcription event. mode is 'direct' or 'preview'."""
+        def _update(data: Dict[str, Any]) -> None:
+            data["totals"]["transcriptions"] += 1
+            if mode == "direct":
+                data["totals"]["direct_mode"] += 1
+            elif mode == "preview":
+                data["totals"]["preview_mode"] += 1
+            if enhance_mode and enhance_mode != "off":
+                data.setdefault("enhance_mode_usage", {})
+                data["enhance_mode_usage"][enhance_mode] = (
+                    data["enhance_mode_usage"].get(enhance_mode, 0) + 1
+                )
+
+        self._record(_update, set_first_recorded=True)
+
     def record_confirm(self, modified: bool) -> None:
         """Record user confirmation. modified=True means user edited before confirming."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            key = "user_modification" if modified else "direct_accept"
-            for data in (cum, daily):
-                data["totals"][key] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        key = "user_modification" if modified else "direct_accept"
+        self._record(lambda data: data["totals"].__setitem__(key, data["totals"][key] + 1))
 
     def record_cancel(self) -> None:
         """Record user cancellation of preview."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["cancel"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__("cancel", data["totals"]["cancel"] + 1))
 
     def record_token_usage(self, usage: dict | None) -> None:
         """Record LLM token consumption. usage should have prompt_tokens, completion_tokens, total_tokens."""
         if not usage:
             return
 
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
+        def _update(data: Dict[str, Any]) -> None:
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                val = usage.get(key, 0)
+                if val:
+                    data["token_usage"][key] += val
 
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-                    val = usage.get(key, 0)
-                    if val:
-                        data["token_usage"][key] += val
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(_update)
 
     def record_clipboard_enhance(self, enhance_mode: str = "") -> None:
         """Record a clipboard enhance trigger."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
+        def _update(data: Dict[str, Any]) -> None:
+            data["totals"]["clipboard_enhances"] += 1
+            if enhance_mode and enhance_mode != "off":
+                data.setdefault("enhance_mode_usage", {})
+                data["enhance_mode_usage"][enhance_mode] = (
+                    data["enhance_mode_usage"].get(enhance_mode, 0) + 1
+                )
 
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["clipboard_enhances"] += 1
-
-                if enhance_mode and enhance_mode != "off":
-                    data.setdefault("enhance_mode_usage", {})
-                    data["enhance_mode_usage"][enhance_mode] = (
-                        data["enhance_mode_usage"].get(enhance_mode, 0) + 1
-                    )
-
-            if cum.get("first_recorded") is None:
-                cum["first_recorded"] = now
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(_update, set_first_recorded=True)
 
     def record_clipboard_confirm(self) -> None:
         """Record clipboard enhance confirmation."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["clipboard_enhance_confirm"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__(
+            "clipboard_enhance_confirm", data["totals"]["clipboard_enhance_confirm"] + 1
+        ))
 
     def record_clipboard_cancel(self) -> None:
         """Record clipboard enhance cancellation."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["clipboard_enhance_cancel"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__(
+            "clipboard_enhance_cancel", data["totals"]["clipboard_enhance_cancel"] + 1
+        ))
 
     def record_google_translate_open(self) -> None:
         """Record a Google Translate WebView open event."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["google_translate_opens"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__(
+            "google_translate_opens", data["totals"]["google_translate_opens"] + 1
+        ))
 
     def record_sound_feedback(self) -> None:
         """Record a sound feedback play event."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["sound_feedback_plays"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__(
+            "sound_feedback_plays", data["totals"]["sound_feedback_plays"] + 1
+        ))
 
     def record_history_browse_open(self) -> None:
         """Record a history browser open event."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["history_browse_opens"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__(
+            "history_browse_opens", data["totals"]["history_browse_opens"] + 1
+        ))
 
     def record_history_edit(self) -> None:
         """Record a history edit (final_text update) event."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            for data in (cum, daily):
-                data["totals"]["history_edits"] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        self._record(lambda data: data["totals"].__setitem__(
+            "history_edits", data["totals"]["history_edits"] + 1
+        ))
 
     def record_output_method(self, copy_to_clipboard: bool) -> None:
         """Record output method: copy to clipboard or type text."""
-        with self._lock:
-            now = self._now_iso()
-            day = self._today()
-
-            cum = self._load_cumulative()
-            daily = self._load_daily(day)
-
-            key = "output_copy_clipboard" if copy_to_clipboard else "output_type_text"
-            for data in (cum, daily):
-                data["totals"][key] += 1
-
-            cum["last_updated"] = now
-
-            self._write_json(self._cumulative_path, cum)
-            self._write_json(self._daily_path(day), daily)
+        key = "output_copy_clipboard" if copy_to_clipboard else "output_type_text"
+        self._record(lambda data: data["totals"].__setitem__(key, data["totals"][key] + 1))
 
     def get_stats(self) -> Dict[str, Any]:
         """Return cumulative statistics."""

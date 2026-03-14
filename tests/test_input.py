@@ -2,6 +2,7 @@
 
 from unittest.mock import patch, MagicMock, call
 
+
 from voicetext.input import type_text
 
 
@@ -118,3 +119,40 @@ class TestPasteboardHelpers:
         # A restore thread should be started
         mock_threading.Thread.assert_called_once()
         mock_threading.Thread.return_value.start.assert_called_once()
+
+
+class TestAppleScriptSafety:
+    """Tests for AppleScript command injection prevention."""
+
+    @patch("voicetext.input.subprocess")
+    def test_applescript_uses_stdin(self, mock_subprocess):
+        """AppleScript should pass script via stdin, not -e argument."""
+        from voicetext.input import _type_via_applescript
+
+        mock_subprocess.run.return_value = MagicMock(returncode=0)
+
+        _type_via_applescript("hello world")
+
+        args, kwargs = mock_subprocess.run.call_args
+        # Should use stdin (input= kwarg) instead of -e
+        assert kwargs.get("input") is not None
+        assert kwargs.get("text") is True
+        # Command should be just ["osascript"] without -e
+        assert args[0] == ["osascript"]
+
+    @patch("voicetext.input.subprocess")
+    def test_applescript_special_chars(self, mock_subprocess):
+        """Text with special characters should be safely passed."""
+        from voicetext.input import _type_via_applescript
+
+        mock_subprocess.run.return_value = MagicMock(returncode=0)
+
+        payload = 'hello "world" & $(dangerous) `backtick`'
+        _type_via_applescript(payload)
+
+        args, kwargs = mock_subprocess.run.call_args
+        script = kwargs["input"]
+        # The script should contain escaped quotes
+        assert '\\"world\\"' in script
+        # Should NOT be passed as -e argument
+        assert "-e" not in args[0]

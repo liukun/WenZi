@@ -2,6 +2,7 @@
 
 import json
 import os
+import stat
 import threading
 from datetime import date
 from unittest.mock import patch
@@ -395,6 +396,22 @@ class TestRecordHistoryEdit:
         stats.record_history_edit()
         today = stats.get_today_stats()
         assert today["totals"]["history_edits"] == 1
+
+
+class TestFilePermissions:
+    def test_cumulative_file_is_owner_only(self, stats):
+        """Stats files should be owner-only readable (0o600)."""
+        stats.record_transcription(mode="direct")
+        mode = stat.S_IMODE(os.stat(stats._cumulative_path).st_mode)
+        assert mode == 0o600
+
+    def test_daily_file_is_owner_only(self, stats):
+        """Daily stats files should be owner-only readable (0o600)."""
+        stats.record_transcription(mode="direct")
+        today = date.today().isoformat()
+        daily_path = stats._daily_path(today)
+        mode = stat.S_IMODE(os.stat(daily_path).st_mode)
+        assert mode == 0o600
 
 
 class TestThreadSafety:

@@ -92,7 +92,6 @@ def _has_text_selection() -> bool:
             AXUIElementCreateSystemWide,
             AXUIElementCopyAttributeValue,
         )
-        from CoreFoundation import CFRelease
 
         system = AXUIElementCreateSystemWide()
         err, focused_app = AXUIElementCopyAttributeValue(
@@ -223,17 +222,22 @@ def _type_via_clipboard(payload: str) -> bool:
 
 
 def _type_via_applescript(payload: str) -> bool:
-    """Use AppleScript keystroke to type text."""
+    """Use AppleScript keystroke to type text.
+
+    The script is passed via stdin to avoid command-line injection through
+    user-controlled text.
+    """
     try:
         escaped = payload.replace("\\", "\\\\").replace('"', '\\"')
         script = f'tell application "System Events" to keystroke "{escaped}"'
         result = subprocess.run(
-            ["osascript", "-e", script],
+            ["osascript"],
+            input=script,
             capture_output=True, timeout=10,
+            text=True,
         )
         if result.returncode != 0:
-            logger.warning("AppleScript keystroke failed: %s",
-                           result.stderr.decode(errors="replace"))
+            logger.warning("AppleScript keystroke failed: %s", result.stderr)
             return False
         return True
     except Exception as exc:

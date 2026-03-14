@@ -1,7 +1,9 @@
 """Tests for the hotkey module."""
 
+import threading
+
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from voicetext.hotkey import (
     _is_fn_key,
@@ -9,8 +11,6 @@ from voicetext.hotkey import (
     _parse_hotkey_for_quartz,
     _KEYCODE_MAP,
     _MOD_FLAGS,
-    _SPECIAL_VK,
-    _MOD_VK,
     _VK_TO_NAME,
     HoldHotkeyListener,
     TapHotkeyListener,
@@ -246,3 +246,67 @@ class TestMultiHotkeyListener:
 
         listener._handle_release("fn")
         on_release.assert_called_once()
+
+
+class TestHoldHotkeyThreadSafety:
+    """Test that _held state is protected by a lock."""
+
+    def test_hold_listener_has_lock(self):
+        listener = HoldHotkeyListener("fn", MagicMock(), MagicMock())
+        assert hasattr(listener, "_held_lock")
+        assert isinstance(listener._held_lock, type(threading.Lock()))
+
+    def test_concurrent_press_fires_once(self):
+        """Rapid concurrent presses should only fire on_press once."""
+        call_count = 0
+        barrier = threading.Barrier(10)
+
+        def on_press():
+            nonlocal call_count
+            call_count += 1
+
+        listener = HoldHotkeyListener("fn", on_press, MagicMock())
+
+        def worker():
+            barrier.wait()
+            listener._handle_press("fn")
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert call_count == 1
+
+
+class TestMultiHotkeyThreadSafety:
+    """Test that MultiHotkeyListener._held set is protected by a lock."""
+
+    def test_multi_listener_has_lock(self):
+        listener = MultiHotkeyListener(["fn"], MagicMock(), MagicMock())
+        assert hasattr(listener, "_held_lock")
+        assert isinstance(listener._held_lock, type(threading.Lock()))
+
+    def test_concurrent_press_fires_once(self):
+        """Rapid concurrent presses should only fire on_press once."""
+        call_count = 0
+        barrier = threading.Barrier(10)
+
+        def on_press():
+            nonlocal call_count
+            call_count += 1
+
+        listener = MultiHotkeyListener(["fn"], on_press, MagicMock())
+
+        def worker():
+            barrier.wait()
+            listener._handle_press("fn")
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert call_count == 1

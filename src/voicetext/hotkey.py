@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -411,6 +411,7 @@ class HoldHotkeyListener:
         self._on_press = on_press
         self._on_release = on_release
         self._held = False
+        self._held_lock = threading.Lock()
         self._listener: Optional[_QuartzAllKeysListener] = None
 
     def start(self) -> None:
@@ -427,21 +428,27 @@ class HoldHotkeyListener:
 
     def _handle_press(self, name: str) -> None:
         vk = _name_to_vk(name) if name in _ALL_KEY_NAMES else -1
-        if vk == self._target_vk and not self._held:
-            self._held = True
-            try:
-                self._on_press()
-            except Exception as e:
-                logger.error("on_press callback error: %s", e)
+        with self._held_lock:
+            if vk == self._target_vk and not self._held:
+                self._held = True
+            else:
+                return
+        try:
+            self._on_press()
+        except Exception as e:
+            logger.error("on_press callback error: %s", e)
 
     def _handle_release(self, name: str) -> None:
         vk = _name_to_vk(name) if name in _ALL_KEY_NAMES else -1
-        if vk == self._target_vk and self._held:
-            self._held = False
-            try:
-                self._on_release()
-            except Exception as e:
-                logger.error("on_release callback error: %s", e)
+        with self._held_lock:
+            if vk == self._target_vk and self._held:
+                self._held = False
+            else:
+                return
+        try:
+            self._on_release()
+        except Exception as e:
+            logger.error("on_release callback error: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +472,7 @@ class MultiHotkeyListener:
         self._target_vks: Dict[int, str] = {}  # vk -> name
         self._enabled_names: set = set()
         self._held: set = set()  # set of currently held key names
+        self._held_lock = threading.Lock()
         self._listener: Optional[_QuartzAllKeysListener] = None
         # Recording mode state
         self._record_done = threading.Event()
@@ -500,7 +508,8 @@ class MultiHotkeyListener:
             self._listener.stop()
             self._listener = None
             logger.info("Multi-hotkey listener stopped")
-        self._held.clear()
+        with self._held_lock:
+            self._held.clear()
 
     # ------------------------------------------------------------------
     # Recording mode — capture the next key press (any key)
@@ -588,7 +597,8 @@ class MultiHotkeyListener:
         vk = _name_to_vk(n)
         self._target_vks.pop(vk, None)
         self._enabled_names.discard(n)
-        self._held.discard(n)
+        with self._held_lock:
+            self._held.discard(n)
         logger.info("Hotkey %s disabled", n)
 
     def _handle_press(self, name: str) -> None:
@@ -612,22 +622,28 @@ class MultiHotkeyListener:
                 return
 
             # Normal mode: check if this is a monitored key
-            if name in self._enabled_names and name not in self._held:
-                self._held.add(name)
-                try:
-                    self._on_press()
-                except Exception as e:
-                    logger.error("on_press callback error: %s", e)
+            with self._held_lock:
+                if name in self._enabled_names and name not in self._held:
+                    self._held.add(name)
+                else:
+                    return
+            try:
+                self._on_press()
+            except Exception as e:
+                logger.error("on_press callback error: %s", e)
         except Exception:
             logger.warning("_handle_press exception", exc_info=True)
 
     def _handle_release(self, name: str) -> None:
         try:
-            if name in self._held:
-                self._held.discard(name)
-                try:
-                    self._on_release()
-                except Exception as e:
-                    logger.error("on_release callback error: %s", e)
+            with self._held_lock:
+                if name in self._held:
+                    self._held.discard(name)
+                else:
+                    return
+            try:
+                self._on_release()
+            except Exception as e:
+                logger.error("on_release callback error: %s", e)
         except Exception:
             logger.warning("_handle_release exception", exc_info=True)
