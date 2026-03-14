@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration Reference — VoiceText</title>
+  <link rel="icon" type="image/png" href="../images/icon.png">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
+    .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
+    .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
+    .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
+    .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
+    .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
+    .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
+    .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
+    .doc-container strong { color: var(--text); }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav class="nav container">
+      <a href="../" class="nav-brand">
+        <img src="../images/icon.png" alt="VoiceText icon">
+        VoiceText
+      </a>
+      <ul class="nav-links">
+        <li><a href="../">&larr; Back</a></li>
+        <li><a href="../../zh/docs/configuration.html" class="lang-switch">中文</a></li>
+        <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <article class="doc-container">
+    <h1>Configuration Reference</h1>
+    <p class="doc-subtitle">All configuration options explained.</p>
+
+    <div class="toc">
+      <h2>Table of Contents</h2>
+      <div class="toc">
+<ul>
+<li><a href="#full-default-configuration">Full Default Configuration</a></li>
+<li><a href="#options">Options</a><ul>
+<li><a href="#general">General</a></li>
+<li><a href="#audio">Audio</a></li>
+<li><a href="#asr">ASR</a></li>
+<li><a href="#output">Output</a></li>
+<li><a href="#ai-enhancement">AI Enhancement</a></li>
+<li><a href="#vocabulary-retrieval">Vocabulary Retrieval</a></li>
+<li><a href="#conversation-history">Conversation History</a></li>
+<li><a href="#clipboard-enhancement">Clipboard Enhancement</a></li>
+<li><a href="#feedback">Feedback</a></li>
+<li><a href="#logging">Logging</a></li>
+</ul>
+</li>
+<li><a href="#environment-variables">Environment Variables</a></li>
+</ul>
+</div>
+
+    </div>
+
+<p>Default config path: <code>~/.config/VoiceText/config.json</code>. Pass a JSON config file as a command-line argument to override. Only the fields you want to change are needed; everything else uses defaults.</p>
+<h2 id="full-default-configuration">Full Default Configuration</h2>
+<pre><code class="language-json">{
+  &quot;hotkeys&quot;: {&quot;fn&quot;: true},
+  &quot;audio&quot;: {
+    &quot;sample_rate&quot;: 16000,
+    &quot;block_ms&quot;: 20,
+    &quot;device&quot;: null,
+    &quot;max_session_bytes&quot;: 20971520,
+    &quot;silence_rms&quot;: 20
+  },
+  &quot;asr&quot;: {
+    &quot;backend&quot;: &quot;funasr&quot;,
+    &quot;use_vad&quot;: true,
+    &quot;use_punc&quot;: true,
+    &quot;language&quot;: &quot;zh&quot;,
+    &quot;model&quot;: null,
+    &quot;preset&quot;: null,
+    &quot;temperature&quot;: 0.0,
+    &quot;default_provider&quot;: null,
+    &quot;default_model&quot;: null,
+    &quot;providers&quot;: {}
+  },
+  &quot;output&quot;: {
+    &quot;method&quot;: &quot;auto&quot;,
+    &quot;append_newline&quot;: false,
+    &quot;preview&quot;: true
+  },
+  &quot;ai_enhance&quot;: {
+    &quot;enabled&quot;: false,
+    &quot;mode&quot;: &quot;proofread&quot;,
+    &quot;default_provider&quot;: &quot;ollama&quot;,
+    &quot;default_model&quot;: &quot;qwen2.5:7b&quot;,
+    &quot;providers&quot;: {
+      &quot;ollama&quot;: {
+        &quot;base_url&quot;: &quot;http://localhost:11434/v1&quot;,
+        &quot;api_key&quot;: &quot;ollama&quot;,
+        &quot;models&quot;: [&quot;qwen2.5:7b&quot;]
+      }
+    },
+    &quot;thinking&quot;: false,
+    &quot;timeout&quot;: 30,
+    &quot;connection_timeout&quot;: 10,
+    &quot;max_retries&quot;: 2,
+    &quot;vocabulary&quot;: {
+      &quot;enabled&quot;: false,
+      &quot;top_k&quot;: 5,
+      &quot;embedding_model&quot;: &quot;paraphrase-multilingual-MiniLM-L12-v2&quot;,
+      &quot;build_timeout&quot;: 600,
+      &quot;auto_build&quot;: true,
+      &quot;auto_build_threshold&quot;: 10
+    },
+    &quot;conversation_history&quot;: {
+      &quot;enabled&quot;: false,
+      &quot;max_entries&quot;: 10
+    }
+  },
+  &quot;clipboard_enhance&quot;: {
+    &quot;hotkey&quot;: &quot;ctrl+cmd+v&quot;
+  },
+  &quot;feedback&quot;: {
+    &quot;sound_enabled&quot;: true,
+    &quot;sound_volume&quot;: 0.4,
+    &quot;visual_indicator&quot;: true
+  },
+  &quot;logging&quot;: {
+    &quot;level&quot;: &quot;INFO&quot;
+  }
+}
+</code></pre>
+<h2 id="options">Options</h2>
+<h3 id="general">General</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hotkeys</code></td>
+<td><code>{"fn": true}</code></td>
+<td>Hotkey map. Keys: <code>fn</code>, <code>f1</code>–<code>f12</code>, <code>esc</code>, <code>space</code>, <code>cmd</code>, <code>ctrl</code>, <code>alt</code>, <code>shift</code>. Values: <code>true</code> to enable</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="audio">Audio</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>audio.sample_rate</code></td>
+<td><code>16000</code></td>
+<td>Audio sample rate in Hz</td>
+</tr>
+<tr>
+<td><code>audio.block_ms</code></td>
+<td><code>20</code></td>
+<td>Recording block size in milliseconds</td>
+</tr>
+<tr>
+<td><code>audio.device</code></td>
+<td><code>null</code></td>
+<td>Audio input device (null = system default)</td>
+</tr>
+<tr>
+<td><code>audio.max_session_bytes</code></td>
+<td><code>20971520</code></td>
+<td>Max recording size (~20 MB)</td>
+</tr>
+<tr>
+<td><code>audio.silence_rms</code></td>
+<td><code>20</code></td>
+<td>RMS threshold below which audio is considered silence</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="asr">ASR</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>asr.backend</code></td>
+<td><code>"funasr"</code></td>
+<td>ASR backend: <code>funasr</code>, <code>mlx-whisper</code>, <code>apple</code>, or <code>whisper-api</code></td>
+</tr>
+<tr>
+<td><code>asr.use_vad</code></td>
+<td><code>true</code></td>
+<td>Enable voice activity detection (prevents hallucination on silence)</td>
+</tr>
+<tr>
+<td><code>asr.use_punc</code></td>
+<td><code>true</code></td>
+<td>Enable automatic punctuation restoration</td>
+</tr>
+<tr>
+<td><code>asr.language</code></td>
+<td><code>"zh"</code></td>
+<td>Language code (used by MLX-Whisper and Whisper API)</td>
+</tr>
+<tr>
+<td><code>asr.model</code></td>
+<td><code>null</code></td>
+<td>Model identifier (e.g. <code>mlx-community/whisper-small</code>)</td>
+</tr>
+<tr>
+<td><code>asr.preset</code></td>
+<td><code>null</code></td>
+<td>Preset ID from model registry (e.g. <code>mlx-whisper-small</code>)</td>
+</tr>
+<tr>
+<td><code>asr.temperature</code></td>
+<td><code>0.0</code></td>
+<td>Decoding temperature (MLX-Whisper and Whisper API)</td>
+</tr>
+<tr>
+<td><code>asr.default_provider</code></td>
+<td><code>null</code></td>
+<td>Default remote ASR provider name (e.g. <code>"groq"</code>)</td>
+</tr>
+<tr>
+<td><code>asr.default_model</code></td>
+<td><code>null</code></td>
+<td>Default remote ASR model (e.g. <code>"whisper-large-v3"</code>)</td>
+</tr>
+<tr>
+<td><code>asr.providers</code></td>
+<td><code>{}</code></td>
+<td>Remote ASR providers (same format as <code>ai_enhance.providers</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="output">Output</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>output.method</code></td>
+<td><code>"auto"</code></td>
+<td>Text injection method: <code>auto</code>, <code>clipboard</code>, or <code>applescript</code></td>
+</tr>
+<tr>
+<td><code>output.append_newline</code></td>
+<td><code>false</code></td>
+<td>Append a newline after typed text</td>
+</tr>
+<tr>
+<td><code>output.preview</code></td>
+<td><code>true</code></td>
+<td>Show floating preview panel for reviewing results before input</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="ai-enhancement">AI Enhancement</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_enhance.enabled</code></td>
+<td><code>false</code></td>
+<td>Enable AI text enhancement</td>
+</tr>
+<tr>
+<td><code>ai_enhance.mode</code></td>
+<td><code>"proofread"</code></td>
+<td>Enhancement mode: <code>off</code>, <code>proofread</code>, <code>translate_en</code>, <code>translate_en_plus</code>, <code>commandline_master</code>, or custom mode IDs</td>
+</tr>
+<tr>
+<td><code>ai_enhance.default_provider</code></td>
+<td><code>"ollama"</code></td>
+<td>Default LLM provider name</td>
+</tr>
+<tr>
+<td><code>ai_enhance.default_model</code></td>
+<td><code>"qwen2.5:7b"</code></td>
+<td>Default LLM model</td>
+</tr>
+<tr>
+<td><code>ai_enhance.thinking</code></td>
+<td><code>false</code></td>
+<td>Enable extended thinking for supported models</td>
+</tr>
+<tr>
+<td><code>ai_enhance.timeout</code></td>
+<td><code>30</code></td>
+<td>LLM request timeout in seconds</td>
+</tr>
+<tr>
+<td><code>ai_enhance.connection_timeout</code></td>
+<td><code>10</code></td>
+<td>LLM connection timeout in seconds</td>
+</tr>
+<tr>
+<td><code>ai_enhance.max_retries</code></td>
+<td><code>2</code></td>
+<td>Maximum retry attempts on connection failure</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="vocabulary-retrieval">Vocabulary Retrieval</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_enhance.vocabulary.enabled</code></td>
+<td><code>false</code></td>
+<td>Enable vocabulary-based retrieval during enhancement</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.top_k</code></td>
+<td><code>5</code></td>
+<td>Number of vocabulary entries to retrieve per query</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.embedding_model</code></td>
+<td><code>"paraphrase-multilingual-MiniLM-L12-v2"</code></td>
+<td>Embedding model for vocabulary index</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.build_timeout</code></td>
+<td><code>600</code></td>
+<td>Per-batch LLM timeout for vocabulary building (seconds)</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.auto_build</code></td>
+<td><code>true</code></td>
+<td>Enable automatic vocabulary building after corrections accumulate</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.auto_build_threshold</code></td>
+<td><code>10</code></td>
+<td>Number of corrections to trigger an automatic build</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="conversation-history">Conversation History</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_enhance.conversation_history.enabled</code></td>
+<td><code>false</code></td>
+<td>Enable conversation history context injection</td>
+</tr>
+<tr>
+<td><code>ai_enhance.conversation_history.max_entries</code></td>
+<td><code>10</code></td>
+<td>Number of recent confirmed entries to inject</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="clipboard-enhancement">Clipboard Enhancement</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clipboard_enhance.hotkey</code></td>
+<td><code>"ctrl+cmd+v"</code></td>
+<td>Hotkey to trigger clipboard AI enhancement (modifier+key format)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="feedback">Feedback</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>feedback.sound_enabled</code></td>
+<td><code>true</code></td>
+<td>Enable sound feedback for recording start/stop</td>
+</tr>
+<tr>
+<td><code>feedback.sound_volume</code></td>
+<td><code>0.4</code></td>
+<td>Sound volume (0.0 – 1.0)</td>
+</tr>
+<tr>
+<td><code>feedback.visual_indicator</code></td>
+<td><code>true</code></td>
+<td>Show floating recording indicator with audio level bars</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="logging">Logging</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logging.level</code></td>
+<td><code>"INFO"</code></td>
+<td>Log level: <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, <code>ERROR</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="environment-variables">Environment Variables</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FUNASR_ASR_MODEL</code></td>
+<td><code>iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx</code></td>
+<td>ASR model ID</td>
+</tr>
+<tr>
+<td><code>FUNASR_VAD_MODEL</code></td>
+<td><code>iic/speech_fsmn_vad_zh-cn-16k-common-onnx</code></td>
+<td>VAD model ID</td>
+</tr>
+<tr>
+<td><code>FUNASR_PUNC_MODEL</code></td>
+<td><code>iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx</code></td>
+<td>Punctuation model ID</td>
+</tr>
+<tr>
+<td><code>FUNASR_MODEL_REVISION</code></td>
+<td><code>v2.0.5</code></td>
+<td>Model revision</td>
+</tr>
+<tr>
+<td><code>OMP_NUM_THREADS</code></td>
+<td><code>8</code></td>
+<td>ONNX runtime thread count</td>
+</tr>
+</tbody>
+</table></div>
+
+    <div class="doc-nav">
+      <a href="error-correction.html" class="doc-nav-card">
+        <h3>&larr; Why Error Correction Is So Powerful</h3>
+        <p>Five layers of correction that get smarter every time you use it.</p>
+      </a>
+      <a href="enhance-modes.html" class="doc-nav-card">
+        <h3>AI Enhancement Modes &rarr;</h3>
+        <p>Define how AI post-processes your transcriptions.</p>
+      </a>
+    </div>
+  </article>
+
+</body>
+</html>

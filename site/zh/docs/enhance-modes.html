@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,393 +8,304 @@
   <link rel="stylesheet" href="../../css/style.css">
   <style>
     .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
     .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
     .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
     .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
     .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
     .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
     .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
     .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
-    .doc-container pre.code-block { margin-bottom: 16px; }
-    .doc-container .compare-table { margin-bottom: 24px; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
     .doc-container strong { color: var(--text); }
-    .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
-    .toc h2 { margin-top: 0 !important; border-bottom: none !important; }
-    .toc ul { list-style: none; padding-left: 0; }
-    .toc li { margin-bottom: 6px; }
-    .toc a { color: var(--purple); }
-    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-top: 48px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
     .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
-    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; }
-    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.95rem; }
-    .mode-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
-    .mode-card h4 { font-size: 1.05rem; margin-bottom: 8px; color: var(--text); }
-    .mode-card p { margin-bottom: 8px; }
-    .mode-card .mode-meta { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; }
-    .mode-card .mode-meta span { display: inline-block; background: var(--bg-alt); padding: 2px 8px; border-radius: 4px; margin-right: 8px; }
-    .example-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
-    @media (max-width: 600px) { .example-grid { grid-template-columns: 1fr; } }
-    .example-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px 20px; }
-    .example-card h4 { font-size: 0.95rem; margin-bottom: 4px; color: var(--text); }
-    .example-card p { font-size: 0.88rem; margin: 0; color: var(--text-secondary); }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <header class="site-header">
     <nav class="nav container">
-      <a href="../" class="nav-brand">
-        <img src="../../images/icon.png" alt="VoiceText 图标">
+      <a href="../../" class="nav-brand">
+        <img src="../../images/icon.png" alt="VoiceText icon">
         VoiceText
       </a>
       <ul class="nav-links">
-        <li><a href="../">&larr; 返回</a></li>
+        <li><a href="../../">&larr; 返回</a></li>
         <li><a href="../../docs/enhance-modes.html" class="lang-switch">English</a></li>
         <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
       </ul>
     </nav>
   </header>
 
-  <!-- Content -->
   <article class="doc-container">
-    <h1 style="font-size: 2.2rem; font-weight: 800; margin-bottom: 8px;">AI 增强模式</h1>
-    <p style="font-size: 1.1rem; margin-bottom: 32px;">定义 VoiceText 的 AI 如何后处理你的语音转写 &mdash; 从纠错润色、翻译到命令行转换和会议纪要。</p>
+    <h1>AI 增强模式</h1>
+    <p class="doc-subtitle">定义 AI 如何后处理你的转录文本。</p>
 
-    <!-- Table of Contents -->
     <div class="toc">
       <h2>目录</h2>
-      <ul>
-        <li><a href="#how-it-works">工作原理</a> &mdash; 语音 &rarr; ASR &rarr; LLM &rarr; 输出的处理流程</li>
-        <li><a href="#built-in-modes">内置模式</a> &mdash; 开箱即用的四个模式</li>
-        <li><a href="#file-format">文件格式</a> &mdash; Markdown + YAML 前置数据</li>
-        <li><a href="#chain-modes">链式模式</a> &mdash; 多步骤增强管道</li>
-        <li><a href="#create-your-own">创建自定义模式</a> &mdash; 通过设置界面或文件添加</li>
-        <li><a href="#example-library">模式示例库</a> &mdash; 按场景分类的现成模板</li>
-        <li><a href="#prompt-tips">提示词编写技巧</a> &mdash; 写好提示词的最佳实践</li>
-        <li><a href="#manage-modes">管理模式</a> &mdash; 编辑、删除和整理</li>
-      </ul>
+      <div class="toc">
+<ul>
+<li><a href="#_1">工作原理</a></li>
+<li><a href="#_2">文件格式</a></li>
+<li><a href="#_3">链式模式</a><ul>
+<li><a href="#_4">链式模式示例</a></li>
+</ul>
+</li>
+<li><a href="#_5">内置模式</a></li>
+<li><a href="#_6">添加新模式</a><ul>
+<li><a href="#a">方式 A：从菜单添加</a></li>
+<li><a href="#b">方式 B：手动创建文件</a></li>
+<li><a href="#_7">示例：正式邮件模式</a></li>
+<li><a href="#_8">示例：翻译为日文</a></li>
+</ul>
+</li>
+<li><a href="#_9">编辑现有模式</a></li>
+<li><a href="#_10">删除模式</a></li>
+<li><a href="#_11">使用技巧</a></li>
+</ul>
+</div>
+
     </div>
 
-    <!-- How It Works -->
-    <section id="how-it-works">
-      <h2>工作原理</h2>
-      <p>AI 增强是一个可选的后处理步骤。开启后，转写文本会经过 LLM 处理再输出：</p>
-<pre class="code-block">语音 &rarr; ASR 转写 &rarr; 增强模式 (LLM) &rarr; 最终文本</pre>
-      <p>每个增强模式都是一个独立的 <strong>Markdown 文件</strong>，存储在 <code>~/.config/VoiceText/enhance_modes/</code> 目录下。文件中包含告诉 LLM 如何处理文本的系统提示词。</p>
-      <ul>
-        <li>启动时，VoiceText 确保内置模式文件存在。缺失的会自动创建，已有的文件不会被覆盖。</li>
-        <li>目录下所有 <code>.md</code> 文件都会被加载，并显示在 <strong>AI</strong> 设置和模式切换器中。</li>
-        <li>当某个模式激活时，转写文本会以该模式的提示词作为系统消息发送给 LLM。</li>
-      </ul>
-    </section>
-
-    <!-- Built-in Modes -->
-    <section id="built-in-modes">
-      <h2>内置模式</h2>
-      <p>以下四个模式在首次启动时自动创建：</p>
-
-      <div class="mode-card">
-        <h4>&#9998; 纠错润色 (Proofread)</h4>
-        <div class="mode-meta">
-          <span>ID: proofread</span>
-          <span>排序: 10</span>
-          <span>类型: 单步</span>
-        </div>
-        <p>修正错别字、语法错误和标点符号。保留原意的同时润色文本。最通用的模式 &mdash; 推荐作为默认选择。</p>
-      </div>
-
-      <div class="mode-card">
-        <h4>&#127760; 翻译为英文 (Translate EN)</h4>
-        <div class="mode-meta">
-          <span>ID: translate_en</span>
-          <span>排序: 20</span>
-          <span>类型: 单步</span>
-        </div>
-        <p>将中文输入翻译为自然流畅的英文。能够处理 ASR 错误，推断实际意图。</p>
-      </div>
-
-      <div class="mode-card">
-        <h4>&#128279; 润色+翻译EN (Proofread + Translate)</h4>
-        <div class="mode-meta">
-          <span>ID: translate_en_plus</span>
-          <span>排序: 25</span>
-          <span>类型: 链式 (proofread &rarr; translate_en)</span>
-        </div>
-        <p>链式模式：先纠错润色，再将修正后的文本翻译为英文。先修后译，翻译质量更高。</p>
-      </div>
-
-      <div class="mode-card">
-        <h4>&#128187; 命令行大神 (Commandline Master)</h4>
-        <div class="mode-meta">
-          <span>ID: commandline_master</span>
-          <span>排序: 30</span>
-          <span>类型: 单步</span>
-        </div>
-        <p>将自然语言描述转换为可执行的 shell 命令。说"查找所有大于 1MB 的 Python 文件"即可得到对应的 <code>find</code> 命令。</p>
-      </div>
-    </section>
-
-    <!-- File Format -->
-    <section id="file-format">
-      <h2>文件格式</h2>
-      <p>每个模式都是一个 <code>.md</code> 文件，包含 YAML 前置数据和提示词正文：</p>
-<pre class="code-block">---
+<p>VoiceText 使用 AI 增强模式对转录文本进行后处理。每个模式定义为一个独立的 Markdown 文件，存储在 <code>~/.config/VoiceText/enhance_modes/</code> 目录中。你可以随意添加、编辑或删除模式，无需修改任何代码。</p>
+<h2 id="_1">工作原理</h2>
+<pre><code>语音 -&gt; ASR 转录 -&gt; 增强模式 (LLM) -&gt; 最终文本
+</code></pre>
+<ol>
+<li>启动时，VoiceText 会确保内置模式文件存在于模式目录中。缺失的内置文件会自动重新创建；已有文件不会被覆盖。</li>
+<li>目录中所有 <code>.md</code> 文件会被加载并显示在 <strong>AI Enhance</strong> 菜单中。</li>
+<li>当增强模式处于激活状态时，转录文本会被发送到已配置的 LLM，模式的提示词作为系统消息。</li>
+</ol>
+<h2 id="_2">文件格式</h2>
+<p>每个 <code>.md</code> 文件使用简单的 YAML front matter，后跟提示词正文：</p>
+<pre><code class="language-markdown">---
 label: 显示名称
 order: 50
 ---
 系统提示词内容写在这里。
-可以使用多行。</pre>
-
-      <div class="table-wrapper">
-        <table class="compare-table">
-          <thead>
-            <tr><th>字段</th><th>必填</th><th>说明</th></tr>
-          </thead>
-          <tbody>
-            <tr><td><code>label</code></td><td>否</td><td>菜单中的显示名称。默认使用文件名。</td></tr>
-            <tr><td><code>order</code></td><td>否</td><td>菜单排序权重。默认 <code>50</code>。数值越小越靠前。</td></tr>
-            <tr><td><code>steps</code></td><td>否</td><td>逗号分隔的模式 ID，用于链式执行（详见<a href="#chain-modes">链式模式</a>）。</td></tr>
-            <tr><td>正文</td><td>是</td><td>发送给 LLM 的系统提示词。第二个 <code>---</code> 之后的全部内容。</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p><strong>文件名</strong>（去掉 <code>.md</code> 后缀）即为模式 ID。只能使用字母、数字、连字符和下划线。</p>
-      <blockquote>保留模式 ID <code>off</code> 用于关闭增强，不对应任何文件。</blockquote>
-    </section>
-
-    <!-- Chain Modes -->
-    <section id="chain-modes">
-      <h2>链式模式</h2>
-      <p>链式模式按顺序运行多个增强步骤，将每步的输出作为下一步的输入。你可以组合现有模式构建处理管道，无需重复编写提示词。</p>
-
-      <h3>如何创建</h3>
-      <p>添加 <code>steps</code> 字段，按执行顺序列出模式 ID：</p>
-<pre class="code-block">---
-label: 润色+翻译EN
+可以使用多行。
+</code></pre>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>label</code></td>
+<td>否</td>
+<td>菜单中显示的名称。默认使用文件名</td>
+</tr>
+<tr>
+<td><code>order</code></td>
+<td>否</td>
+<td>菜单排序权重。默认为 <code>50</code>。数值越小，在菜单中位置越靠前</td>
+</tr>
+<tr>
+<td><code>steps</code></td>
+<td>否</td>
+<td>逗号分隔的模式 ID 列表，用于链式执行（参见<a href="#链式模式">链式模式</a>）</td>
+</tr>
+<tr>
+<td>正文</td>
+<td>是</td>
+<td>发送给 LLM 的系统提示词。第二个 <code>---</code> 之后的所有内容</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>文件名</strong>（不含 <code>.md</code>）作为模式 ID，必须与 <code>config.json</code> 中的 <code>mode</code> 值匹配。仅使用字母、数字、连字符和下划线。</p>
+<blockquote>
+<p>保留模式 ID <code>off</code> 用于禁用增强功能，不对应任何文件。</p>
+</blockquote>
+<h2 id="_3">链式模式</h2>
+<p>链式模式按顺序运行多个增强步骤，将每个步骤的输出作为下一个步骤的输入。这对于将现有模式组合成流水线非常有用，无需重复编写提示词。</p>
+<p>要创建链式模式，添加 <code>steps</code> 字段，列出按顺序执行的模式 ID：</p>
+<pre><code class="language-markdown">---
+label: Translate EN+ (Proofread → Translate)
 order: 25
 steps: proofread, translate_en
 ---
-先纠错润色，再翻译为英文。
-（此正文仅作为文档说明 &mdash; 每个步骤使用各自模式的提示词。）</pre>
-
-      <h3>执行过程</h3>
-      <ol>
-        <li>输入文本发送给第一步（<code>proofread</code>），使用该模式的提示词处理。</li>
-        <li>第一步的输出作为第二步（<code>translate_en</code>）的输入。</li>
-        <li>最终输出为最后一步的结果。</li>
-      </ol>
-
-      <h3>界面展示</h3>
-      <ul>
-        <li><strong>预览模式：</strong>每步的输出以分隔符显示，最终结果区域只显示最后一步的输出。</li>
-        <li><strong>直接模式：</strong>流式覆盖层显示步骤进度（如"步骤 1/2：纠错润色"），实时更新。</li>
-      </ul>
-
-      <blockquote>链式模式文件的正文不会发送给 LLM &mdash; 每个步骤使用各自模式的提示词。正文仅供文档记录。</blockquote>
-    </section>
-
-    <!-- Create Your Own -->
-    <section id="create-your-own">
-      <h2>创建自定义模式</h2>
-
-      <h3>方式一：通过设置界面（简单）</h3>
-      <ol>
-        <li>打开 <strong>设置...</strong> &rarr; <strong>AI</strong> 页签 &rarr; <strong>添加模式...</strong></li>
-        <li>在对话框中编辑模板。</li>
-        <li>点击 <strong>保存</strong>，输入模式 ID（如 <code>summarize</code>）。</li>
-        <li>新模式立即出现在菜单中。</li>
-      </ol>
-
-      <h3>方式二：手动创建文件（灵活）</h3>
-      <p>在模式目录下新建 <code>.md</code> 文件：</p>
-<pre class="code-block">~/.config/VoiceText/enhance_modes/summarize.md</pre>
-<pre class="code-block">---
-label: 摘要
+此模式先对文本进行纠错润色，然后翻译为英文。
+</code></pre>
+<p><strong>工作方式：</strong></p>
+<ol>
+<li>输入文本被发送到第一个步骤（<code>proofread</code>），使用该模式的提示词。</li>
+<li>步骤 1 的输出成为步骤 2（<code>translate_en</code>）的输入。</li>
+<li>最终输出是最后一个步骤的结果。</li>
+</ol>
+<p><strong>在预览模式下</strong>，每个步骤的输出会以分隔符显示，各步骤的思考文本会被累积。最终结果字段仅显示最后一个步骤的输出。</p>
+<p><strong>在直接模式下</strong>，流式覆盖层会显示步骤进度（例如 "Step 1/2: 纠错润色"）并实时更新。</p>
+<blockquote>
+<p><strong>注意：</strong> 链式模式文件的提示词正文不会被发送给 LLM——每个步骤使用其自身模式的提示词。正文仅用于文档说明。</p>
+</blockquote>
+<h3 id="_4">链式模式示例</h3>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/translate_en_plus.md &lt;&lt; 'EOF'
+---
+label: Translate EN+ (纠错→翻译)
+order: 25
+steps: proofread, translate_en
+---
+Proofread first, then translate to English.
+This prompt body is not used — each step uses its own mode's prompt.
+EOF
+</code></pre>
+<h2 id="_5">内置模式</h2>
+<p>以下 4 个模式在首次启动时自动创建：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>文件</th>
+<th>标签</th>
+<th>排序</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>proofread.md</code></td>
+<td>纠错润色</td>
+<td>10</td>
+<td>单步</td>
+<td>修正错别字、语法和标点</td>
+</tr>
+<tr>
+<td><code>translate_en.md</code></td>
+<td>翻译为英文</td>
+<td>20</td>
+<td>单步</td>
+<td>将中文翻译为英文</td>
+</tr>
+<tr>
+<td><code>translate_en_plus.md</code></td>
+<td>润色+翻译EN</td>
+<td>25</td>
+<td>链式 (proofread → translate_en)</td>
+<td>先纠错润色，再翻译为英文</td>
+</tr>
+<tr>
+<td><code>commandline_master.md</code></td>
+<td>命令行大神</td>
+<td>30</td>
+<td>单步</td>
+<td>将自然语言转换为 shell 命令</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="_6">添加新模式</h2>
+<h3 id="a">方式 A：从菜单添加</h3>
+<ol>
+<li>打开 <strong>Settings...</strong> → <strong>AI</strong> 标签页。</li>
+<li>点击 <strong>Add Mode...</strong>。</li>
+<li>在对话框中编辑模板并点击 <strong>Save</strong>。</li>
+<li>输入模式 ID（例如 <code>summarize</code>）并确认。</li>
+<li>新模式会立即出现在菜单中。</li>
+</ol>
+<h3 id="b">方式 B：手动创建文件</h3>
+<p>在模式目录中创建新的 <code>.md</code> 文件：</p>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/summarize.md &lt;&lt; 'EOF'
+---
+label: Summarize
 order: 55
 ---
-你是文本摘要助手。
-将用户输入压缩为 1-3 句话的简短摘要。
-保留关键信息和原始含义。
-直接输出摘要，不要添加任何说明。</pre>
-      <p>重启应用以加载新模式。</p>
-
-      <h3>示例：正式邮件模式</h3>
-<pre class="code-block">---
-label: 正式邮件
+You are a text summarization assistant.
+Condense the user's input into a brief summary of 1-3 sentences.
+Preserve the key information and original meaning.
+Output only the summary without any explanation.
+EOF
+</code></pre>
+<p>重启应用以加载新模式。</p>
+<h3 id="_7">示例：正式邮件模式</h3>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/formal_email.md &lt;&lt; 'EOF'
+---
+label: Formal Email
 order: 60
 ---
-你是专业的邮件撰写助手。
-将用户输入改写为正式、优雅的邮件正文。
-如果上下文暗示这是一封独立邮件，添加合适的称呼和落款。
-保持原意和关键信息不变。
-直接输出邮件正文，不要添加说明。</pre>
-    </section>
-
-    <!-- Example Library -->
-    <section id="example-library">
-      <h2>模式示例库</h2>
-      <p>现成可用的模板，可直接复制到 <code>~/.config/VoiceText/enhance_modes/</code> 目录。</p>
-
-      <h3>写作与沟通</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#9993; 正式邮件</h4>
-          <p>将口述想法转化为措辞优雅的邮件正文，自动添加称呼和落款。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128203; 会议纪要</h4>
-          <p>将随意的口述内容整理为结构化的会议纪要，标注行动项。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128588; 礼貌润色</h4>
-          <p>让直白或生硬的表达变得更委婉、更得体。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128241; 社交媒体</h4>
-          <p>将口述内容压缩为简短有吸引力的社交媒体文案。</p>
-        </div>
-      </div>
-
-      <h3>摘要与提取</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#128196; 摘要</h4>
-          <p>将长段语音压缩为 1&ndash;3 句核心摘要。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#9745; 提取待办</h4>
-          <p>从口述内容中提取任务和待办事项，生成清单。</p>
-        </div>
-      </div>
-
-      <h3>翻译</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#127471;&#127477; 翻译为日文</h4>
-          <p>中文到自然流畅的日文，自动选择合适的敬语级别。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#127472;&#127479; 翻译为韩文</h4>
-          <p>中文到自然韩文，默认使用 &#54644;&#50836;&#52404;（礼貌非正式体）。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#127760; 中英双语</h4>
-          <p>同时输出修正后的中文原文和英文翻译。</p>
-        </div>
-      </div>
-
-      <h3>开发者工具</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#128451; SQL 查询</h4>
-          <p>将自然语言转换为可执行的 SQL 语句。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128204; Git Commit</h4>
-          <p>根据口述的变更描述生成规范的提交信息。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128221; 代码注释</h4>
-          <p>将口述的逻辑说明转换为简洁的代码注释。</p>
-        </div>
-      </div>
-
-      <h3>特定领域</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#129658; 医疗记录</h4>
-          <p>将临床观察口述整理为规范的医疗记录格式。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#9878; 法律条款</h4>
-          <p>将口语化的条款意图改写为正式的法律语言。</p>
-        </div>
-      </div>
-
-      <h3>创意</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#128516; Emoji 加持</h4>
-          <p>在文本的适当位置添加富有表现力的 emoji。</p>
-        </div>
-        <div class="example-card">
-          <h4>&#127800; 诗意改写</h4>
-          <p>将口述的想法转化为优美、凝练的文学语言。</p>
-        </div>
-      </div>
-
-      <p>完整的提示词模板详见 GitHub 上的 <a href="https://github.com/Airead/VoiceText/blob/main/docs/enhance-mode-examples-zh.md" target="_blank" rel="noopener">增强模式示例集</a>。</p>
-    </section>
-
-    <!-- Prompt Writing Tips -->
-    <section id="prompt-tips">
-      <h2>提示词编写技巧</h2>
-
-      <ol>
-        <li><strong>具体明确。</strong>告诉 LLM 该做什么以及不该做什么。模糊的提示词会导致不稳定的结果。</li>
-        <li><strong>以输出规则结尾。</strong>总是加上类似"直接输出处理后的文本，不要添加任何说明"的规则，防止 LLM 添加额外评论。</li>
-        <li><strong>提及 ASR 上下文。</strong>加上"用户输入来自 ASR，可能包含语音识别错误" &mdash; 这能显著提升纠错效果。</li>
-        <li><strong>使用编号规则。</strong>有编号规则的结构化提示词比段落式说明产生更一致的行为。</li>
-        <li><strong>排序值留间隔。</strong>使用 10、20、30... 这样的 <code>order</code> 值，方便以后在中间插入新模式。</li>
-        <li><strong>用边界情况测试。</strong>尝试短输入、长输入、中英混杂、故意带噪声的 ASR 文本。</li>
-        <li><strong>迭代优化。</strong>从简单开始，测试，然后为 LLM 出错的情况添加规则。过度约束会让 LLM 变得呆板。</li>
-      </ol>
-
-      <h3>示例：结构良好的提示词</h3>
-<pre class="code-block">---
-label: 正式邮件
-order: 100
+You are a professional email writing assistant.
+Rewrite the user's input as a formal, polished email body.
+Use appropriate greetings and closings if context suggests an email.
+Maintain the original intent and key information.
+Output only the email text without any explanation.
+EOF
+</code></pre>
+<h3 id="_8">示例：翻译为日文</h3>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/translate_ja.md &lt;&lt; 'EOF'
 ---
-你是专业的邮件撰写助手。
-用户输入来自 ASR，可能包含谐音字等识别错误 &mdash; 请推断实际意图。
-
-规则：
-1. 将输入改写为正式、优雅的邮件正文
-2. 如果上下文暗示这是一封独立邮件，添加合适的称呼和落款
-3. 保持原意和关键信息不变
-4. 如果用户提到了收件人姓名，在称呼中使用
-5. 直接输出邮件正文，不要添加说明</pre>
-    </section>
-
-    <!-- Manage Modes -->
-    <section id="manage-modes">
-      <h2>管理模式</h2>
-
-      <h3>编辑模式</h3>
-      <p>直接用文本编辑器打开文件，或通过设置 &rarr; AI &rarr; 选择模式 &rarr; 编辑。修改后重启应用（或重新加载配置）生效。</p>
-      <blockquote>内置模式文件可以自由编辑。VoiceText 不会覆盖已存在的文件。</blockquote>
-
-      <h3>删除模式</h3>
-      <p>删除对应的 <code>.md</code> 文件并重启。如果删除的是内置模式文件（如 <code>proofread.md</code>），下次启动时会以默认内容重新创建。</p>
-      <p>要永久禁用内置模式，可将其提示词替换为直通指令：</p>
-<pre class="code-block">---
-label: (已禁用) 纠错润色
+label: Translate to Japanese
+order: 70
+---
+You are a Chinese-to-Japanese translator.
+Translate the user's Chinese input into natural, fluent Japanese.
+Preserve the original meaning and tone.
+Output only the translated text without any explanation.
+EOF
+</code></pre>
+<h2 id="_9">编辑现有模式</h2>
+<p>使用任意文本编辑器直接打开文件：</p>
+<pre><code class="language-bash"># 使用你偏好的编辑器
+open -e ~/.config/VoiceText/enhance_modes/proofread.md
+# 或者
+vim ~/.config/VoiceText/enhance_modes/proofread.md
+</code></pre>
+<p>更改在重启应用后生效。</p>
+<blockquote>
+<p>内置模式文件可以自由编辑。VoiceText 不会覆盖已存在的文件。</p>
+</blockquote>
+<h2 id="_10">删除模式</h2>
+<p>删除对应的 <code>.md</code> 文件并重启：</p>
+<pre><code class="language-bash">rm ~/.config/VoiceText/enhance_modes/summarize.md
+</code></pre>
+<p><strong>注意：</strong> 如果删除内置模式文件（例如 <code>proofread.md</code>），它会在下次启动时以默认内容重新创建。要永久禁用内置模式，请将其提示词替换为直通指令：</p>
+<pre><code class="language-markdown">---
+label: (Disabled) Proofread
 order: 999
 ---
-原样输出用户输入，不做任何修改。</pre>
+Output the user's input exactly as-is, without any changes.
+</code></pre>
+<h2 id="_11">使用技巧</h2>
+<ul>
+<li><strong>排序</strong>：使用有间隔的 <code>order</code> 值（10, 20, 30...），这样可以在现有模式之间插入新模式而无需重新编号。</li>
+<li><strong>提示词质量</strong>：在提示词中要具体明确。告诉 LLM 该做什么以及不该做什么。始终以"仅输出处理后的文本，不要附加任何解释"结尾，以避免不必要的说明文字。</li>
+<li><strong>配置兼容性</strong>：<code>~/.config/VoiceText/config.json</code> 中的 <code>mode</code> 字段存储模式 ID（文件名）。如果模式文件被删除但配置仍引用它，应用会回退到第一个可用的模式。</li>
+<li><strong>非 <code>.md</code> 文件会被忽略</strong>：你可以安全地在模式目录中保留笔记（<code>.txt</code>）或备份（<code>.bak</code>）。</li>
+</ul>
+<p>更多灵感请参见 <a href="enhance-mode-examples.md">增强模式示例</a> —— 一组即用型模板，涵盖写作、翻译、开发工具等场景。</p>
 
-      <h3>整理模式</h3>
-      <ul>
-        <li><strong>非 <code>.md</code> 文件会被忽略</strong> &mdash; 可以在模式目录中安全地存放备注（<code>.txt</code>）或备份（<code>.bak</code>）文件。</li>
-        <li><strong>配置兼容性：</strong>如果模式文件被删除但配置仍引用它，应用会回退到第一个可用模式。</li>
-        <li><strong>快速切换：</strong>在预览面板中按 <code>&#8984;1</code>&ndash;<code>&#8984;9</code> 即可快速切换模式。</li>
-      </ul>
-    </section>
-
-    <!-- Navigation cards -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px;">
-      <a href="error-correction.html" class="doc-nav-card">
-        <h3>&larr; 纠错机制</h3>
-        <p>五层纠错机制协同工作，修复语音识别错误。</p>
+    <div class="doc-nav">
+      <a href="configuration.html" class="doc-nav-card">
+        <h3>&larr; 配置参考</h3>
+        <p>所有配置选项详解。</p>
       </a>
-      <a href="prompt-optimization.html" class="doc-nav-card">
-        <h3>提示词优化工作流 &rarr;</h3>
-        <p>使用诊断工具系统性地提升 AI 增强质量。</p>
+      <a href="enhance-mode-examples.html" class="doc-nav-card">
+        <h3>增强模式示例 &rarr;</h3>
+        <p>即用型增强模式模板。</p>
       </a>
     </div>
-
   </article>
 
 </body>

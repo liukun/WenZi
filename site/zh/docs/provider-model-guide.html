@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>提供商与模型指南 — VoiceText</title>
+  <link rel="icon" type="image/png" href="../../images/icon.png">
+  <link rel="stylesheet" href="../../css/style.css">
+  <style>
+    .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
+    .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
+    .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
+    .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
+    .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
+    .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
+    .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
+    .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
+    .doc-container strong { color: var(--text); }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav class="nav container">
+      <a href="../../" class="nav-brand">
+        <img src="../../images/icon.png" alt="VoiceText icon">
+        VoiceText
+      </a>
+      <ul class="nav-links">
+        <li><a href="../../">&larr; 返回</a></li>
+        <li><a href="../../docs/provider-model-guide.html" class="lang-switch">English</a></li>
+        <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <article class="doc-container">
+    <h1>提供商与模型指南</h1>
+    <p class="doc-subtitle">配置 ASR 和 LLM 提供商。</p>
+
+    <div class="toc">
+      <h2>目录</h2>
+      <div class="toc">
+<ul>
+<li><a href="#asr">ASR 模型选择</a><ul>
+<li><a href="#gui-asr">通过 GUI 配置 ASR</a></li>
+<li><a href="#asr_1">通过配置文件配置 ASR</a></li>
+<li><a href="#asr_2">可用 ASR 模型</a></li>
+</ul>
+</li>
+<li><a href="#asr_3">远程 ASR 服务商</a><ul>
+<li><a href="#gui-asr_1">通过 GUI 配置远程 ASR</a></li>
+<li><a href="#asr_4">通过配置文件配置远程 ASR</a></li>
+<li><a href="#asr_5">远程 ASR 示例</a></li>
+</ul>
+</li>
+<li><a href="#ai-llm">AI (LLM) 服务商配置</a><ul>
+<li><a href="#gui">通过 GUI 配置服务商</a></li>
+<li><a href="#_1">通过配置文件配置服务商</a></li>
+<li><a href="#_2">服务商示例</a></li>
+</ul>
+</li>
+<li><a href="#_3">切换服务商与模型</a><ul>
+<li><a href="#gui_1">通过 GUI 切换</a></li>
+<li><a href="#_4">通过配置文件切换</a></li>
+</ul>
+</li>
+<li><a href="#_5">移除服务商</a><ul>
+<li><a href="#llm">LLM 服务商</a></li>
+<li><a href="#asr_6">ASR 服务商</a></li>
+</ul>
+</li>
+<li><a href="#_6">快速开始示例</a></li>
+</ul>
+</div>
+
+    </div>
+
+<p>本指南说明如何在 VoiceText 中配置 ASR（语音识别）模型和 AI 增强服务商。涵盖 GUI（设置面板）和配置文件两种方式。</p>
+<h2 id="asr">ASR 模型选择</h2>
+<p>VoiceText 支持四种 ASR 后端：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>后端</th>
+<th>最适用场景</th>
+<th>GPU</th>
+<th>离线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FunASR Paraformer</strong>（默认）</td>
+<td>中文语音</td>
+<td>CPU (ONNX)</td>
+<td>是（首次下载后）</td>
+</tr>
+<tr>
+<td><strong>MLX-Whisper</strong></td>
+<td>多语言，Apple Silicon</td>
+<td>GPU (MLX)</td>
+<td>是（首次下载后）</td>
+</tr>
+<tr>
+<td><strong>Apple Speech</strong></td>
+<td>多语言，无需下载</td>
+<td>CPU/Neural Engine</td>
+<td>设备端或服务器端</td>
+</tr>
+<tr>
+<td><strong>Whisper API</strong>（远程）</td>
+<td>云端，任意硬件</td>
+<td>不适用</td>
+<td>否（需要 API）</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="gui-asr">通过 GUI 配置 ASR</h3>
+<p>打开 <strong>Settings...</strong> → <strong>STT</strong> 标签页。所有可用的本地和远程 ASR 模型以单选按钮形式列出。选择其中一个即可切换——当前激活的模型会高亮显示。</p>
+<p>如果所选的 MLX-Whisper 模型尚未下载，VoiceText 会在首次使用时自动下载（菜单栏图标显示 <code>DL X%</code> 下载进度）。已配置服务商的远程 ASR 模型也会显示在此标签页中。</p>
+<h3 id="asr_1">通过配置文件配置 ASR</h3>
+<p>编辑 <code>~/.config/VoiceText/config.json</code>：</p>
+<pre><code class="language-json">{
+  &quot;asr&quot;: {
+    &quot;backend&quot;: &quot;mlx-whisper&quot;,
+    &quot;preset&quot;: &quot;mlx-whisper-small&quot;,
+    &quot;model&quot;: null,
+    &quot;language&quot;: &quot;zh&quot;,
+    &quot;temperature&quot;: 0.0
+  }
+}
+</code></pre>
+<p>关键字段：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend</code></td>
+<td><code>"funasr"</code>、<code>"mlx-whisper"</code> 或 <code>"apple"</code></td>
+</tr>
+<tr>
+<td><code>preset</code></td>
+<td>下表中的预设 ID（推荐的模型选择方式）</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>直接指定模型路径（例如自定义 HuggingFace 模型 ID），会覆盖 <code>preset</code></td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td>MLX-Whisper 的语言代码（<code>"zh"</code>、<code>"en"</code>、<code>"ja"</code> 等），FunASR 忽略此字段</td>
+</tr>
+<tr>
+<td><code>temperature</code></td>
+<td>MLX-Whisper 的解码温度。<code>0.0</code> = 贪心解码</td>
+</tr>
+</tbody>
+</table></div>
+<p>编辑后需重启 VoiceText 使更改生效。</p>
+<h3 id="asr_2">可用 ASR 模型</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>预设 ID</th>
+<th>后端</th>
+<th>模型</th>
+<th>大小</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>funasr-paraformer</code></td>
+<td>funasr</td>
+<td>Paraformer-large（中文）</td>
+<td>~400 MB</td>
+</tr>
+<tr>
+<td><code>apple-speech-ondevice</code></td>
+<td>apple-speech</td>
+<td>Apple Speech（设备端）</td>
+<td>内置</td>
+</tr>
+<tr>
+<td><code>apple-speech-server</code></td>
+<td>apple-speech</td>
+<td>Apple Speech（服务器端）</td>
+<td>内置</td>
+</tr>
+<tr>
+<td><code>mlx-whisper-medium</code></td>
+<td>mlx-whisper</td>
+<td><code>mlx-community/whisper-medium</code></td>
+<td>~1.5 GB</td>
+</tr>
+<tr>
+<td><code>mlx-whisper-large-v3-turbo</code></td>
+<td>mlx-whisper</td>
+<td><code>mlx-community/whisper-large-v3-turbo</code></td>
+<td>~1.6 GB</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>注意：</strong> MLX-Whisper 的 tiny/base/small 模型没有预设，但可以通过直接设置 <code>asr.model</code> 来使用（例如 <code>"model": "mlx-community/whisper-small"</code>）。</p>
+</blockquote>
+<hr />
+<h2 id="asr_3">远程 ASR 服务商</h2>
+<p>除本地 ASR 后端外，VoiceText 还支持通过 OpenAI 兼容的音频转录 API（例如 Groq、OpenAI）进行远程 ASR。远程服务商的配置与 LLM 服务商分开管理。</p>
+<h3 id="gui-asr_1">通过 GUI 配置远程 ASR</h3>
+<ol>
+<li>
+<p>打开 <strong>Settings...</strong> → <strong>STT</strong> 标签页 → <strong>Add Provider...</strong></p>
+</li>
+<li>
+<p>填写服务商详情（对话框格式与 LLM 服务商相同）：</p>
+</li>
+</ol>
+<p><code>name: groq
+   base_url: https://api.groq.com/openai/v1
+   api_key: gsk-xxx
+   models:
+     whisper-large-v3</code></p>
+<ol start="3">
+<li>
+<p>点击 <strong>Verify</strong> — VoiceText 会发送一段短暂的静音音频片段来测试连接。</p>
+</li>
+<li>
+<p>验证通过后，点击 <strong>Save</strong>。新模型将出现在 <strong>STT</strong> 标签页中。</p>
+</li>
+</ol>
+<h3 id="asr_4">通过配置文件配置远程 ASR</h3>
+<p>编辑 <code>~/.config/VoiceText/config.json</code>，在 <code>asr</code> 下添加条目：</p>
+<pre><code class="language-json">{
+  &quot;asr&quot;: {
+    &quot;default_provider&quot;: &quot;groq&quot;,
+    &quot;default_model&quot;: &quot;whisper-large-v3&quot;,
+    &quot;providers&quot;: {
+      &quot;groq&quot;: {
+        &quot;base_url&quot;: &quot;https://api.groq.com/openai/v1&quot;,
+        &quot;api_key&quot;: &quot;gsk-xxx&quot;,
+        &quot;models&quot;: [&quot;whisper-large-v3&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>设置 <code>default_provider</code> 和 <code>default_model</code> 后，VoiceText 启动时将使用远程 ASR 模型。将两者都设为 <code>null</code> 可切换回本地后端。</p>
+<h3 id="asr_5">远程 ASR 示例</h3>
+<p><strong>Groq</strong></p>
+<pre><code class="language-json">&quot;groq&quot;: {
+  &quot;base_url&quot;: &quot;https://api.groq.com/openai/v1&quot;,
+  &quot;api_key&quot;: &quot;gsk-xxx&quot;,
+  &quot;models&quot;: [&quot;whisper-large-v3&quot;]
+}
+</code></pre>
+<p><strong>OpenAI</strong></p>
+<pre><code class="language-json">&quot;openai&quot;: {
+  &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;whisper-1&quot;]
+}
+</code></pre>
+<hr />
+<h2 id="ai-llm">AI (LLM) 服务商配置</h2>
+<p>AI 增强功能使用 OpenAI 兼容的 LLM 服务商。您可以配置多个服务商，并随时在它们之间切换。</p>
+<h3 id="gui">通过 GUI 配置服务商</h3>
+<ol>
+<li>
+<p>打开 <strong>Settings...</strong> → <strong>LLM</strong> 标签页 → <strong>Add Provider...</strong></p>
+</li>
+<li>
+<p>弹出带有模板的文本编辑对话框：</p>
+</li>
+</ol>
+<p><code>name: my-provider
+   base_url: https://api.openai.com/v1
+   api_key: sk-xxx
+   models:
+     gpt-4o
+     gpt-4o-mini
+   extra_body: {"chat_template_kwargs": {"enable_thinking": false}}</code></p>
+<ol start="3">
+<li>
+<p>填写您的服务商信息：
+   - <strong>name</strong>：唯一标识符（例如 <code>openai</code>、<code>deepseek</code>、<code>local-llama</code>）
+   - <strong>base_url</strong>：OpenAI 兼容的 API 端点
+   - <strong>api_key</strong>：您的 API 密钥
+   - <strong>models</strong>：列出可用模型，在 <code>models:</code> 下每行一个
+   - <strong>extra_body</strong>（可选）：随每个请求一起发送的额外 JSON 参数</p>
+</li>
+<li>
+<p>点击 <strong>Verify</strong> — VoiceText 会使用列表中的第一个模型测试连接。</p>
+</li>
+<li>
+<p>验证通过后，点击 <strong>Save</strong> 添加服务商。</p>
+</li>
+</ol>
+<h3 id="_1">通过配置文件配置服务商</h3>
+<p>编辑 <code>~/.config/VoiceText/config.json</code>，在 <code>ai_enhance.providers</code> 下添加条目：</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;default_provider&quot;: &quot;openai&quot;,
+    &quot;default_model&quot;: &quot;gpt-4o&quot;,
+    &quot;providers&quot;: {
+      &quot;openai&quot;: {
+        &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+        &quot;api_key&quot;: &quot;sk-your-key-here&quot;,
+        &quot;models&quot;: [&quot;gpt-4o&quot;, &quot;gpt-4o-mini&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>每个服务商条目需要以下字段：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_url</code></td>
+<td>是</td>
+<td>OpenAI 兼容的 API 端点 URL</td>
+</tr>
+<tr>
+<td><code>api_key</code></td>
+<td>是</td>
+<td>认证密钥</td>
+</tr>
+<tr>
+<td><code>models</code></td>
+<td>是</td>
+<td>该服务商可用的模型名称数组</td>
+</tr>
+<tr>
+<td><code>extra_body</code></td>
+<td>否</td>
+<td>包含额外请求参数的 JSON 对象</td>
+</tr>
+</tbody>
+</table></div>
+<p>编辑后需重启 VoiceText 使更改生效。</p>
+<h3 id="_2">服务商示例</h3>
+<p><strong>Ollama（本地）</strong></p>
+<pre><code class="language-json">&quot;ollama&quot;: {
+  &quot;base_url&quot;: &quot;http://localhost:11434/v1&quot;,
+  &quot;api_key&quot;: &quot;ollama&quot;,
+  &quot;models&quot;: [&quot;qwen2.5:7b&quot;, &quot;llama3.1:8b&quot;]
+}
+</code></pre>
+<p><strong>OpenAI</strong></p>
+<pre><code class="language-json">&quot;openai&quot;: {
+  &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;gpt-4o&quot;, &quot;gpt-4o-mini&quot;]
+}
+</code></pre>
+<p><strong>DeepSeek</strong></p>
+<pre><code class="language-json">&quot;deepseek&quot;: {
+  &quot;base_url&quot;: &quot;https://api.deepseek.com/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;deepseek-chat&quot;, &quot;deepseek-reasoner&quot;]
+}
+</code></pre>
+<p><strong>OpenRouter</strong></p>
+<pre><code class="language-json">&quot;openrouter&quot;: {
+  &quot;base_url&quot;: &quot;https://openrouter.ai/api/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-or-xxx&quot;,
+  &quot;models&quot;: [&quot;anthropic/claude-sonnet-4&quot;, &quot;google/gemini-2.5-flash&quot;]
+}
+</code></pre>
+<p><strong>Qwen（支持扩展思考）</strong></p>
+<pre><code class="language-json">&quot;qwen&quot;: {
+  &quot;base_url&quot;: &quot;https://dashscope.aliyuncs.com/compatible-mode/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;qwen3-235b-a22b&quot;, &quot;qwen3-32b&quot;],
+  &quot;extra_body&quot;: {&quot;chat_template_kwargs&quot;: {&quot;enable_thinking&quot;: false}}
+}
+</code></pre>
+<blockquote>
+<p><strong>关于 <code>extra_body</code> 的说明：</strong> 部分服务商需要额外参数。例如，Qwen 模型需要 <code>enable_thinking</code> 来控制思考模式。此字段会与标准 OpenAI 字段一起直接传递在请求体中。</p>
+</blockquote>
+<hr />
+<h2 id="_3">切换服务商与模型</h2>
+<h3 id="gui_1">通过 GUI 切换</h3>
+<p><strong>切换 LLM 服务商/模型：</strong> 打开 <strong>Settings...</strong> → <strong>LLM</strong> 标签页 → 从可用模型列表中选择。</p>
+<p>所有已配置服务商的模型以单选按钮形式显示，当前激活的模型会高亮。</p>
+<p><strong>切换 STT 模型：</strong> 打开 <strong>Settings...</strong> → <strong>STT</strong> 标签页 → 选择一个（本地或远程）。</p>
+<p><strong>切换思考模式：</strong> 打开 <strong>Settings...</strong> → <strong>AI</strong> 标签页 → <strong>Thinking</strong> 复选框。</p>
+<p>您也可以直接在<strong>预览面板</strong>的下拉菜单中切换 STT 和 LLM 模型，无需打开设置面板。</p>
+<h3 id="_4">通过配置文件切换</h3>
+<p>更新 <code>config.json</code> 中的 <code>default_provider</code> 和 <code>default_model</code>：</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;default_provider&quot;: &quot;deepseek&quot;,
+    &quot;default_model&quot;: &quot;deepseek-chat&quot;,
+    &quot;thinking&quot;: false
+  }
+}
+</code></pre>
+<blockquote>
+<p><strong>重要：</strong> <code>default_model</code> 必须是所选服务商 <code>models</code> 数组中列出的模型之一。</p>
+</blockquote>
+<hr />
+<h2 id="_5">移除服务商</h2>
+<h3 id="llm">LLM 服务商</h3>
+<p><strong>通过 GUI：</strong> 打开 <strong>Settings...</strong> → <strong>LLM</strong> 标签页 → <strong>Remove...</strong> → 选择要移除的服务商 → 在对话框中确认。</p>
+<p><strong>通过配置文件：</strong> 从 <code>config.json</code> 的 <code>ai_enhance.providers</code> 中删除该服务商条目。如果它是当前激活的服务商，需将 <code>default_provider</code> 和 <code>default_model</code> 更新为其他可用服务商。</p>
+<h3 id="asr_6">ASR 服务商</h3>
+<p><strong>通过 GUI：</strong> 打开 <strong>Settings...</strong> → <strong>STT</strong> 标签页 → <strong>Remove...</strong> → 选择要移除的服务商 → 在对话框中确认。</p>
+<p><strong>通过配置文件：</strong> 从 <code>config.json</code> 的 <code>asr.providers</code> 中删除该服务商条目。如果它是当前激活的服务商，需将 <code>asr.default_provider</code> 和 <code>asr.default_model</code> 设为 <code>null</code>。</p>
+<blockquote>
+<p>无法移除当前激活的服务商。请先切换到其他服务商/模型。</p>
+</blockquote>
+<hr />
+<h2 id="_6">快速开始示例</h2>
+<p>使用 OpenAI 增强的最简配置：</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;mode&quot;: &quot;proofread&quot;,
+    &quot;default_provider&quot;: &quot;openai&quot;,
+    &quot;default_model&quot;: &quot;gpt-4o-mini&quot;,
+    &quot;providers&quot;: {
+      &quot;openai&quot;: {
+        &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+        &quot;api_key&quot;: &quot;sk-your-key-here&quot;,
+        &quot;models&quot;: [&quot;gpt-4o&quot;, &quot;gpt-4o-mini&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>或使用本地 Ollama（无需 API 密钥）：</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;mode&quot;: &quot;proofread&quot;,
+    &quot;default_provider&quot;: &quot;ollama&quot;,
+    &quot;default_model&quot;: &quot;qwen2.5:7b&quot;,
+    &quot;providers&quot;: {
+      &quot;ollama&quot;: {
+        &quot;base_url&quot;: &quot;http://localhost:11434/v1&quot;,
+        &quot;api_key&quot;: &quot;ollama&quot;,
+        &quot;models&quot;: [&quot;qwen2.5:7b&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>然后在 <strong>Settings...</strong> → <strong>AI</strong> 标签页中选择增强模式（例如"纠错润色"）即可激活。</p>
+
+    <div class="doc-nav">
+      <a href="prompt-optimization.html" class="doc-nav-card">
+        <h3>&larr; Prompt 优化工作流</h3>
+        <p>系统化地提升 AI 增强质量。</p>
+      </a>
+      <a href="vocabulary-embedding-retrieval.html" class="doc-nav-card">
+        <h3>词汇表与向量检索 &rarr;</h3>
+        <p>个人词汇索引以改善纠错。</p>
+      </a>
+    </div>
+  </article>
+
+</body>
+</html>

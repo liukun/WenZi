@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Provider & Model Guide — VoiceText</title>
+  <link rel="icon" type="image/png" href="../images/icon.png">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
+    .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
+    .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
+    .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
+    .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
+    .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
+    .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
+    .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
+    .doc-container strong { color: var(--text); }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav class="nav container">
+      <a href="../" class="nav-brand">
+        <img src="../images/icon.png" alt="VoiceText icon">
+        VoiceText
+      </a>
+      <ul class="nav-links">
+        <li><a href="../">&larr; Back</a></li>
+        <li><a href="../../zh/docs/provider-model-guide.html" class="lang-switch">中文</a></li>
+        <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <article class="doc-container">
+    <h1>Provider & Model Guide</h1>
+    <p class="doc-subtitle">Configure ASR and LLM providers.</p>
+
+    <div class="toc">
+      <h2>Table of Contents</h2>
+      <div class="toc">
+<ul>
+<li><a href="#asr-model-selection">ASR Model Selection</a><ul>
+<li><a href="#asr-via-gui">ASR Via GUI</a></li>
+<li><a href="#asr-via-config-file">ASR Via Config File</a></li>
+<li><a href="#available-asr-models">Available ASR Models</a></li>
+</ul>
+</li>
+<li><a href="#remote-asr-providers">Remote ASR Providers</a><ul>
+<li><a href="#remote-asr-via-gui">Remote ASR Via GUI</a></li>
+<li><a href="#remote-asr-via-config-file">Remote ASR Via Config File</a></li>
+<li><a href="#remote-asr-examples">Remote ASR Examples</a></li>
+</ul>
+</li>
+<li><a href="#ai-llm-provider-configuration">AI (LLM) Provider Configuration</a><ul>
+<li><a href="#provider-via-gui">Provider Via GUI</a></li>
+<li><a href="#provider-via-config-file">Provider Via Config File</a></li>
+<li><a href="#provider-examples">Provider Examples</a></li>
+</ul>
+</li>
+<li><a href="#switching-provider-model">Switching Provider &amp; Model</a><ul>
+<li><a href="#switching-via-gui">Switching Via GUI</a></li>
+<li><a href="#switching-via-config-file">Switching Via Config File</a></li>
+</ul>
+</li>
+<li><a href="#removing-a-provider">Removing a Provider</a><ul>
+<li><a href="#llm-provider">LLM Provider</a></li>
+<li><a href="#asr-provider">ASR Provider</a></li>
+</ul>
+</li>
+<li><a href="#quick-start-example">Quick Start Example</a></li>
+</ul>
+</div>
+
+    </div>
+
+<p>This guide explains how to configure ASR (speech recognition) models and AI enhancement providers in VoiceText. Both GUI (Settings panel) and config file approaches are covered.</p>
+<h2 id="asr-model-selection">ASR Model Selection</h2>
+<p>VoiceText supports four ASR backends:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Backend</th>
+<th>Best For</th>
+<th>GPU</th>
+<th>Offline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FunASR Paraformer</strong> (default)</td>
+<td>Chinese speech</td>
+<td>CPU (ONNX)</td>
+<td>Yes (after first download)</td>
+</tr>
+<tr>
+<td><strong>MLX-Whisper</strong></td>
+<td>Multi-language, Apple Silicon</td>
+<td>GPU (MLX)</td>
+<td>Yes (after first download)</td>
+</tr>
+<tr>
+<td><strong>Apple Speech</strong></td>
+<td>Multi-language, no download needed</td>
+<td>CPU/Neural Engine</td>
+<td>On-device or server-based</td>
+</tr>
+<tr>
+<td><strong>Whisper API</strong> (remote)</td>
+<td>Cloud-based, any hardware</td>
+<td>N/A</td>
+<td>No (requires API)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="asr-via-gui">ASR Via GUI</h3>
+<p>Open <strong>Settings...</strong> → <strong>STT</strong> tab. All available local and remote ASR models are listed as radio buttons. Select one to switch — the active model is highlighted.</p>
+<p>If the selected MLX-Whisper model hasn't been downloaded yet, VoiceText will download it automatically on first use (the menubar icon shows <code>DL X%</code> progress). Remote ASR models from configured providers also appear in this tab.</p>
+<h3 id="asr-via-config-file">ASR Via Config File</h3>
+<p>Edit <code>~/.config/VoiceText/config.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;asr&quot;: {
+    &quot;backend&quot;: &quot;mlx-whisper&quot;,
+    &quot;preset&quot;: &quot;mlx-whisper-small&quot;,
+    &quot;model&quot;: null,
+    &quot;language&quot;: &quot;zh&quot;,
+    &quot;temperature&quot;: 0.0
+  }
+}
+</code></pre>
+<p>Key fields:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend</code></td>
+<td><code>"funasr"</code>, <code>"mlx-whisper"</code>, or <code>"apple"</code></td>
+</tr>
+<tr>
+<td><code>preset</code></td>
+<td>Preset ID from the table below (recommended way to select a model)</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>Direct model path override (e.g. a custom HuggingFace model ID). Overrides <code>preset</code></td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td>Language code for MLX-Whisper (<code>"zh"</code>, <code>"en"</code>, <code>"ja"</code>, etc.). Ignored by FunASR</td>
+</tr>
+<tr>
+<td><code>temperature</code></td>
+<td>Decoding temperature for MLX-Whisper. <code>0.0</code> = greedy</td>
+</tr>
+</tbody>
+</table></div>
+<p>After editing, restart VoiceText for changes to take effect.</p>
+<h3 id="available-asr-models">Available ASR Models</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Preset ID</th>
+<th>Backend</th>
+<th>Model</th>
+<th>Size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>funasr-paraformer</code></td>
+<td>funasr</td>
+<td>Paraformer-large (Chinese)</td>
+<td>~400 MB</td>
+</tr>
+<tr>
+<td><code>apple-speech-ondevice</code></td>
+<td>apple-speech</td>
+<td>Apple Speech (On-Device)</td>
+<td>Built-in</td>
+</tr>
+<tr>
+<td><code>apple-speech-server</code></td>
+<td>apple-speech</td>
+<td>Apple Speech (Server)</td>
+<td>Built-in</td>
+</tr>
+<tr>
+<td><code>mlx-whisper-medium</code></td>
+<td>mlx-whisper</td>
+<td><code>mlx-community/whisper-medium</code></td>
+<td>~1.5 GB</td>
+</tr>
+<tr>
+<td><code>mlx-whisper-large-v3-turbo</code></td>
+<td>mlx-whisper</td>
+<td><code>mlx-community/whisper-large-v3-turbo</code></td>
+<td>~1.6 GB</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>Note:</strong> MLX-Whisper tiny/base/small models are not available as presets but can be used by setting <code>asr.model</code> directly (e.g., <code>"model": "mlx-community/whisper-small"</code>).</p>
+</blockquote>
+<hr />
+<h2 id="remote-asr-providers">Remote ASR Providers</h2>
+<p>In addition to local ASR backends, VoiceText supports remote ASR via OpenAI-compatible audio transcription APIs (e.g. Groq, OpenAI). Remote providers are configured separately from LLM providers.</p>
+<h3 id="remote-asr-via-gui">Remote ASR Via GUI</h3>
+<ol>
+<li>
+<p>Open <strong>Settings...</strong> → <strong>STT</strong> tab → <strong>Add Provider...</strong></p>
+</li>
+<li>
+<p>Fill in the provider details (same dialog format as LLM providers):</p>
+</li>
+</ol>
+<p><code>name: groq
+   base_url: https://api.groq.com/openai/v1
+   api_key: gsk-xxx
+   models:
+     whisper-large-v3</code></p>
+<ol start="3">
+<li>
+<p>Click <strong>Verify</strong> — VoiceText will test the connection by sending a short silent audio clip.</p>
+</li>
+<li>
+<p>If verification passes, click <strong>Save</strong>. The new models appear in the <strong>STT</strong> tab.</p>
+</li>
+</ol>
+<h3 id="remote-asr-via-config-file">Remote ASR Via Config File</h3>
+<p>Edit <code>~/.config/VoiceText/config.json</code> and add entries under <code>asr</code>:</p>
+<pre><code class="language-json">{
+  &quot;asr&quot;: {
+    &quot;default_provider&quot;: &quot;groq&quot;,
+    &quot;default_model&quot;: &quot;whisper-large-v3&quot;,
+    &quot;providers&quot;: {
+      &quot;groq&quot;: {
+        &quot;base_url&quot;: &quot;https://api.groq.com/openai/v1&quot;,
+        &quot;api_key&quot;: &quot;gsk-xxx&quot;,
+        &quot;models&quot;: [&quot;whisper-large-v3&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>When <code>default_provider</code> and <code>default_model</code> are set, VoiceText starts with the remote ASR model. Set both to <code>null</code> to use a local backend.</p>
+<h3 id="remote-asr-examples">Remote ASR Examples</h3>
+<p><strong>Groq</strong></p>
+<pre><code class="language-json">&quot;groq&quot;: {
+  &quot;base_url&quot;: &quot;https://api.groq.com/openai/v1&quot;,
+  &quot;api_key&quot;: &quot;gsk-xxx&quot;,
+  &quot;models&quot;: [&quot;whisper-large-v3&quot;]
+}
+</code></pre>
+<p><strong>OpenAI</strong></p>
+<pre><code class="language-json">&quot;openai&quot;: {
+  &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;whisper-1&quot;]
+}
+</code></pre>
+<hr />
+<h2 id="ai-llm-provider-configuration">AI (LLM) Provider Configuration</h2>
+<p>AI enhancement uses OpenAI-compatible LLM providers. You can configure multiple providers and switch between them at any time.</p>
+<h3 id="provider-via-gui">Provider Via GUI</h3>
+<ol>
+<li>
+<p>Open <strong>Settings...</strong> → <strong>LLM</strong> tab → <strong>Add Provider...</strong></p>
+</li>
+<li>
+<p>A text editor dialog appears with a template:</p>
+</li>
+</ol>
+<p><code>name: my-provider
+   base_url: https://api.openai.com/v1
+   api_key: sk-xxx
+   models:
+     gpt-4o
+     gpt-4o-mini
+   extra_body: {"chat_template_kwargs": {"enable_thinking": false}}</code></p>
+<ol start="3">
+<li>
+<p>Fill in your provider details:
+   - <strong>name</strong>: A unique identifier (e.g. <code>openai</code>, <code>deepseek</code>, <code>local-llama</code>)
+   - <strong>base_url</strong>: The OpenAI-compatible API endpoint
+   - <strong>api_key</strong>: Your API key
+   - <strong>models</strong>: List your available models, one per line under <code>models:</code>
+   - <strong>extra_body</strong> (optional): Additional JSON parameters sent with every request</p>
+</li>
+<li>
+<p>Click <strong>Verify</strong> — VoiceText will test the connection using the first model in your list.</p>
+</li>
+<li>
+<p>If verification passes, click <strong>Save</strong> to add the provider.</p>
+</li>
+</ol>
+<h3 id="provider-via-config-file">Provider Via Config File</h3>
+<p>Edit <code>~/.config/VoiceText/config.json</code> and add entries under <code>ai_enhance.providers</code>:</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;default_provider&quot;: &quot;openai&quot;,
+    &quot;default_model&quot;: &quot;gpt-4o&quot;,
+    &quot;providers&quot;: {
+      &quot;openai&quot;: {
+        &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+        &quot;api_key&quot;: &quot;sk-your-key-here&quot;,
+        &quot;models&quot;: [&quot;gpt-4o&quot;, &quot;gpt-4o-mini&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>Each provider entry requires:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_url</code></td>
+<td>Yes</td>
+<td>OpenAI-compatible API endpoint URL</td>
+</tr>
+<tr>
+<td><code>api_key</code></td>
+<td>Yes</td>
+<td>Authentication key</td>
+</tr>
+<tr>
+<td><code>models</code></td>
+<td>Yes</td>
+<td>Array of model names available from this provider</td>
+</tr>
+<tr>
+<td><code>extra_body</code></td>
+<td>No</td>
+<td>JSON object with extra request parameters</td>
+</tr>
+</tbody>
+</table></div>
+<p>After editing, restart VoiceText for changes to take effect.</p>
+<h3 id="provider-examples">Provider Examples</h3>
+<p><strong>Ollama (local)</strong></p>
+<pre><code class="language-json">&quot;ollama&quot;: {
+  &quot;base_url&quot;: &quot;http://localhost:11434/v1&quot;,
+  &quot;api_key&quot;: &quot;ollama&quot;,
+  &quot;models&quot;: [&quot;qwen2.5:7b&quot;, &quot;llama3.1:8b&quot;]
+}
+</code></pre>
+<p><strong>OpenAI</strong></p>
+<pre><code class="language-json">&quot;openai&quot;: {
+  &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;gpt-4o&quot;, &quot;gpt-4o-mini&quot;]
+}
+</code></pre>
+<p><strong>DeepSeek</strong></p>
+<pre><code class="language-json">&quot;deepseek&quot;: {
+  &quot;base_url&quot;: &quot;https://api.deepseek.com/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;deepseek-chat&quot;, &quot;deepseek-reasoner&quot;]
+}
+</code></pre>
+<p><strong>OpenRouter</strong></p>
+<pre><code class="language-json">&quot;openrouter&quot;: {
+  &quot;base_url&quot;: &quot;https://openrouter.ai/api/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-or-xxx&quot;,
+  &quot;models&quot;: [&quot;anthropic/claude-sonnet-4&quot;, &quot;google/gemini-2.5-flash&quot;]
+}
+</code></pre>
+<p><strong>Qwen (with extended thinking)</strong></p>
+<pre><code class="language-json">&quot;qwen&quot;: {
+  &quot;base_url&quot;: &quot;https://dashscope.aliyuncs.com/compatible-mode/v1&quot;,
+  &quot;api_key&quot;: &quot;sk-xxx&quot;,
+  &quot;models&quot;: [&quot;qwen3-235b-a22b&quot;, &quot;qwen3-32b&quot;],
+  &quot;extra_body&quot;: {&quot;chat_template_kwargs&quot;: {&quot;enable_thinking&quot;: false}}
+}
+</code></pre>
+<blockquote>
+<p><strong>Note on <code>extra_body</code>:</strong> Some providers require additional parameters. For example, Qwen models need <code>enable_thinking</code> to control the thinking mode. This field is passed directly in the request body alongside the standard OpenAI fields.</p>
+</blockquote>
+<hr />
+<h2 id="switching-provider-model">Switching Provider &amp; Model</h2>
+<h3 id="switching-via-gui">Switching Via GUI</h3>
+<p><strong>Switch LLM provider/model:</strong> Open <strong>Settings...</strong> → <strong>LLM</strong> tab → select from the list of available models.</p>
+<p>All models from all configured providers are shown as radio buttons. The active model is highlighted.</p>
+<p><strong>Switch STT model:</strong> Open <strong>Settings...</strong> → <strong>STT</strong> tab → select one (local or remote).</p>
+<p><strong>Toggle thinking mode:</strong> Open <strong>Settings...</strong> → <strong>AI</strong> tab → <strong>Thinking</strong> checkbox.</p>
+<p>You can also switch STT and LLM models directly from the <strong>preview panel</strong> dropdowns without opening the Settings panel.</p>
+<h3 id="switching-via-config-file">Switching Via Config File</h3>
+<p>Update <code>default_provider</code> and <code>default_model</code> in <code>config.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;default_provider&quot;: &quot;deepseek&quot;,
+    &quot;default_model&quot;: &quot;deepseek-chat&quot;,
+    &quot;thinking&quot;: false
+  }
+}
+</code></pre>
+<blockquote>
+<p><strong>Important:</strong> The <code>default_model</code> must be one of the models listed in the selected provider's <code>models</code> array.</p>
+</blockquote>
+<hr />
+<h2 id="removing-a-provider">Removing a Provider</h2>
+<h3 id="llm-provider">LLM Provider</h3>
+<p><strong>Via GUI:</strong> Open <strong>Settings...</strong> → <strong>LLM</strong> tab → <strong>Remove...</strong> → select the provider to remove → confirm in the dialog.</p>
+<p><strong>Via Config File:</strong> Delete the provider entry from <code>ai_enhance.providers</code> in <code>config.json</code>. If it was the active provider, update <code>default_provider</code> and <code>default_model</code> to point to a remaining provider.</p>
+<h3 id="asr-provider">ASR Provider</h3>
+<p><strong>Via GUI:</strong> Open <strong>Settings...</strong> → <strong>STT</strong> tab → <strong>Remove...</strong> → select the provider to remove → confirm in the dialog.</p>
+<p><strong>Via Config File:</strong> Delete the provider entry from <code>asr.providers</code> in <code>config.json</code>. If it was the active provider, update <code>asr.default_provider</code> and <code>asr.default_model</code> to <code>null</code>.</p>
+<blockquote>
+<p>The currently active provider cannot be removed. Switch to a different provider/model first.</p>
+</blockquote>
+<hr />
+<h2 id="quick-start-example">Quick Start Example</h2>
+<p>A minimal config to get started with OpenAI enhancement:</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;mode&quot;: &quot;proofread&quot;,
+    &quot;default_provider&quot;: &quot;openai&quot;,
+    &quot;default_model&quot;: &quot;gpt-4o-mini&quot;,
+    &quot;providers&quot;: {
+      &quot;openai&quot;: {
+        &quot;base_url&quot;: &quot;https://api.openai.com/v1&quot;,
+        &quot;api_key&quot;: &quot;sk-your-key-here&quot;,
+        &quot;models&quot;: [&quot;gpt-4o&quot;, &quot;gpt-4o-mini&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>Or with local Ollama (no API key needed):</p>
+<pre><code class="language-json">{
+  &quot;ai_enhance&quot;: {
+    &quot;enabled&quot;: true,
+    &quot;mode&quot;: &quot;proofread&quot;,
+    &quot;default_provider&quot;: &quot;ollama&quot;,
+    &quot;default_model&quot;: &quot;qwen2.5:7b&quot;,
+    &quot;providers&quot;: {
+      &quot;ollama&quot;: {
+        &quot;base_url&quot;: &quot;http://localhost:11434/v1&quot;,
+        &quot;api_key&quot;: &quot;ollama&quot;,
+        &quot;models&quot;: [&quot;qwen2.5:7b&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<p>Then select an enhancement mode from <strong>Settings...</strong> → <strong>AI</strong> tab (e.g. "纠错润色") to activate.</p>
+
+    <div class="doc-nav">
+      <a href="prompt-optimization.html" class="doc-nav-card">
+        <h3>&larr; Prompt Optimization Workflow</h3>
+        <p>Systematically improve AI enhancement quality.</p>
+      </a>
+      <a href="vocabulary-embedding-retrieval.html" class="doc-nav-card">
+        <h3>Vocabulary & Embedding Retrieval &rarr;</h3>
+        <p>Personal vocabulary index for better correction.</p>
+      </a>
+    </div>
+  </article>
+
+</body>
+</html>

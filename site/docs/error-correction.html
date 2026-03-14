@@ -5,60 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Why Error Correction Is So Powerful — VoiceText</title>
   <link rel="icon" type="image/png" href="../images/icon.png">
-  <link rel="alternate" hreflang="zh" href="../zh/docs/error-correction.html" />
-  <link rel="alternate" hreflang="en" href="error-correction.html" />
   <link rel="stylesheet" href="../css/style.css">
   <style>
     .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
     .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
     .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
     .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
     .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
     .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
     .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
     .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
-    .doc-container pre.code-block { margin-bottom: 16px; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
     .doc-container strong { color: var(--text); }
-    .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
-    .toc h2 { margin-top: 0 !important; border-bottom: none !important; }
-    .toc ul { list-style: none; padding-left: 0; }
-    .toc li { margin-bottom: 6px; }
-    .toc a { color: var(--purple); }
-    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-top: 48px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
     .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
-    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; }
-    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.95rem; }
-
-    .layer-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; position: relative; }
-    .layer-card h4 { font-size: 1.05rem; margin-bottom: 8px; color: var(--text); }
-    .layer-card p { margin-bottom: 8px; }
-    .layer-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--purple); color: #fff; font-size: 0.85rem; font-weight: 700; margin-right: 10px; flex-shrink: 0; vertical-align: middle; }
-    .layer-connector { text-align: center; color: var(--purple); font-size: 1.5rem; margin: -8px 0; position: relative; z-index: 1; }
-
-    .example-box { background: var(--bg-alt); border-radius: 10px; padding: 20px 24px; margin: 16px 0 24px; }
-    .example-box .ex-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--purple); margin-bottom: 10px; }
-    .example-box .ex-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 0.95rem; }
-    .example-box .ex-tag { font-weight: 600; color: var(--text); min-width: 80px; flex-shrink: 0; }
-    .example-box .ex-text { color: var(--text-secondary); }
-    .example-box .ex-arrow { color: var(--purple); font-weight: 700; }
-    .example-box .ex-correct { color: var(--purple); font-weight: 600; }
-
-    .pipeline-diagram { background: var(--bg-alt); border-radius: 12px; padding: 28px; margin: 24px 0; text-align: center; }
-    .pipeline-diagram pre { font-size: 0.82rem; line-height: 1.5; text-align: left; display: inline-block; margin: 0 auto; color: var(--text-secondary); }
-
-    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
-    @media (max-width: 600px) { .compare-grid { grid-template-columns: 1fr; } }
-    .compare-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px 20px; }
-    .compare-card h4 { font-size: 0.95rem; margin-bottom: 6px; color: var(--text); }
-    .compare-card p { font-size: 0.9rem; margin: 0; }
-
-    .highlight-box { border-left: 3px solid var(--purple); background: color-mix(in srgb, var(--purple) 5%, var(--bg-alt)); border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 16px 0 24px; }
-    .highlight-box p { margin-bottom: 0; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <header class="site-header">
     <nav class="nav container">
       <a href="../" class="nav-brand">
@@ -67,55 +53,52 @@
       </a>
       <ul class="nav-links">
         <li><a href="../">&larr; Back</a></li>
-        <li><a href="../zh/docs/error-correction.html" class="lang-switch">中文</a></li>
+        <li><a href="../../zh/docs/error-correction.html" class="lang-switch">中文</a></li>
         <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
       </ul>
     </nav>
   </header>
 
-  <!-- Content -->
   <article class="doc-container">
-    <h1 style="font-size: 2.2rem; font-weight: 800; margin-bottom: 8px;">Why Error Correction Is So Powerful</h1>
-    <p style="font-size: 1.1rem; margin-bottom: 32px;">VoiceText doesn't just transcribe &mdash; it builds a multi-layered correction system that gets smarter every time you use it.</p>
+    <h1>Why Error Correction Is So Powerful</h1>
+    <p class="doc-subtitle">Five layers of correction that get smarter every time you use it.</p>
 
-    <!-- Table of Contents -->
     <div class="toc">
       <h2>Table of Contents</h2>
-      <ul>
-        <li><a href="#the-problem">The Problem</a> &mdash; Why raw ASR output isn't good enough</li>
-        <li><a href="#five-layers">Five Layers of Correction</a> &mdash; How VoiceText stacks multiple strategies</li>
-        <li><a href="#layer-1">Layer 1: AI Enhancement</a> &mdash; LLM-powered proofreading and formatting</li>
-        <li><a href="#layer-2">Layer 2: Vocabulary Retrieval</a> &mdash; Embedding-based personal dictionary</li>
-        <li><a href="#layer-3">Layer 3: Conversation History</a> &mdash; Learning from your confirmed corrections</li>
-        <li><a href="#layer-4">Layer 4: Preview Panel</a> &mdash; Human-in-the-loop review</li>
-        <li><a href="#layer-5">Layer 5: Self-Improving Loop</a> &mdash; Every correction makes the system better</li>
-        <li><a href="#example-walkthrough">Full Example</a> &mdash; See all five layers in action</li>
-        <li><a href="#vs-other-tools">Compared to Other Tools</a> &mdash; What makes VoiceText different</li>
-      </ul>
+      <div class="toc">
+<ul>
+<li><a href="#the-problem">The Problem</a></li>
+<li><a href="#five-layers-of-correction">Five Layers of Correction</a></li>
+<li><a href="#layer-1-ai-enhancement">Layer 1: AI Enhancement</a></li>
+<li><a href="#layer-2-vocabulary-retrieval">Layer 2: Vocabulary Retrieval</a></li>
+<li><a href="#layer-3-conversation-history">Layer 3: Conversation History</a><ul>
+<li><a href="#what-gets-injected">What Gets Injected</a></li>
+<li><a href="#three-problems-this-solves">Three Problems This Solves</a></li>
+</ul>
+</li>
+<li><a href="#layer-4-preview-panel">Layer 4: Preview Panel</a></li>
+<li><a href="#layer-5-self-improving-loop">Layer 5: Self-Improving Loop</a></li>
+<li><a href="#full-example-all-layers-in-action">Full Example: All Layers in Action</a></li>
+<li><a href="#compared-to-other-tools">Compared to Other Tools</a></li>
+</ul>
+</div>
+
     </div>
 
-    <!-- The Problem -->
-    <section id="the-problem">
-      <h2>The Problem</h2>
-      <p>Every speech-to-text engine makes mistakes. Even the best ASR models produce errors &mdash; especially with:</p>
-      <ul>
-        <li><strong>Proper nouns</strong> &mdash; People's names, product names, and brand names that the model has never seen</li>
-        <li><strong>Technical terms</strong> &mdash; Domain-specific jargon like "Kubernetes", "OAuth", or "hemoglobin A1C"</li>
-        <li><strong>Homophones</strong> &mdash; "Ciriel" (a name) heard as "cereal", "their" vs "there" vs "they're", "affect" vs "effect"</li>
-        <li><strong>Punctuation and formatting</strong> &mdash; ASR engines output raw text with little or no punctuation</li>
-        <li><strong>Context loss</strong> &mdash; Each transcription is independent &mdash; the engine doesn't know what you said 30 seconds ago</li>
-      </ul>
-      <p>Most voice input tools stop at the ASR output and leave you to manually fix these errors. <strong>VoiceText takes a fundamentally different approach</strong> &mdash; it layers five independent correction strategies to catch what any single strategy would miss.</p>
-    </section>
-
-    <!-- Five Layers Overview -->
-    <section id="five-layers">
-      <h2>Five Layers of Correction</h2>
-      <p>Instead of relying on a single technique, VoiceText stacks multiple correction layers. Each layer catches errors that the previous layers missed:</p>
-
-      <div class="pipeline-diagram">
-<pre>
-  Voice Input
+<p>VoiceText doesn't just transcribe — it builds a multi-layered correction system that gets smarter every time you use it.</p>
+<h2 id="the-problem">The Problem</h2>
+<p>Every speech-to-text engine makes mistakes. Even the best ASR models produce errors — especially with:</p>
+<ul>
+<li><strong>Proper nouns</strong> — People's names, product names, and brand names that the model has never seen</li>
+<li><strong>Technical terms</strong> — Domain-specific jargon like "Kubernetes", "OAuth", or "hemoglobin A1C"</li>
+<li><strong>Homophones</strong> — "Ciriel" (a name) heard as "cereal", "their" vs "there" vs "they're", "affect" vs "effect"</li>
+<li><strong>Punctuation and formatting</strong> — ASR engines output raw text with little or no punctuation</li>
+<li><strong>Context loss</strong> — Each transcription is independent — the engine doesn't know what you said 30 seconds ago</li>
+</ul>
+<p>Most voice input tools stop at the ASR output and leave you to manually fix these errors. <strong>VoiceText takes a fundamentally different approach</strong> — it layers five independent correction strategies to catch what any single strategy would miss.</p>
+<h2 id="five-layers-of-correction">Five Layers of Correction</h2>
+<p>Instead of relying on a single technique, VoiceText stacks multiple correction layers. Each layer catches errors that the previous layers missed:</p>
+<pre><code>  Voice Input
       |
       v
  [ ASR Engine ]  ........  raw transcription (contains errors)
@@ -137,131 +120,75 @@
       |
       v
   Final Text  ........... accurate, formatted, and personalized
-</pre>
-      </div>
-
-      <p>Layers 2 and 3 work by enriching the LLM's system prompt with relevant context. Layer 4 adds human oversight. Layer 5 closes the loop by feeding your corrections back into Layers 2 and 3. The result is a system that <strong>improves with every use</strong>.</p>
-    </section>
-
-    <!-- Layer 1 -->
-    <section id="layer-1">
-      <h2><span class="layer-num">1</span>AI Enhancement</h2>
-      <p>When you enable an enhancement mode (like the built-in <strong>Proofread</strong> mode), VoiceText sends your ASR output to an LLM with a carefully crafted system prompt. The LLM acts as an intelligent post-processor:</p>
-      <ul>
-        <li><strong>Fixes homophones and near-homophones</strong> by understanding context</li>
-        <li><strong>Adds punctuation</strong> that ASR engines typically omit</li>
-        <li><strong>Corrects grammar</strong> without changing your meaning</li>
-        <li><strong>Preserves your voice</strong> &mdash; the prompt explicitly tells the LLM to make minimal changes</li>
-      </ul>
-
-      <div class="example-box">
-        <div class="ex-label">Example</div>
-        <div class="ex-row">
-          <span class="ex-tag">ASR output:</span>
-          <span class="ex-text">lets meet tomorrow at three to discuss the progress on the cereal project</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag ex-arrow">&darr;</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag">Enhanced:</span>
-          <span class="ex-correct">Let's meet tomorrow at three to discuss the progress on the Ciriel project.</span>
-        </div>
-      </div>
-
-      <p>The key advantage: the LLM understands <em>meaning</em>, not just sound. It can distinguish between homophones based on sentence context &mdash; something ASR engines alone cannot do.</p>
-
-      <blockquote>Enhancement modes are fully customizable Markdown files. You can create modes for translation, formatting, code generation, or any other text transformation. See <a href="enhance-modes.html">AI Enhancement Modes</a> for details.</blockquote>
-    </section>
-
-    <!-- Layer 2 -->
-    <section id="layer-2">
-      <h2><span class="layer-num">2</span>Vocabulary Retrieval</h2>
-      <p>Generic LLMs don't know your colleague's name, your company's product names, or the technical terms you use daily. VoiceText solves this with an <strong>embedding-based personal vocabulary system</strong>:</p>
-
-      <ol>
-        <li><strong>Build</strong> &mdash; VoiceText extracts proper nouns and technical terms from your correction history using an LLM. Each term includes its correct form, category, and common ASR misrecognitions.</li>
-        <li><strong>Index</strong> &mdash; Terms are embedded into a vector space using a multilingual model (<code>paraphrase-multilingual-MiniLM-L12-v2</code>), creating a semantic search index. Runs 100% locally.</li>
-        <li><strong>Retrieve</strong> &mdash; When you speak, your ASR text is embedded and matched against the index. Only the top-K most relevant terms are injected into the LLM's system prompt.</li>
-      </ol>
-
-      <div class="example-box">
-        <div class="ex-label">How it helps</div>
-        <div class="ex-row">
-          <span class="ex-tag">ASR output:</span>
-          <span class="ex-text">deploy the service to cooper netties</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag">Vocab match:</span>
-          <span class="ex-text" style="font-size: 0.88rem;">Kubernetes (container orchestration) &mdash; variants: cooper netties, kuber nettis</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag ex-arrow">&darr;</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag">Enhanced:</span>
-          <span class="ex-correct">Deploy the service to Kubernetes.</span>
-        </div>
-      </div>
-
-      <p>Why embedding retrieval instead of keyword matching? Because ASR errors are <strong>phonetically similar but orthographically different</strong>. Multilingual embeddings capture phonetic proximity that simple string matching cannot. And unlike dumping your entire vocabulary into every prompt, retrieval scales efficiently &mdash; you only inject what's relevant.</p>
-
-      <div class="highlight-box">
-        <p><strong>Key insight:</strong> The vocabulary system is essentially a lightweight, local RAG (Retrieval-Augmented Generation) pipeline &mdash; purpose-built for voice input correction.</p>
-      </div>
-    </section>
-
-    <!-- Layer 3 -->
-    <section id="layer-3">
-      <h2><span class="layer-num">3</span>Conversation History</h2>
-      <p>Real conversations have continuity. When you say "she was happy today", the word "she" only makes sense in the context of a previous sentence. VoiceText addresses this by injecting your <strong>recent confirmed outputs</strong> into the LLM's prompt.</p>
-
-      <p>The core insight: <strong>your confirmed output is the highest-quality signal for what you actually mean.</strong> Unlike raw ASR text (which has errors) or AI output (which may over-correct), the final confirmed text represents your true intent.</p>
-
-      <h3>What Gets Injected</h3>
-      <p>Only sessions where you used the Preview panel and confirmed the result are included. This is a deliberate quality decision &mdash; a smaller set of verified data beats a larger set of unverified data.</p>
-
-      <div class="example-box">
-        <div class="ex-label">Injected context (token-efficient format)</div>
-<pre class="code-block" style="font-size: 0.85rem; margin: 0;">- Add a toggle for the conversation history injection feature in the menu bar.
+</code></pre>
+<p>Layers 2 and 3 work by enriching the LLM's system prompt with relevant context. Layer 4 adds human oversight. Layer 5 closes the loop by feeding your corrections back into Layers 2 and 3. The result is a system that <strong>improves with every use</strong>.</p>
+<h2 id="layer-1-ai-enhancement">Layer 1: AI Enhancement</h2>
+<p>When you enable an enhancement mode (like the built-in <strong>Proofread</strong> mode), VoiceText sends your ASR output to an LLM with a carefully crafted system prompt. The LLM acts as an intelligent post-processor:</p>
+<ul>
+<li><strong>Fixes homophones and near-homophones</strong> by understanding context</li>
+<li><strong>Adds punctuation</strong> that ASR engines typically omit</li>
+<li><strong>Corrects grammar</strong> without changing your meaning</li>
+<li><strong>Preserves your voice</strong> — the prompt explicitly tells the LLM to make minimal changes</li>
+</ul>
+<p><strong>Example:</strong></p>
+<ul>
+<li><strong>ASR output:</strong> lets meet tomorrow at three to discuss the progress on the cereal project</li>
+<li><strong>Enhanced:</strong> Let's meet tomorrow at three to discuss the progress on the Ciriel project.</li>
+</ul>
+<p>The key advantage: the LLM understands <em>meaning</em>, not just sound. It can distinguish between homophones based on sentence context — something ASR engines alone cannot do.</p>
+<blockquote>
+<p>Enhancement modes are fully customizable Markdown files. You can create modes for translation, formatting, code generation, or any other text transformation. See <a href="enhance-modes.md">AI Enhancement Modes</a> for details.</p>
+</blockquote>
+<h2 id="layer-2-vocabulary-retrieval">Layer 2: Vocabulary Retrieval</h2>
+<p>Generic LLMs don't know your colleague's name, your company's product names, or the technical terms you use daily. VoiceText solves this with an <strong>embedding-based personal vocabulary system</strong>:</p>
+<ol>
+<li><strong>Build</strong> — VoiceText extracts proper nouns and technical terms from your correction history using an LLM. Each term includes its correct form, category, and common ASR misrecognitions.</li>
+<li><strong>Index</strong> — Terms are embedded into a vector space using a multilingual model (<code>paraphrase-multilingual-MiniLM-L12-v2</code>), creating a semantic search index. Runs 100% locally.</li>
+<li><strong>Retrieve</strong> — When you speak, your ASR text is embedded and matched against the index. Only the top-K most relevant terms are injected into the LLM's system prompt.</li>
+</ol>
+<p><strong>How it helps:</strong></p>
+<ul>
+<li><strong>ASR output:</strong> deploy the service to cooper netties</li>
+<li><strong>Vocab match:</strong> Kubernetes (container orchestration) — variants: cooper netties, kuber nettis</li>
+<li><strong>Enhanced:</strong> Deploy the service to Kubernetes.</li>
+</ul>
+<p>Why embedding retrieval instead of keyword matching? Because ASR errors are <strong>phonetically similar but orthographically different</strong>. Multilingual embeddings capture phonetic proximity that simple string matching cannot. And unlike dumping your entire vocabulary into every prompt, retrieval scales efficiently — you only inject what's relevant.</p>
+<blockquote>
+<p><strong>Key insight:</strong> The vocabulary system is essentially a lightweight, local RAG (Retrieval-Augmented Generation) pipeline — purpose-built for voice input correction.</p>
+</blockquote>
+<h2 id="layer-3-conversation-history">Layer 3: Conversation History</h2>
+<p>Real conversations have continuity. When you say "she was happy today", the word "she" only makes sense in the context of a previous sentence. VoiceText addresses this by injecting your <strong>recent confirmed outputs</strong> into the LLM's prompt.</p>
+<p>The core insight: <strong>your confirmed output is the highest-quality signal for what you actually mean.</strong> Unlike raw ASR text (which has errors) or AI output (which may over-correct), the final confirmed text represents your true intent.</p>
+<h3 id="what-gets-injected">What Gets Injected</h3>
+<p>Only sessions where you used the Preview panel and confirmed the result are included. This is a deliberate quality decision — a smaller set of verified data beats a larger set of unverified data.</p>
+<p><strong>Injected context (token-efficient format):</strong></p>
+<pre><code>- Add a toggle for the conversation history injection feature in the menu bar.
 - Now test the history context injection feature.
-- I met cereal at the park today. &rarr; I met Ciriel at the park today.
-- cereal told me she had noodles today. &rarr; Ciriel told me she had noodles today.</pre>
-      </div>
-
-      <p>The arrow notation shows correction patterns. When the LLM sees that "cereal" was corrected to "Ciriel" in a previous turn, it can make the same correction automatically in subsequent inputs &mdash; <strong>without you ever adding it to a dictionary</strong>.</p>
-
-      <h3>Three Problems This Solves</h3>
-      <ul>
-        <li><strong>Consistent entity resolution</strong> &mdash; Once you confirm "Ciriel", subsequent mentions are corrected automatically.</li>
-        <li><strong>Topic-aware enhancement</strong> &mdash; The LLM understands the current conversation topic and makes contextually appropriate decisions.</li>
-        <li><strong>Style adaptation</strong> &mdash; The LLM observes your writing patterns and matches your tone and formatting preferences.</li>
-      </ul>
-    </section>
-
-    <!-- Layer 4 -->
-    <section id="layer-4">
-      <h2><span class="layer-num">4</span>Preview Panel</h2>
-      <p>The Preview panel is VoiceText's <strong>human-in-the-loop</strong> interface. Before text is typed into your active application, you can review and refine it:</p>
-      <ul>
-        <li><strong>Compare</strong> the raw ASR output with the AI-enhanced result side by side</li>
-        <li><strong>Edit</strong> the final text directly in an editable field</li>
-        <li><strong>Switch modes</strong> on the fly with keyboard shortcuts (<code>&#8984;1</code>&ndash;<code>&#8984;9</code>) and re-enhance instantly</li>
-        <li><strong>Inspect thinking</strong> &mdash; see the LLM's reasoning process (if the model supports it)</li>
-      </ul>
-      <p>This is more than a convenience feature. Every edit you make in the Preview panel becomes a <strong>training signal</strong> for the system. When you correct "cereal" to "Ciriel", that correction is recorded with a <code>user_corrected: true</code> flag, feeding back into Layers 2 and 3.</p>
-
-      <blockquote>The Preview panel also serves as a <strong>prompt tuning workbench</strong>. You can test different prompts, compare models, and systematically improve enhancement quality. See <a href="prompt-optimization.html">Prompt Optimization Workflow</a> for the full process.</blockquote>
-    </section>
-
-    <!-- Layer 5 -->
-    <section id="layer-5">
-      <h2><span class="layer-num">5</span>Self-Improving Loop</h2>
-      <p>This is what ties everything together. VoiceText creates a <strong>virtuous cycle</strong> where every correction you make improves future corrections:</p>
-
-      <div class="pipeline-diagram">
-<pre>
-  You speak  ──►  ASR  ──►  AI + Vocab + History  ──►  Preview Panel
+- I met cereal at the park today. → I met Ciriel at the park today.
+- cereal told me she had noodles today. → Ciriel told me she had noodles today.
+</code></pre>
+<p>The arrow notation shows correction patterns. When the LLM sees that "cereal" was corrected to "Ciriel" in a previous turn, it can make the same correction automatically in subsequent inputs — <strong>without you ever adding it to a dictionary</strong>.</p>
+<h3 id="three-problems-this-solves">Three Problems This Solves</h3>
+<ul>
+<li><strong>Consistent entity resolution</strong> — Once you confirm "Ciriel", subsequent mentions are corrected automatically.</li>
+<li><strong>Topic-aware enhancement</strong> — The LLM understands the current conversation topic and makes contextually appropriate decisions.</li>
+<li><strong>Style adaptation</strong> — The LLM observes your writing patterns and matches your tone and formatting preferences.</li>
+</ul>
+<h2 id="layer-4-preview-panel">Layer 4: Preview Panel</h2>
+<p>The Preview panel is VoiceText's <strong>human-in-the-loop</strong> interface. Before text is typed into your active application, you can review and refine it:</p>
+<ul>
+<li><strong>Compare</strong> the raw ASR output with the AI-enhanced result side by side</li>
+<li><strong>Edit</strong> the final text directly in an editable field</li>
+<li><strong>Switch modes</strong> on the fly with keyboard shortcuts (<code>⌘1</code>–<code>⌘9</code>) and re-enhance instantly</li>
+<li><strong>Inspect thinking</strong> — see the LLM's reasoning process (if the model supports it)</li>
+</ul>
+<p>This is more than a convenience feature. Every edit you make in the Preview panel becomes a <strong>training signal</strong> for the system. When you correct "cereal" to "Ciriel", that correction is recorded with a <code>user_corrected: true</code> flag, feeding back into Layers 2 and 3.</p>
+<blockquote>
+<p>The Preview panel also serves as a <strong>prompt tuning workbench</strong>. You can test different prompts, compare models, and systematically improve enhancement quality. See <a href="prompt-optimization-workflow.md">Prompt Optimization Workflow</a> for the full process.</p>
+</blockquote>
+<h2 id="layer-5-self-improving-loop">Layer 5: Self-Improving Loop</h2>
+<p>This is what ties everything together. VoiceText creates a <strong>virtuous cycle</strong> where every correction you make improves future corrections:</p>
+<pre><code>  You speak  ──►  ASR  ──►  AI + Vocab + History  ──►  Preview Panel
                                                             |
           ┌─────────────────────────────────────────────────┘
           |  (user confirms or corrects)
@@ -272,164 +199,108 @@
           |     (extracts terms)         (proper nouns)        (semantic search)
           |
           └──►  History Injection  ──►  recent context for LLM
-</pre>
-      </div>
+</code></pre>
+<ol>
+<li><strong>You correct</strong> an error in the Preview panel (e.g., "cereal" → "Ciriel")</li>
+<li><strong>VoiceText records</strong> the ASR text, AI output, and your final confirmed text</li>
+<li><strong>Conversation history</strong> uses this immediately — the next input already benefits from your correction</li>
+<li><strong>Vocabulary builder</strong> periodically extracts new terms from your correction history and rebuilds the embedding index</li>
+<li><strong>Future inputs</strong> get better enhancement because the LLM now has both recent context and a personal vocabulary</li>
+</ol>
+<blockquote>
+<p><strong>The more you use VoiceText, the better it gets.</strong> Your corrections aren't just fixing the current text — they're teaching the system your vocabulary, your preferences, and your common topics. Over time, you'll find yourself making fewer and fewer corrections.</p>
+</blockquote>
+<h2 id="full-example-all-layers-in-action">Full Example: All Layers in Action</h2>
+<p>Let's trace a real scenario through all five layers:</p>
+<p><strong>Scenario:</strong> Talking about a colleague "Ciriel" and a project using Kubernetes.</p>
+<p><strong>Step 1 — ASR Output:</strong>
+You say: "Ciriel said just deploy the service to Kubernetes and we're good"
+ASR produces: <code>cereal said just deploy the service to cooper netties and were good</code>
+Errors: "Ciriel" → "cereal", "Kubernetes" → "cooper netties", "we're" → "were"</p>
+<p><strong>Step 2 — Vocabulary Retrieval Kicks In:</strong>
+The embedding index finds <strong>Kubernetes</strong> (variants: cooper netties, kuber nettis) is semantically close to the input. This term is injected into the LLM prompt.</p>
+<p><strong>Step 3 — Conversation History Provides Context:</strong>
+Your recent history shows: <code>cereal told me she had noodles today. → Ciriel told me she had noodles today.</code> The LLM now knows "cereal" should be "Ciriel".</p>
+<p><strong>Step 4 — AI Enhancement Result (Layers 1+2+3):</strong>
+The LLM, armed with vocabulary context and conversation history, produces:
+<em>Ciriel said just deploy the service to Kubernetes and we're good.</em>
+All errors corrected. Punctuation added.</p>
+<p><strong>Step 5 — Preview Panel: You Confirm:</strong>
+The result looks perfect. You press Enter to confirm. The text is typed into your active application.</p>
+<p><strong>Step 6 — Self-Improving: Recorded for the Future:</strong>
+This session is logged. Next time you mention "Ciriel" or "Kubernetes", the system will be even more confident in making the right correction.</p>
+<h2 id="compared-to-other-tools">Compared to Other Tools</h2>
+<p>Most voice input tools fall into one of two categories:</p>
+<ul>
+<li><strong>Basic Voice Input</strong> — Transcribes speech and types it directly. No correction, no context, no learning. You fix every error manually.</li>
+<li><strong>Cloud Voice Assistants</strong> — Good accuracy for general speech, but no customization for your vocabulary. No correction loop. Privacy concerns with always-on cloud processing.</li>
+</ul>
+<p>VoiceText is different because it combines <strong>local-first processing</strong> (your data stays on your machine) with <strong>intelligent, layered correction</strong> that adapts to you:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Basic Tools</th>
+<th>Cloud Assistants</th>
+<th>VoiceText</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Offline support</td>
+<td>Some</td>
+<td>No</td>
+<td><strong>Yes (default)</strong></td>
+</tr>
+<tr>
+<td>AI error correction</td>
+<td>No</td>
+<td>Limited</td>
+<td><strong>Customizable LLM</strong></td>
+</tr>
+<tr>
+<td>Personal vocabulary</td>
+<td>No</td>
+<td>No</td>
+<td><strong>Embedding-based RAG</strong></td>
+</tr>
+<tr>
+<td>Learns from corrections</td>
+<td>No</td>
+<td>No</td>
+<td><strong>Yes (automatic)</strong></td>
+</tr>
+<tr>
+<td>Conversation context</td>
+<td>No</td>
+<td>Session-based</td>
+<td><strong>Cross-session history</strong></td>
+</tr>
+<tr>
+<td>Human review</td>
+<td>No</td>
+<td>No</td>
+<td><strong>Preview Panel</strong></td>
+</tr>
+<tr>
+<td>Privacy</td>
+<td>Varies</td>
+<td>Cloud-dependent</td>
+<td><strong>100% local option</strong></td>
+</tr>
+</tbody>
+</table></div>
 
-      <ol>
-        <li><strong>You correct</strong> an error in the Preview panel (e.g., "cereal" &rarr; "Ciriel")</li>
-        <li><strong>VoiceText records</strong> the ASR text, AI output, and your final confirmed text</li>
-        <li><strong>Conversation history</strong> uses this immediately &mdash; the next input already benefits from your correction</li>
-        <li><strong>Vocabulary builder</strong> periodically extracts new terms from your correction history and rebuilds the embedding index</li>
-        <li><strong>Future inputs</strong> get better enhancement because the LLM now has both recent context and a personal vocabulary</li>
-      </ol>
-
-      <div class="highlight-box">
-        <p><strong>The more you use VoiceText, the better it gets.</strong> Your corrections aren't just fixing the current text &mdash; they're teaching the system your vocabulary, your preferences, and your common topics. Over time, you'll find yourself making fewer and fewer corrections.</p>
-      </div>
-    </section>
-
-    <!-- Full Example Walkthrough -->
-    <section id="example-walkthrough">
-      <h2>Full Example: All Layers in Action</h2>
-      <p>Let's trace a real scenario through all five layers:</p>
-
-      <div class="example-box">
-        <div class="ex-label">Scenario: Talking about a colleague "Ciriel" and a project using Kubernetes</div>
-      </div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">1</span>ASR Output</h4>
-        <p>You say: "Ciriel said just deploy the service to Kubernetes and we're good"</p>
-        <p>ASR produces: <code>cereal said just deploy the service to cooper netties and were good</code></p>
-        <p style="font-size: 0.88rem;"><strong>Errors:</strong> "Ciriel" &rarr; "cereal", "Kubernetes" &rarr; "cooper netties", "we're" &rarr; "were"</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">2</span>Vocabulary Retrieval Kicks In</h4>
-        <p>The embedding index finds <strong>Kubernetes</strong> (variants: cooper netties, kuber nettis) is semantically close to the input. This term is injected into the LLM prompt.</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">3</span>Conversation History Provides Context</h4>
-        <p>Your recent history shows: <code>cereal told me she had noodles today. &rarr; Ciriel told me she had noodles today.</code> The LLM now knows "cereal" should be "Ciriel".</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">1+2+3</span>AI Enhancement Result</h4>
-        <p>The LLM, armed with vocabulary context and conversation history, produces:</p>
-        <p><span class="ex-correct">Ciriel said just deploy the service to Kubernetes and we're good.</span></p>
-        <p style="font-size: 0.88rem;">All errors corrected. Punctuation added.</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">4</span>Preview Panel: You Confirm</h4>
-        <p>The result looks perfect. You press Enter to confirm. The text is typed into your active application.</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">5</span>Self-Improving: Recorded for the Future</h4>
-        <p>This session is logged. Next time you mention "Ciriel" or "Kubernetes", the system will be even more confident in making the right correction.</p>
-      </div>
-    </section>
-
-    <!-- Compared to Other Tools -->
-    <section id="vs-other-tools">
-      <h2>Compared to Other Tools</h2>
-      <p>Most voice input tools fall into one of two categories:</p>
-
-      <div class="compare-grid">
-        <div class="compare-card">
-          <h4>Basic Voice Input</h4>
-          <p>Transcribes speech and types it directly. No correction, no context, no learning. You fix every error manually.</p>
-        </div>
-        <div class="compare-card">
-          <h4>Cloud Voice Assistants</h4>
-          <p>Good accuracy for general speech, but no customization for your vocabulary. No correction loop. Privacy concerns with always-on cloud processing.</p>
-        </div>
-      </div>
-
-      <p>VoiceText is different because it combines <strong>local-first processing</strong> (your data stays on your machine) with <strong>intelligent, layered correction</strong> that adapts to you:</p>
-
-      <div class="table-wrapper">
-        <table class="compare-table">
-          <thead>
-            <tr>
-              <th>Capability</th>
-              <th>Basic Tools</th>
-              <th>Cloud Assistants</th>
-              <th>VoiceText</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Offline support</td>
-              <td>Some</td>
-              <td>No</td>
-              <td><strong>Yes (default)</strong></td>
-            </tr>
-            <tr>
-              <td>AI error correction</td>
-              <td>No</td>
-              <td>Limited</td>
-              <td><strong>Customizable LLM</strong></td>
-            </tr>
-            <tr>
-              <td>Personal vocabulary</td>
-              <td>No</td>
-              <td>No</td>
-              <td><strong>Embedding-based RAG</strong></td>
-            </tr>
-            <tr>
-              <td>Learns from corrections</td>
-              <td>No</td>
-              <td>No</td>
-              <td><strong>Yes (automatic)</strong></td>
-            </tr>
-            <tr>
-              <td>Conversation context</td>
-              <td>No</td>
-              <td>Session-based</td>
-              <td><strong>Cross-session history</strong></td>
-            </tr>
-            <tr>
-              <td>Human review</td>
-              <td>No</td>
-              <td>No</td>
-              <td><strong>Preview Panel</strong></td>
-            </tr>
-            <tr>
-              <td>Privacy</td>
-              <td>Varies</td>
-              <td>Cloud-dependent</td>
-              <td><strong>100% local option</strong></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Navigation cards -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px;">
+    <div class="doc-nav">
       <a href="user-guide.html" class="doc-nav-card">
         <h3>&larr; User Guide</h3>
-        <p>A progressive guide from first launch to advanced usage.</p>
+        <p>Progressive guide from first launch to advanced usage.</p>
       </a>
-      <a href="enhance-modes.html" class="doc-nav-card">
-        <h3>AI Enhancement Modes &rarr;</h3>
-        <p>Built-in modes, chain pipelines, custom creation, and a library of ready-to-use templates.</p>
+      <a href="configuration.html" class="doc-nav-card">
+        <h3>Configuration Reference &rarr;</h3>
+        <p>All configuration options explained.</p>
       </a>
     </div>
-
   </article>
 
 </body>

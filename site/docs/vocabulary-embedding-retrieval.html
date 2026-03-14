@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary & Embedding Retrieval — VoiceText</title>
+  <link rel="icon" type="image/png" href="../images/icon.png">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
+    .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
+    .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
+    .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
+    .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
+    .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
+    .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
+    .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
+    .doc-container strong { color: var(--text); }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav class="nav container">
+      <a href="../" class="nav-brand">
+        <img src="../images/icon.png" alt="VoiceText icon">
+        VoiceText
+      </a>
+      <ul class="nav-links">
+        <li><a href="../">&larr; Back</a></li>
+        <li><a href="../../zh/docs/vocabulary-embedding-retrieval.html" class="lang-switch">中文</a></li>
+        <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <article class="doc-container">
+    <h1>Vocabulary & Embedding Retrieval</h1>
+    <p class="doc-subtitle">Personal vocabulary index for better correction.</p>
+
+    <div class="toc">
+      <h2>Table of Contents</h2>
+      <div class="toc">
+<ul>
+<li><a href="#background">Background</a></li>
+<li><a href="#motivation">Motivation</a></li>
+<li><a href="#how-it-works">How It Works</a><ul>
+<li><a href="#stage-1-vocabulary-building">Stage 1: Vocabulary Building</a></li>
+<li><a href="#stage-2-embedding-index-construction">Stage 2: Embedding Index Construction</a></li>
+<li><a href="#stage-3-real-time-retrieval-during-enhancement">Stage 3: Real-Time Retrieval During Enhancement</a></li>
+</ul>
+</li>
+<li><a href="#why-embedding-retrieval-instead-of-alternatives">Why Embedding Retrieval Instead of Alternatives</a></li>
+<li><a href="#architecture-diagram">Architecture Diagram</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#key-files">Key Files</a></li>
+</ul>
+</div>
+
+    </div>
+
+<h2 id="background">Background</h2>
+<p>VoiceText uses LLM to correct ASR (Automatic Speech Recognition) output. ASR engines frequently misrecognize proper nouns, technical terms, and domain-specific vocabulary — replacing them with phonetically similar but incorrect characters. For example, "Kubernetes" might be transcribed as "库伯尼特斯" or "酷伯", and "Python" as "派森".</p>
+<p>A generic LLM has no knowledge of the user's personal vocabulary. Without additional context, it cannot reliably distinguish between a correct transcription and a misrecognized proper noun. This leads to two types of errors:</p>
+<ol>
+<li><strong>Missed corrections</strong> — the LLM leaves ASR errors in place because it doesn't recognize the intended term.</li>
+<li><strong>Wrong corrections</strong> — the LLM "corrects" a term to something plausible but incorrect, because it lacks domain context.</li>
+</ol>
+<h2 id="motivation">Motivation</h2>
+<p>The core idea is: <strong>if we can tell the LLM which specific terms the user frequently uses, it can make much better correction decisions</strong>.</p>
+<p>Rather than dumping an entire vocabulary list into every prompt (which would be noisy and waste tokens), we use <strong>embedding-based semantic retrieval</strong> to find only the vocabulary entries relevant to the current input text. This approach is essentially a lightweight, local RAG (Retrieval-Augmented Generation) pipeline.</p>
+<h2 id="how-it-works">How It Works</h2>
+<p>The system consists of two stages: <strong>vocabulary building</strong> and <strong>real-time retrieval</strong>.</p>
+<h3 id="stage-1-vocabulary-building">Stage 1: Vocabulary Building</h3>
+<p>VoiceText logs every user correction in <code>conversation_history.jsonl</code> — entries where the user edited the AI-enhanced text in the preview panel are marked with <code>user_corrected: true</code>. The vocabulary builder leverages these records:</p>
+<ol>
+<li>Read corrected records from <code>conversation_history.jsonl</code> (supports incremental builds via timestamp filtering).</li>
+<li>Batch records and send them to an LLM with a structured extraction prompt.</li>
+<li>The LLM identifies proper nouns, technical terms, and frequently misrecognized words, returning structured entries with:
+   - <code>term</code> — the correct form of the word
+   - <code>category</code> — classification (tech, name, place, domain, other)
+   - <code>variants</code> — common ASR misrecognitions (phonetic variants)
+   - <code>context</code> — brief description for disambiguation</li>
+<li>Merge new entries with existing vocabulary, deduplicating by term and accumulating frequency counts.</li>
+<li>Save the result as <code>vocabulary.json</code>.</li>
+</ol>
+<h3 id="stage-2-embedding-index-construction">Stage 2: Embedding Index Construction</h3>
+<p>Once <code>vocabulary.json</code> exists, the <code>VocabularyIndex</code> builds an embedding index:</p>
+<ol>
+<li>Load vocabulary entries from <code>vocabulary.json</code>.</li>
+<li>For each entry, generate embedding vectors for:
+   - The term itself (e.g., "Kubernetes")
+   - Each known variant (e.g., "库伯尼特斯", "酷伯")
+   - A combined context string (e.g., "容器编排 Kubernetes")</li>
+<li>Store all vectors in a numpy array, with a mapping from vector index back to vocabulary entry index.</li>
+<li>Cache the index as <code>vocabulary_index.npz</code> for fast loading. Rebuild automatically when <code>vocabulary.json</code> is newer than the cached index.</li>
+</ol>
+<p>The embedding model used is <code>paraphrase-multilingual-MiniLM-L12-v2</code> (via fastembed), chosen for:
+- Multilingual support (Chinese + English in the same embedding space)
+- Small size (~120MB), suitable for local execution
+- Good quality for semantic similarity tasks</p>
+<h3 id="stage-3-real-time-retrieval-during-enhancement">Stage 3: Real-Time Retrieval During Enhancement</h3>
+<p>When the user triggers text enhancement:</p>
+<ol>
+<li>Embed the input ASR text using the same model.</li>
+<li>Compute cosine similarity between the query vector and all vocabulary vectors.</li>
+<li>Rank results, deduplicate by entry (since each entry may have multiple vectors), and return the top-K entries (default: 5).</li>
+<li>Format the matched entries into a structured prompt section and append it to the system prompt.</li>
+</ol>
+<p>The injected prompt section looks like:</p>
+<pre><code>---
+以下是用户词库中与本次输入相关的专有名词，ASR 常将其误写为同音近音词。
+仅当输入中确实存在对应误写时才替换，不要强行套用：
+
+- Kubernetes（容器编排）
+- Python（编程语言）
+---
+</code></pre>
+<p>This gives the LLM precise, relevant vocabulary context for each specific input, without overwhelming it with the entire vocabulary.</p>
+<h2 id="why-embedding-retrieval-instead-of-alternatives">Why Embedding Retrieval Instead of Alternatives</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>Pros</th>
+<th>Cons</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Full vocabulary in prompt</strong></td>
+<td>Simple</td>
+<td>Wastes tokens, noisy, hits context limits</td>
+</tr>
+<tr>
+<td><strong>Keyword matching</strong></td>
+<td>Fast, no model needed</td>
+<td>Misses phonetic variants, no semantic understanding</td>
+</tr>
+<tr>
+<td><strong>Embedding retrieval</strong></td>
+<td>Semantic matching catches variants, scales well, token-efficient</td>
+<td>Requires embedding model, initial build time</td>
+</tr>
+</tbody>
+</table></div>
+<p>The embedding approach is particularly effective for this use case because:</p>
+<ul>
+<li>ASR errors are often <strong>phonetically similar</strong> but <strong>orthographically different</strong> — embeddings in multilingual models capture phonetic/semantic proximity that keyword matching cannot.</li>
+<li>The vocabulary grows over time as the user makes more corrections, and retrieval naturally scales without increasing prompt size.</li>
+<li>Running the embedding model locally (via fastembed) avoids additional API costs and latency.</li>
+</ul>
+<h2 id="architecture-diagram">Architecture Diagram</h2>
+<pre><code>conversation_history.jsonl (user_corrected entries)
+       │
+       ▼
+┌─────────────────┐     LLM extraction      ┌──────────────────┐
+│ VocabularyBuilder│ ──────────────────────► │ vocabulary.json   │
+└─────────────────┘                          └────────┬─────────┘
+                                                      │
+                                                      ▼
+                                             ┌──────────────────┐
+                                             │ VocabularyIndex   │
+                                             │  (fastembed +     │
+                                             │   numpy cosine)   │
+                                             └────────┬─────────┘
+                                                      │
+                                                      ▼
+                                             vocabulary_index.npz
+                                                      │
+                    ASR text ──► embed ──► retrieve ──┘
+                                                      │
+                                                      ▼
+                                             matched entries
+                                                      │
+                                                      ▼
+                                    ┌─────────────────────────────┐
+                                    │ TextEnhancer                │
+                                    │  system_prompt + vocab_ctx  │──► LLM ──► corrected text
+                                    └─────────────────────────────┘
+</code></pre>
+<h2 id="configuration">Configuration</h2>
+<p>In <code>config.json</code> under <code>ai_enhance</code>:</p>
+<pre><code class="language-json">{
+    &quot;vocabulary&quot;: {
+        &quot;enabled&quot;: false,
+        &quot;top_k&quot;: 5,
+        &quot;embedding_model&quot;: &quot;paraphrase-multilingual-MiniLM-L12-v2&quot;,
+        &quot;build_timeout&quot;: 600,
+        &quot;auto_build&quot;: true,
+        &quot;auto_build_threshold&quot;: 10
+    }
+}
+</code></pre>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Toggle vocabulary retrieval during enhancement</td>
+</tr>
+<tr>
+<td><code>top_k</code></td>
+<td>int</td>
+<td><code>5</code></td>
+<td>Number of entries to retrieve per query</td>
+</tr>
+<tr>
+<td><code>embedding_model</code></td>
+<td>string</td>
+<td><code>"paraphrase-multilingual-MiniLM-L12-v2"</code></td>
+<td>Embedding model for vocabulary index</td>
+</tr>
+<tr>
+<td><code>build_timeout</code></td>
+<td>int</td>
+<td><code>600</code></td>
+<td>Per-batch LLM timeout in seconds</td>
+</tr>
+<tr>
+<td><code>auto_build</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable automatic vocabulary building after corrections accumulate</td>
+</tr>
+<tr>
+<td><code>auto_build_threshold</code></td>
+<td>int</td>
+<td><code>10</code></td>
+<td>Number of corrections to trigger an automatic build</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="key-files">Key Files</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/voicetext/vocabulary_builder.py</code></td>
+<td>Extracts vocabulary from conversation history corrections via LLM</td>
+</tr>
+<tr>
+<td><code>src/voicetext/vocabulary.py</code></td>
+<td>Embedding index construction and retrieval</td>
+</tr>
+<tr>
+<td><code>src/voicetext/auto_vocab_builder.py</code></td>
+<td>Automatic vocabulary building triggered by correction count</td>
+</tr>
+<tr>
+<td><code>src/voicetext/enhancer.py</code></td>
+<td>Integrates vocabulary context into enhancement prompts</td>
+</tr>
+<tr>
+<td><code>src/voicetext/vocab_build_window.py</code></td>
+<td>UI for vocabulary build progress</td>
+</tr>
+<tr>
+<td><code>src/voicetext/app.py</code></td>
+<td>Menu items for vocabulary toggle and build trigger</td>
+</tr>
+<tr>
+<td><code>src/voicetext/config.py</code></td>
+<td>Default configuration for vocabulary settings</td>
+</tr>
+</tbody>
+</table></div>
+
+    <div class="doc-nav">
+      <a href="provider-model-guide.html" class="doc-nav-card">
+        <h3>&larr; Provider & Model Guide</h3>
+        <p>Configure ASR and LLM providers.</p>
+      </a>
+      <a href="conversation-history-enhancement.html" class="doc-nav-card">
+        <h3>Conversation History Enhancement &rarr;</h3>
+        <p>Topic continuity and entity resolution via history.</p>
+      </a>
+    </div>
+  </article>
+
+</body>
+</html>

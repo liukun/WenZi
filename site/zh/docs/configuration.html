@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>配置参考 — VoiceText</title>
+  <link rel="icon" type="image/png" href="../../images/icon.png">
+  <link rel="stylesheet" href="../../css/style.css">
+  <style>
+    .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
+    .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
+    .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
+    .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
+    .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
+    .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
+    .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
+    .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
+    .doc-container strong { color: var(--text); }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav class="nav container">
+      <a href="../../" class="nav-brand">
+        <img src="../../images/icon.png" alt="VoiceText icon">
+        VoiceText
+      </a>
+      <ul class="nav-links">
+        <li><a href="../../">&larr; 返回</a></li>
+        <li><a href="../../docs/configuration.html" class="lang-switch">English</a></li>
+        <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <article class="doc-container">
+    <h1>配置参考</h1>
+    <p class="doc-subtitle">所有配置选项详解。</p>
+
+    <div class="toc">
+      <h2>目录</h2>
+      <div class="toc">
+<ul>
+<li><a href="#_1">完整默认配置</a></li>
+<li><a href="#_2">配置项说明</a><ul>
+<li><a href="#_3">通用设置</a></li>
+<li><a href="#_4">音频设置</a></li>
+<li><a href="#asr">语音识别（ASR）</a></li>
+<li><a href="#_5">输出设置</a></li>
+<li><a href="#ai">AI 增强</a></li>
+<li><a href="#_6">词汇检索</a></li>
+<li><a href="#_7">对话历史</a></li>
+<li><a href="#_8">剪贴板增强</a></li>
+<li><a href="#_9">反馈设置</a></li>
+<li><a href="#_10">日志设置</a></li>
+</ul>
+</li>
+<li><a href="#_11">环境变量</a></li>
+</ul>
+</div>
+
+    </div>
+
+<p>默认配置文件路径：<code>~/.config/VoiceText/config.json</code>。可通过命令行参数传入 JSON 配置文件来覆盖默认配置。只需包含你想修改的字段，其余字段将使用默认值。</p>
+<h2 id="_1">完整默认配置</h2>
+<pre><code class="language-json">{
+  &quot;hotkeys&quot;: {&quot;fn&quot;: true},
+  &quot;audio&quot;: {
+    &quot;sample_rate&quot;: 16000,
+    &quot;block_ms&quot;: 20,
+    &quot;device&quot;: null,
+    &quot;max_session_bytes&quot;: 20971520,
+    &quot;silence_rms&quot;: 20
+  },
+  &quot;asr&quot;: {
+    &quot;backend&quot;: &quot;funasr&quot;,
+    &quot;use_vad&quot;: true,
+    &quot;use_punc&quot;: true,
+    &quot;language&quot;: &quot;zh&quot;,
+    &quot;model&quot;: null,
+    &quot;preset&quot;: null,
+    &quot;temperature&quot;: 0.0,
+    &quot;default_provider&quot;: null,
+    &quot;default_model&quot;: null,
+    &quot;providers&quot;: {}
+  },
+  &quot;output&quot;: {
+    &quot;method&quot;: &quot;auto&quot;,
+    &quot;append_newline&quot;: false,
+    &quot;preview&quot;: true
+  },
+  &quot;ai_enhance&quot;: {
+    &quot;enabled&quot;: false,
+    &quot;mode&quot;: &quot;proofread&quot;,
+    &quot;default_provider&quot;: &quot;ollama&quot;,
+    &quot;default_model&quot;: &quot;qwen2.5:7b&quot;,
+    &quot;providers&quot;: {
+      &quot;ollama&quot;: {
+        &quot;base_url&quot;: &quot;http://localhost:11434/v1&quot;,
+        &quot;api_key&quot;: &quot;ollama&quot;,
+        &quot;models&quot;: [&quot;qwen2.5:7b&quot;]
+      }
+    },
+    &quot;thinking&quot;: false,
+    &quot;timeout&quot;: 30,
+    &quot;connection_timeout&quot;: 10,
+    &quot;max_retries&quot;: 2,
+    &quot;vocabulary&quot;: {
+      &quot;enabled&quot;: false,
+      &quot;top_k&quot;: 5,
+      &quot;embedding_model&quot;: &quot;paraphrase-multilingual-MiniLM-L12-v2&quot;,
+      &quot;build_timeout&quot;: 600,
+      &quot;auto_build&quot;: true,
+      &quot;auto_build_threshold&quot;: 10
+    },
+    &quot;conversation_history&quot;: {
+      &quot;enabled&quot;: false,
+      &quot;max_entries&quot;: 10
+    }
+  },
+  &quot;clipboard_enhance&quot;: {
+    &quot;hotkey&quot;: &quot;ctrl+cmd+v&quot;
+  },
+  &quot;feedback&quot;: {
+    &quot;sound_enabled&quot;: true,
+    &quot;sound_volume&quot;: 0.4,
+    &quot;visual_indicator&quot;: true
+  },
+  &quot;logging&quot;: {
+    &quot;level&quot;: &quot;INFO&quot;
+  }
+}
+</code></pre>
+<h2 id="_2">配置项说明</h2>
+<h3 id="_3">通用设置</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hotkeys</code></td>
+<td><code>{"fn": true}</code></td>
+<td>热键映射。可用键名：<code>fn</code>、<code>f1</code>–<code>f12</code>、<code>esc</code>、<code>space</code>、<code>cmd</code>、<code>ctrl</code>、<code>alt</code>、<code>shift</code>。值设为 <code>true</code> 表示启用</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_4">音频设置</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>audio.sample_rate</code></td>
+<td><code>16000</code></td>
+<td>音频采样率（Hz）</td>
+</tr>
+<tr>
+<td><code>audio.block_ms</code></td>
+<td><code>20</code></td>
+<td>录音块大小（毫秒）</td>
+</tr>
+<tr>
+<td><code>audio.device</code></td>
+<td><code>null</code></td>
+<td>音频输入设备（null 表示使用系统默认设备）</td>
+</tr>
+<tr>
+<td><code>audio.max_session_bytes</code></td>
+<td><code>20971520</code></td>
+<td>单次录音最大字节数（约 20 MB）</td>
+</tr>
+<tr>
+<td><code>audio.silence_rms</code></td>
+<td><code>20</code></td>
+<td>静音判定的 RMS 阈值，低于此值视为静音</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="asr">语音识别（ASR）</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>asr.backend</code></td>
+<td><code>"funasr"</code></td>
+<td>ASR 后端引擎：<code>funasr</code>、<code>mlx-whisper</code>、<code>apple</code> 或 <code>whisper-api</code></td>
+</tr>
+<tr>
+<td><code>asr.use_vad</code></td>
+<td><code>true</code></td>
+<td>启用语音活动检测（可防止静音时产生幻觉输出）</td>
+</tr>
+<tr>
+<td><code>asr.use_punc</code></td>
+<td><code>true</code></td>
+<td>启用自动标点恢复</td>
+</tr>
+<tr>
+<td><code>asr.language</code></td>
+<td><code>"zh"</code></td>
+<td>语言代码（用于 MLX-Whisper 和 Whisper API）</td>
+</tr>
+<tr>
+<td><code>asr.model</code></td>
+<td><code>null</code></td>
+<td>模型标识符（例如 <code>mlx-community/whisper-small</code>）</td>
+</tr>
+<tr>
+<td><code>asr.preset</code></td>
+<td><code>null</code></td>
+<td>模型注册表中的预设 ID（例如 <code>mlx-whisper-small</code>）</td>
+</tr>
+<tr>
+<td><code>asr.temperature</code></td>
+<td><code>0.0</code></td>
+<td>解码温度（用于 MLX-Whisper 和 Whisper API）</td>
+</tr>
+<tr>
+<td><code>asr.default_provider</code></td>
+<td><code>null</code></td>
+<td>默认远程 ASR 提供商名称（例如 <code>"groq"</code>）</td>
+</tr>
+<tr>
+<td><code>asr.default_model</code></td>
+<td><code>null</code></td>
+<td>默认远程 ASR 模型（例如 <code>"whisper-large-v3"</code>）</td>
+</tr>
+<tr>
+<td><code>asr.providers</code></td>
+<td><code>{}</code></td>
+<td>远程 ASR 提供商配置（格式与 <code>ai_enhance.providers</code> 相同）</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_5">输出设置</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>output.method</code></td>
+<td><code>"auto"</code></td>
+<td>文本注入方式：<code>auto</code>（自动）、<code>clipboard</code>（剪贴板）或 <code>applescript</code></td>
+</tr>
+<tr>
+<td><code>output.append_newline</code></td>
+<td><code>false</code></td>
+<td>在输出文本后追加换行符</td>
+</tr>
+<tr>
+<td><code>output.preview</code></td>
+<td><code>true</code></td>
+<td>显示浮动预览面板，在输入前查看和确认识别结果</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="ai">AI 增强</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_enhance.enabled</code></td>
+<td><code>false</code></td>
+<td>启用 AI 文本增强</td>
+</tr>
+<tr>
+<td><code>ai_enhance.mode</code></td>
+<td><code>"proofread"</code></td>
+<td>增强模式：<code>off</code>（关闭）、<code>proofread</code>（校对）、<code>translate_en</code>（翻译为英文）、<code>translate_en_plus</code>（高级英文翻译）、<code>commandline_master</code>（命令行大师）或自定义模式 ID</td>
+</tr>
+<tr>
+<td><code>ai_enhance.default_provider</code></td>
+<td><code>"ollama"</code></td>
+<td>默认 LLM 提供商名称</td>
+</tr>
+<tr>
+<td><code>ai_enhance.default_model</code></td>
+<td><code>"qwen2.5:7b"</code></td>
+<td>默认 LLM 模型</td>
+</tr>
+<tr>
+<td><code>ai_enhance.thinking</code></td>
+<td><code>false</code></td>
+<td>为支持的模型启用扩展思考功能</td>
+</tr>
+<tr>
+<td><code>ai_enhance.timeout</code></td>
+<td><code>30</code></td>
+<td>LLM 请求超时时间（秒）</td>
+</tr>
+<tr>
+<td><code>ai_enhance.connection_timeout</code></td>
+<td><code>10</code></td>
+<td>LLM 连接超时时间（秒）</td>
+</tr>
+<tr>
+<td><code>ai_enhance.max_retries</code></td>
+<td><code>2</code></td>
+<td>连接失败时的最大重试次数</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_6">词汇检索</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_enhance.vocabulary.enabled</code></td>
+<td><code>false</code></td>
+<td>在增强过程中启用基于词汇表的检索</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.top_k</code></td>
+<td><code>5</code></td>
+<td>每次查询检索的词汇条目数</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.embedding_model</code></td>
+<td><code>"paraphrase-multilingual-MiniLM-L12-v2"</code></td>
+<td>词汇索引使用的嵌入模型</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.build_timeout</code></td>
+<td><code>600</code></td>
+<td>词汇构建时每批次的 LLM 超时时间（秒）</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.auto_build</code></td>
+<td><code>true</code></td>
+<td>当纠正累积到一定数量时自动构建词汇表</td>
+</tr>
+<tr>
+<td><code>ai_enhance.vocabulary.auto_build_threshold</code></td>
+<td><code>10</code></td>
+<td>触发自动构建的纠正次数</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_7">对话历史</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_enhance.conversation_history.enabled</code></td>
+<td><code>false</code></td>
+<td>启用对话历史上下文注入</td>
+</tr>
+<tr>
+<td><code>ai_enhance.conversation_history.max_entries</code></td>
+<td><code>10</code></td>
+<td>注入的最近已确认条目数量</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_8">剪贴板增强</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clipboard_enhance.hotkey</code></td>
+<td><code>"ctrl+cmd+v"</code></td>
+<td>触发剪贴板 AI 增强的热键（修饰键+按键格式）</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_9">反馈设置</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>feedback.sound_enabled</code></td>
+<td><code>true</code></td>
+<td>启用录音开始/停止的声音反馈</td>
+</tr>
+<tr>
+<td><code>feedback.sound_volume</code></td>
+<td><code>0.4</code></td>
+<td>声音音量（0.0 – 1.0）</td>
+</tr>
+<tr>
+<td><code>feedback.visual_indicator</code></td>
+<td><code>true</code></td>
+<td>显示浮动录音指示器及音频电平条</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="_10">日志设置</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>键名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logging.level</code></td>
+<td><code>"INFO"</code></td>
+<td>日志级别：<code>DEBUG</code>、<code>INFO</code>、<code>WARNING</code>、<code>ERROR</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="_11">环境变量</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>变量名</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FUNASR_ASR_MODEL</code></td>
+<td><code>iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx</code></td>
+<td>ASR 模型 ID</td>
+</tr>
+<tr>
+<td><code>FUNASR_VAD_MODEL</code></td>
+<td><code>iic/speech_fsmn_vad_zh-cn-16k-common-onnx</code></td>
+<td>VAD 模型 ID</td>
+</tr>
+<tr>
+<td><code>FUNASR_PUNC_MODEL</code></td>
+<td><code>iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx</code></td>
+<td>标点模型 ID</td>
+</tr>
+<tr>
+<td><code>FUNASR_MODEL_REVISION</code></td>
+<td><code>v2.0.5</code></td>
+<td>模型版本</td>
+</tr>
+<tr>
+<td><code>OMP_NUM_THREADS</code></td>
+<td><code>8</code></td>
+<td>ONNX 运行时线程数</td>
+</tr>
+</tbody>
+</table></div>
+
+    <div class="doc-nav">
+      <a href="error-correction.html" class="doc-nav-card">
+        <h3>&larr; 为什么纠错能力这么强</h3>
+        <p>五层纠错机制，越用越聪明。</p>
+      </a>
+      <a href="enhance-modes.html" class="doc-nav-card">
+        <h3>AI 增强模式 &rarr;</h3>
+        <p>定义 AI 如何后处理你的转录文本。</p>
+      </a>
+    </div>
+  </article>
+
+</body>
+</html>

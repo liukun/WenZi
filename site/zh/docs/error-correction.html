@@ -1,121 +1,104 @@
 <!DOCTYPE html>
-<html lang="zh-Hans">
+<html lang="zh">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>为什么纠错能力这么强 — VoiceText</title>
   <link rel="icon" type="image/png" href="../../images/icon.png">
-  <link rel="alternate" hreflang="en" href="../../docs/error-correction.html" />
-  <link rel="alternate" hreflang="zh" href="error-correction.html" />
   <link rel="stylesheet" href="../../css/style.css">
   <style>
     .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
     .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
     .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
     .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
     .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
     .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
     .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
     .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
-    .doc-container pre.code-block { margin-bottom: 16px; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
     .doc-container strong { color: var(--text); }
-    .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
-    .toc h2 { margin-top: 0 !important; border-bottom: none !important; }
-    .toc ul { list-style: none; padding-left: 0; }
-    .toc li { margin-bottom: 6px; }
-    .toc a { color: var(--purple); }
-    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-top: 48px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
     .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
-    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; }
-    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.95rem; }
-
-    .layer-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; position: relative; }
-    .layer-card h4 { font-size: 1.05rem; margin-bottom: 8px; color: var(--text); }
-    .layer-card p { margin-bottom: 8px; }
-    .layer-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--purple); color: #fff; font-size: 0.85rem; font-weight: 700; margin-right: 10px; flex-shrink: 0; vertical-align: middle; }
-    .layer-connector { text-align: center; color: var(--purple); font-size: 1.5rem; margin: -8px 0; position: relative; z-index: 1; }
-
-    .example-box { background: var(--bg-alt); border-radius: 10px; padding: 20px 24px; margin: 16px 0 24px; }
-    .example-box .ex-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--purple); margin-bottom: 10px; }
-    .example-box .ex-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 0.95rem; }
-    .example-box .ex-tag { font-weight: 600; color: var(--text); min-width: 80px; flex-shrink: 0; }
-    .example-box .ex-text { color: var(--text-secondary); }
-    .example-box .ex-arrow { color: var(--purple); font-weight: 700; }
-    .example-box .ex-correct { color: var(--purple); font-weight: 600; }
-
-    .pipeline-diagram { background: var(--bg-alt); border-radius: 12px; padding: 28px; margin: 24px 0; text-align: center; }
-    .pipeline-diagram pre { font-size: 0.82rem; line-height: 1.5; text-align: left; display: inline-block; margin: 0 auto; color: var(--text-secondary); }
-
-    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
-    @media (max-width: 600px) { .compare-grid { grid-template-columns: 1fr; } }
-    .compare-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px 20px; }
-    .compare-card h4 { font-size: 0.95rem; margin-bottom: 6px; color: var(--text); }
-    .compare-card p { font-size: 0.9rem; margin: 0; }
-
-    .highlight-box { border-left: 3px solid var(--purple); background: color-mix(in srgb, var(--purple) 5%, var(--bg-alt)); border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 16px 0 24px; }
-    .highlight-box p { margin-bottom: 0; }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <header class="site-header">
     <nav class="nav container">
-      <a href="../" class="nav-brand">
+      <a href="../../" class="nav-brand">
         <img src="../../images/icon.png" alt="VoiceText icon">
         VoiceText
       </a>
       <ul class="nav-links">
-        <li><a href="../">&larr; 返回</a></li>
+        <li><a href="../../">&larr; 返回</a></li>
         <li><a href="../../docs/error-correction.html" class="lang-switch">English</a></li>
         <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
       </ul>
     </nav>
   </header>
 
-  <!-- Content -->
   <article class="doc-container">
-    <h1 style="font-size: 2.2rem; font-weight: 800; margin-bottom: 8px;">为什么纠错能力这么强</h1>
-    <p style="font-size: 1.1rem; margin-bottom: 32px;">VoiceText 不只是语音转文字 &mdash; 它构建了一个多层纠错系统，越用越聪明。</p>
+    <h1>为什么纠错能力这么强</h1>
+    <p class="doc-subtitle">五层纠错机制，越用越聪明。</p>
 
-    <!-- Table of Contents -->
     <div class="toc">
       <h2>目录</h2>
-      <ul>
-        <li><a href="#the-problem">问题所在</a> &mdash; 为什么原始 ASR 输出不够好</li>
-        <li><a href="#five-layers">五层纠错</a> &mdash; VoiceText 如何叠加多种策略</li>
-        <li><a href="#layer-1">第一层：AI 增强</a> &mdash; LLM 驱动的纠错润色</li>
-        <li><a href="#layer-2">第二层：词库检索</a> &mdash; 基于向量的个人词库</li>
-        <li><a href="#layer-3">第三层：对话历史</a> &mdash; 从你的确认纠正中学习</li>
-        <li><a href="#layer-4">第四层：预览面板</a> &mdash; 人在回路的审核</li>
-        <li><a href="#layer-5">第五层：自我进化</a> &mdash; 每次纠正都让系统变得更好</li>
-        <li><a href="#example-walkthrough">完整示例</a> &mdash; 五层协同工作的实际场景</li>
-        <li><a href="#vs-other-tools">对比其他工具</a> &mdash; VoiceText 有什么不同</li>
-      </ul>
+      <div class="toc">
+<ul>
+<li><a href="#_1">问题所在</a></li>
+<li><a href="#_2">五层纠错</a></li>
+<li><a href="#ai">第一层：AI 增强</a></li>
+<li><a href="#_3">第二层：词库检索</a></li>
+<li><a href="#_4">第三层：对话历史</a><ul>
+<li><a href="#_5">注入的内容</a></li>
+<li><a href="#_6">解决三个问题</a></li>
+</ul>
+</li>
+<li><a href="#_7">第四层：预览面板</a></li>
+<li><a href="#_8">第五层：自我进化</a></li>
+<li><a href="#_9">完整示例：五层协同工作</a></li>
+<li><a href="#_10">对比其他工具</a></li>
+</ul>
+</div>
+
     </div>
 
-    <!-- The Problem -->
-    <section id="the-problem">
-      <h2>问题所在</h2>
-      <p>所有语音识别引擎都会犯错。即使是最好的 ASR 模型也会产生错误 &mdash; 尤其是在以下场景：</p>
-      <ul>
-        <li><strong>专有名词</strong> &mdash; 人名、产品名、品牌名，模型从未见过的词汇</li>
-        <li><strong>专业术语</strong> &mdash; 领域特有的术语，如 "Kubernetes"、"OAuth"、"糖化血红蛋白"</li>
-        <li><strong>同音词</strong> &mdash; 中文尤其突出："萍萍"（人名）vs "平平"（平坦），"这里" vs "这俚"</li>
-        <li><strong>标点与格式</strong> &mdash; ASR 引擎通常只输出没有标点的纯文本</li>
-        <li><strong>上下文缺失</strong> &mdash; 每次转录都是独立的，引擎不知道你 30 秒前说了什么</li>
-      </ul>
-      <p>大多数语音输入工具止步于 ASR 输出，让你自己手动修正这些错误。<strong>VoiceText 采取了一种根本不同的方法</strong> &mdash; 它叠加了五个独立的纠错层，让单一策略无法捕获的错误也能被其他层捕获。</p>
-    </section>
-
-    <!-- Five Layers Overview -->
-    <section id="five-layers">
-      <h2>五层纠错</h2>
-      <p>VoiceText 不依赖单一技术，而是叠加多个纠错层。每一层都能捕获前面层遗漏的错误：</p>
-
-      <div class="pipeline-diagram">
-<pre>
-  语音输入
+<p>VoiceText 不只是语音转文字 — 它构建了一个多层纠错系统，越用越聪明。</p>
+<h2 id="_1">问题所在</h2>
+<p>所有语音识别引擎都会犯错。即使是最好的 ASR 模型也会产生错误 — 尤其是在以下场景：</p>
+<ul>
+<li><strong>专有名词</strong> — 人名、产品名、品牌名，模型从未见过的词汇</li>
+<li><strong>专业术语</strong> — 领域特有的术语，如 "Kubernetes"、"OAuth"、"糖化血红蛋白"</li>
+<li><strong>同音词</strong> — 中文尤其突出："萍萍"（人名）vs "平平"（平坦），"这里" vs "这俚"</li>
+<li><strong>标点与格式</strong> — ASR 引擎通常只输出没有标点的纯文本</li>
+<li><strong>上下文缺失</strong> — 每次转录都是独立的，引擎不知道你 30 秒前说了什么</li>
+</ul>
+<p>大多数语音输入工具止步于 ASR 输出，让你自己手动修正这些错误。<strong>VoiceText 采取了一种根本不同的方法</strong> — 它叠加了五个独立的纠错层，让单一策略无法捕获的错误也能被其他层捕获。</p>
+<h2 id="_2">五层纠错</h2>
+<p>VoiceText 不依赖单一技术，而是叠加多个纠错层。每一层都能捕获前面层遗漏的错误：</p>
+<pre><code>  语音输入
       |
       v
  [ ASR 引擎 ]  ..........  原始转录（包含错误）
@@ -137,131 +120,75 @@
       |
       v
   最终文本  .............  准确、格式化、个性化
-</pre>
-      </div>
-
-      <p>第二层和第三层通过向 LLM 的系统提示词注入相关上下文来工作。第四层加入人工监督。第五层通过将你的纠正反馈给第二层和第三层来闭合回路。最终结果是一个<strong>越用越好</strong>的系统。</p>
-    </section>
-
-    <!-- Layer 1 -->
-    <section id="layer-1">
-      <h2><span class="layer-num">1</span>AI 增强</h2>
-      <p>当你启用增强模式（比如内置的<strong>纠错润色</strong>模式）时，VoiceText 会将 ASR 输出发送给 LLM，配合精心设计的系统提示词。LLM 充当智能后处理器：</p>
-      <ul>
-        <li><strong>修正同音错字</strong> &mdash; 通过理解上下文来判断</li>
-        <li><strong>添加标点</strong> &mdash; ASR 引擎通常省略的标点符号</li>
-        <li><strong>修正语法</strong> &mdash; 在不改变原意的前提下</li>
-        <li><strong>保留你的语气</strong> &mdash; 提示词明确要求 LLM 做最小改动</li>
-      </ul>
-
-      <div class="example-box">
-        <div class="ex-label">示例</div>
-        <div class="ex-row">
-          <span class="ex-tag">ASR 输出：</span>
-          <span class="ex-text">我们明天下午三点再会议室讨论一下那个项目的进站</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag ex-arrow">&darr;</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag">增强后：</span>
-          <span class="ex-correct">我们明天下午三点在会议室讨论一下那个项目的进展。</span>
-        </div>
-      </div>
-
-      <p>关键优势：LLM 理解的是<em>语义</em>，而不只是声音。它能根据句子上下文区分同音词 &mdash; 这是 ASR 引擎单独无法做到的。</p>
-
-      <blockquote>增强模式是完全可自定义的 Markdown 文件。你可以创建翻译、格式化、代码生成或任何其他文本变换的模式。详见 <a href="enhance-modes.html">AI 增强模式</a>。</blockquote>
-    </section>
-
-    <!-- Layer 2 -->
-    <section id="layer-2">
-      <h2><span class="layer-num">2</span>词库检索</h2>
-      <p>通用 LLM 不知道你同事的名字、你公司的产品名称或你日常使用的专业术语。VoiceText 通过<strong>基于向量的个人词库系统</strong>来解决这个问题：</p>
-
-      <ol>
-        <li><strong>构建</strong> &mdash; VoiceText 使用 LLM 从你的纠正历史中提取专有名词和专业术语。每个词条包含正确形式、分类和常见的 ASR 误识别变体。</li>
-        <li><strong>索引</strong> &mdash; 词条使用多语言模型（<code>paraphrase-multilingual-MiniLM-L12-v2</code>）嵌入到向量空间，创建语义搜索索引。完全在本地运行。</li>
-        <li><strong>检索</strong> &mdash; 当你说话时，ASR 文本被嵌入并与索引匹配。只有最相关的 Top-K 个词条被注入到 LLM 的系统提示词中。</li>
-      </ol>
-
-      <div class="example-box">
-        <div class="ex-label">它如何帮助你</div>
-        <div class="ex-row">
-          <span class="ex-tag">ASR 输出：</span>
-          <span class="ex-text">把这个服务部署到酷伯上</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag">词库匹配：</span>
-          <span class="ex-text" style="font-size: 0.88rem;">Kubernetes（容器编排）&mdash; 变体：酷伯、库伯尼特斯</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag ex-arrow">&darr;</span>
-        </div>
-        <div class="ex-row">
-          <span class="ex-tag">增强后：</span>
-          <span class="ex-correct">把这个服务部署到 Kubernetes 上。</span>
-        </div>
-      </div>
-
-      <p>为什么用向量检索而不是关键词匹配？因为 ASR 错误是<strong>发音相似但写法不同</strong>的。多语言向量模型能捕捉到简单字符串匹配无法发现的语音相近关系。而且与把整个词库塞进每个提示词不同，检索是按需的 &mdash; 只注入相关的词条。</p>
-
-      <div class="highlight-box">
-        <p><strong>核心洞察：</strong>词库系统本质上是一个轻量级的本地 RAG（检索增强生成）管线 &mdash; 专为语音输入纠错量身打造。</p>
-      </div>
-    </section>
-
-    <!-- Layer 3 -->
-    <section id="layer-3">
-      <h2><span class="layer-num">3</span>对话历史</h2>
-      <p>真实的对话是有连续性的。当你说"她今天很开心"时，"她"这个字只有在之前提到过某个人的情况下才有意义。VoiceText 通过将你<strong>近期确认的输出</strong>注入到 LLM 的提示词中来解决这个问题。</p>
-
-      <p>核心洞察：<strong>你确认后的输出是你真实意图的最高质量信号。</strong>与原始 ASR 文本（有错误）或 AI 输出（可能过度纠正）不同，最终确认的文本代表了你的真实意图。</p>
-
-      <h3>注入的内容</h3>
-      <p>只有通过预览面板确认的会话才会被包含。这是一个刻意的数据质量决策 &mdash; 少量经过验证的数据胜过大量未验证的数据。</p>
-
-      <div class="example-box">
-        <div class="ex-label">注入的上下文（高效格式）</div>
-<pre class="code-block" style="font-size: 0.85rem; margin: 0;">- 将是否开启对话历史注入的功能，做一个开关放在菜单栏里。
+</code></pre>
+<p>第二层和第三层通过向 LLM 的系统提示词注入相关上下文来工作。第四层加入人工监督。第五层通过将你的纠正反馈给第二层和第三层来闭合回路。最终结果是一个<strong>越用越好</strong>的系统。</p>
+<h2 id="ai">第一层：AI 增强</h2>
+<p>当你启用增强模式（比如内置的<strong>纠错润色</strong>模式）时，VoiceText 会将 ASR 输出发送给 LLM，配合精心设计的系统提示词。LLM 充当智能后处理器：</p>
+<ul>
+<li><strong>修正同音错字</strong> — 通过理解上下文来判断</li>
+<li><strong>添加标点</strong> — ASR 引擎通常省略的标点符号</li>
+<li><strong>修正语法</strong> — 在不改变原意的前提下</li>
+<li><strong>保留你的语气</strong> — 提示词明确要求 LLM 做最小改动</li>
+</ul>
+<p><strong>示例：</strong></p>
+<ul>
+<li><strong>ASR 输出：</strong> 我们明天下午三点再会议室讨论一下那个项目的进站</li>
+<li><strong>增强后：</strong> 我们明天下午三点在会议室讨论一下那个项目的进展。</li>
+</ul>
+<p>关键优势：LLM 理解的是<em>语义</em>，而不只是声音。它能根据句子上下文区分同音词 — 这是 ASR 引擎单独无法做到的。</p>
+<blockquote>
+<p>增强模式是完全可自定义的 Markdown 文件。你可以创建翻译、格式化、代码生成或任何其他文本变换的模式。详见 <a href="enhance-modes-zh.md">AI 增强模式</a>。</p>
+</blockquote>
+<h2 id="_3">第二层：词库检索</h2>
+<p>通用 LLM 不知道你同事的名字、你公司的产品名称或你日常使用的专业术语。VoiceText 通过<strong>基于向量的个人词库系统</strong>来解决这个问题：</p>
+<ol>
+<li><strong>构建</strong> — VoiceText 使用 LLM 从你的纠正历史中提取专有名词和专业术语。每个词条包含正确形式、分类和常见的 ASR 误识别变体。</li>
+<li><strong>索引</strong> — 词条使用多语言模型（<code>paraphrase-multilingual-MiniLM-L12-v2</code>）嵌入到向量空间，创建语义搜索索引。完全在本地运行。</li>
+<li><strong>检索</strong> — 当你说话时，ASR 文本被嵌入并与索引匹配。只有最相关的 Top-K 个词条被注入到 LLM 的系统提示词中。</li>
+</ol>
+<p><strong>它如何帮助你：</strong></p>
+<ul>
+<li><strong>ASR 输出：</strong> 把这个服务部署到酷伯上</li>
+<li><strong>词库匹配：</strong> Kubernetes（容器编排）— 变体：酷伯、库伯尼特斯</li>
+<li><strong>增强后：</strong> 把这个服务部署到 Kubernetes 上。</li>
+</ul>
+<p>为什么用向量检索而不是关键词匹配？因为 ASR 错误是<strong>发音相似但写法不同</strong>的。多语言向量模型能捕捉到简单字符串匹配无法发现的语音相近关系。而且与把整个词库塞进每个提示词不同，检索是按需的 — 只注入相关的词条。</p>
+<blockquote>
+<p><strong>核心洞察：</strong> 词库系统本质上是一个轻量级的本地 RAG（检索增强生成）管线 — 专为语音输入纠错量身打造。</p>
+</blockquote>
+<h2 id="_4">第三层：对话历史</h2>
+<p>真实的对话是有连续性的。当你说"她今天很开心"时，"她"这个字只有在之前提到过某个人的情况下才有意义。VoiceText 通过将你<strong>近期确认的输出</strong>注入到 LLM 的提示词中来解决这个问题。</p>
+<p>核心洞察：<strong>你确认后的输出是你真实意图的最高质量信号。</strong> 与原始 ASR 文本（有错误）或 AI 输出（可能过度纠正）不同，最终确认的文本代表了你的真实意图。</p>
+<h3 id="_5">注入的内容</h3>
+<p>只有通过预览面板确认的会话才会被包含。这是一个刻意的数据质量决策 — 少量经过验证的数据胜过大量未验证的数据。</p>
+<p><strong>注入的上下文（高效格式）：</strong></p>
+<pre><code>- 将是否开启对话历史注入的功能，做一个开关放在菜单栏里。
 - 现在测试一下历史上下文注入的功能。
-- 果果今天在公园里遇到了平平。 &rarr; 果果今天在公园里遇到了萍萍。
-- 平平对果果说我今天吃了面条。 &rarr; 萍萍对果果说我今天吃了面条。</pre>
-      </div>
-
-      <p>箭头标记显示纠正模式。当 LLM 看到"平平"在之前被纠正为"萍萍"时，它就能在后续输入中自动做出同样的纠正 &mdash; <strong>不需要你手动添加到词库</strong>。</p>
-
-      <h3>解决三个问题</h3>
-      <ul>
-        <li><strong>一致的实体解析</strong> &mdash; 一旦你确认了"萍萍"，后续提到的同音词都会被自动纠正。</li>
-        <li><strong>话题感知的增强</strong> &mdash; LLM 理解当前对话主题，做出上下文相关的决策。</li>
-        <li><strong>风格适应</strong> &mdash; LLM 观察你的写作习惯，匹配你的语气和格式偏好。</li>
-      </ul>
-    </section>
-
-    <!-- Layer 4 -->
-    <section id="layer-4">
-      <h2><span class="layer-num">4</span>预览面板</h2>
-      <p>预览面板是 VoiceText 的<strong>人在回路</strong>界面。在文本被输入到当前应用之前，你可以审核和修改：</p>
-      <ul>
-        <li><strong>对比</strong> &mdash; 原始 ASR 输出和 AI 增强结果并排显示</li>
-        <li><strong>编辑</strong> &mdash; 在可编辑的文本框中直接修改最终文本</li>
-        <li><strong>切换模式</strong> &mdash; 用快捷键（<code>&#8984;1</code>&ndash;<code>&#8984;9</code>）即时切换增强模式并重新处理</li>
-        <li><strong>查看思考过程</strong> &mdash; 查看 LLM 的推理过程（如果模型支持的话）</li>
-      </ul>
-      <p>这不仅仅是一个便利功能。你在预览面板中的每次编辑都会成为系统的<strong>训练信号</strong>。当你把"平平"改为"萍萍"时，这个纠正会带着 <code>user_corrected: true</code> 标记被记录下来，反馈给第二层和第三层。</p>
-
-      <blockquote>预览面板同时也是<strong>提示词调优工作台</strong>。你可以测试不同的提示词、对比不同模型、系统性地改进增强质量。详见 <a href="prompt-optimization.html">提示词优化工作流</a>。</blockquote>
-    </section>
-
-    <!-- Layer 5 -->
-    <section id="layer-5">
-      <h2><span class="layer-num">5</span>自我进化</h2>
-      <p>这是把所有层串联起来的关键。VoiceText 创造了一个<strong>正向循环</strong>，你的每次纠正都在改进未来的纠正：</p>
-
-      <div class="pipeline-diagram">
-<pre>
-  你说话  ──►  ASR  ──►  AI + 词库 + 历史  ──►  预览面板
+- 果果今天在公园里遇到了平平。 → 果果今天在公园里遇到了萍萍。
+- 平平对果果说我今天吃了面条。 → 萍萍对果果说我今天吃了面条。
+</code></pre>
+<p>箭头标记显示纠正模式。当 LLM 看到"平平"在之前被纠正为"萍萍"时，它就能在后续输入中自动做出同样的纠正 — <strong>不需要你手动添加到词库</strong>。</p>
+<h3 id="_6">解决三个问题</h3>
+<ul>
+<li><strong>一致的实体解析</strong> — 一旦你确认了"萍萍"，后续提到的同音词都会被自动纠正。</li>
+<li><strong>话题感知的增强</strong> — LLM 理解当前对话主题，做出上下文相关的决策。</li>
+<li><strong>风格适应</strong> — LLM 观察你的写作习惯，匹配你的语气和格式偏好。</li>
+</ul>
+<h2 id="_7">第四层：预览面板</h2>
+<p>预览面板是 VoiceText 的<strong>人在回路</strong>界面。在文本被输入到当前应用之前，你可以审核和修改：</p>
+<ul>
+<li><strong>对比</strong> — 原始 ASR 输出和 AI 增强结果并排显示</li>
+<li><strong>编辑</strong> — 在可编辑的文本框中直接修改最终文本</li>
+<li><strong>切换模式</strong> — 用快捷键（<code>⌘1</code>–<code>⌘9</code>）即时切换增强模式并重新处理</li>
+<li><strong>查看思考过程</strong> — 查看 LLM 的推理过程（如果模型支持的话）</li>
+</ul>
+<p>这不仅仅是一个便利功能。你在预览面板中的每次编辑都会成为系统的<strong>训练信号</strong>。当你把"平平"改为"萍萍"时，这个纠正会带着 <code>user_corrected: true</code> 标记被记录下来，反馈给第二层和第三层。</p>
+<blockquote>
+<p>预览面板同时也是<strong>提示词调优工作台</strong>。你可以测试不同的提示词、对比不同模型、系统性地改进增强质量。详见 <a href="prompt-optimization-workflow-zh.md">Prompt 优化工作流</a>。</p>
+</blockquote>
+<h2 id="_8">第五层：自我进化</h2>
+<p>这是把所有层串联起来的关键。VoiceText 创造了一个<strong>正向循环</strong>，你的每次纠正都在改进未来的纠正：</p>
+<pre><code>  你说话  ──►  ASR  ──►  AI + 词库 + 历史  ──►  预览面板
                                                       |
           ┌───────────────────────────────────────────┘
           |  （用户确认或纠正）
@@ -272,164 +199,108 @@
           |     （提取术语）     （专有名词）          （语义搜索）
           |
           └──►  历史注入  ──►  LLM 的近期上下文
-</pre>
-      </div>
+</code></pre>
+<ol>
+<li><strong>你纠正</strong>了预览面板中的一个错误（如 "平平" → "萍萍"）</li>
+<li><strong>VoiceText 记录</strong> ASR 文本、AI 输出和你最终确认的文本</li>
+<li><strong>对话历史</strong>立即生效 — 下一次输入就已经受益于你的纠正</li>
+<li><strong>词库构建器</strong>定期从你的纠正历史中提取新词条，重建向量索引</li>
+<li><strong>未来的输入</strong>获得更好的增强效果，因为 LLM 现在同时拥有近期上下文和个人词库</li>
+</ol>
+<blockquote>
+<p><strong>你用 VoiceText 越多，它就越好用。</strong> 你的纠正不仅仅是在修改当前文本 — 它们在教会系统你的词汇、你的偏好和你常谈论的话题。随着时间推移，你会发现需要纠正的地方越来越少。</p>
+</blockquote>
+<h2 id="_9">完整示例：五层协同工作</h2>
+<p>让我们跟踪一个实际场景，看看所有五层是如何协同工作的：</p>
+<p><strong>场景：</strong> 谈论同事"萍萍"和一个使用 Kubernetes 的项目。</p>
+<p><strong>第 1 步 — ASR 输出：</strong>
+你说："萍萍说把那个服务部署到酷伯上就可以了"
+ASR 产出：<code>平平说把那个服务部署到酷伯上就可以了</code>
+错误："萍萍" → "平平"，"Kubernetes" → "酷伯"</p>
+<p><strong>第 2 步 — 词库检索介入：</strong>
+向量索引发现 <strong>Kubernetes</strong>（变体：酷伯、库伯尼特斯）与输入语义接近。这个词条被注入到 LLM 提示词中。</p>
+<p><strong>第 3 步 — 对话历史提供上下文：</strong>
+你的近期历史显示：<code>平平对果果说... → 萍萍对果果说...</code>。LLM 现在知道"平平"应该是"萍萍"。</p>
+<p><strong>第 4 步 — AI 增强结果（第 1+2+3 层）：</strong>
+LLM 结合词库上下文和对话历史，产出：
+<em>萍萍说把那个服务部署到 Kubernetes 上就可以了。</em>
+两个错误都被修正。标点已添加。</p>
+<p><strong>第 5 步 — 预览面板：你确认：</strong>
+结果很完美。你按 Enter 确认。文本被输入到当前应用中。</p>
+<p><strong>第 6 步 — 自我进化：为未来记录：</strong>
+这次会话被记录。下次你再提到"萍萍"或"Kubernetes"时，系统会更有信心做出正确的纠正。</p>
+<h2 id="_10">对比其他工具</h2>
+<p>大多数语音输入工具属于以下两类之一：</p>
+<ul>
+<li><strong>基础语音输入</strong> — 转录语音并直接输入。没有纠正、没有上下文、不会学习。每个错误都需要手动修正。</li>
+<li><strong>云端语音助手</strong> — 对一般语音有较好的准确率，但无法针对你的词汇进行定制。没有纠正反馈循环。始终依赖云端处理带来隐私问题。</li>
+</ul>
+<p>VoiceText 的不同之处在于：它将<strong>本地优先的处理</strong>（数据留在你的机器上）与<strong>智能、分层的纠错</strong>（适应你个人需求）相结合：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>能力</th>
+<th>基础工具</th>
+<th>云端助手</th>
+<th>VoiceText</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>离线支持</td>
+<td>部分</td>
+<td>无</td>
+<td><strong>默认离线</strong></td>
+</tr>
+<tr>
+<td>AI 纠错</td>
+<td>无</td>
+<td>有限</td>
+<td><strong>可自定义 LLM</strong></td>
+</tr>
+<tr>
+<td>个人词库</td>
+<td>无</td>
+<td>无</td>
+<td><strong>基于向量的 RAG</strong></td>
+</tr>
+<tr>
+<td>从纠正中学习</td>
+<td>无</td>
+<td>无</td>
+<td><strong>自动学习</strong></td>
+</tr>
+<tr>
+<td>对话上下文</td>
+<td>无</td>
+<td>单会话</td>
+<td><strong>跨会话历史</strong></td>
+</tr>
+<tr>
+<td>人工审核</td>
+<td>无</td>
+<td>无</td>
+<td><strong>预览面板</strong></td>
+</tr>
+<tr>
+<td>隐私</td>
+<td>各异</td>
+<td>依赖云端</td>
+<td><strong>可完全本地</strong></td>
+</tr>
+</tbody>
+</table></div>
 
-      <ol>
-        <li><strong>你纠正</strong>了预览面板中的一个错误（如 "平平" &rarr; "萍萍"）</li>
-        <li><strong>VoiceText 记录</strong> ASR 文本、AI 输出和你最终确认的文本</li>
-        <li><strong>对话历史</strong>立即生效 &mdash; 下一次输入就已经受益于你的纠正</li>
-        <li><strong>词库构建器</strong>定期从你的纠正历史中提取新词条，重建向量索引</li>
-        <li><strong>未来的输入</strong>获得更好的增强效果，因为 LLM 现在同时拥有近期上下文和个人词库</li>
-      </ol>
-
-      <div class="highlight-box">
-        <p><strong>你用 VoiceText 越多，它就越好用。</strong>你的纠正不仅仅是在修改当前文本 &mdash; 它们在教会系统你的词汇、你的偏好和你常谈论的话题。随着时间推移，你会发现需要纠正的地方越来越少。</p>
-      </div>
-    </section>
-
-    <!-- Full Example Walkthrough -->
-    <section id="example-walkthrough">
-      <h2>完整示例：五层协同工作</h2>
-      <p>让我们跟踪一个实际场景，看看所有五层是如何协同工作的：</p>
-
-      <div class="example-box">
-        <div class="ex-label">场景：谈论同事"萍萍"和一个使用 Kubernetes 的项目</div>
-      </div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">1</span>ASR 输出</h4>
-        <p>你说："萍萍说把那个服务部署到酷伯上就可以了"</p>
-        <p>ASR 产出：<code>平平说把那个服务部署到酷伯上就可以了</code></p>
-        <p style="font-size: 0.88rem;"><strong>错误：</strong>"萍萍" &rarr; "平平"，"Kubernetes" &rarr; "酷伯"</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">2</span>词库检索介入</h4>
-        <p>向量索引发现 <strong>Kubernetes</strong>（变体：酷伯、库伯尼特斯）与输入语义接近。这个词条被注入到 LLM 提示词中。</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">3</span>对话历史提供上下文</h4>
-        <p>你的近期历史显示：<code>平平对果果说... &rarr; 萍萍对果果说...</code>。LLM 现在知道"平平"应该是"萍萍"。</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">1+2+3</span>AI 增强结果</h4>
-        <p>LLM 结合词库上下文和对话历史，产出：</p>
-        <p><span class="ex-correct">萍萍说把那个服务部署到 Kubernetes 上就可以了。</span></p>
-        <p style="font-size: 0.88rem;">两个错误都被修正。标点已添加。</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">4</span>预览面板：你确认</h4>
-        <p>结果很完美。你按 Enter 确认。文本被输入到当前应用中。</p>
-      </div>
-
-      <div class="layer-connector">&darr;</div>
-
-      <div class="layer-card">
-        <h4><span class="layer-num">5</span>自我进化：为未来记录</h4>
-        <p>这次会话被记录。下次你再提到"萍萍"或"Kubernetes"时，系统会更有信心做出正确的纠正。</p>
-      </div>
-    </section>
-
-    <!-- Compared to Other Tools -->
-    <section id="vs-other-tools">
-      <h2>对比其他工具</h2>
-      <p>大多数语音输入工具属于以下两类之一：</p>
-
-      <div class="compare-grid">
-        <div class="compare-card">
-          <h4>基础语音输入</h4>
-          <p>转录语音并直接输入。没有纠正、没有上下文、不会学习。每个错误都需要手动修正。</p>
-        </div>
-        <div class="compare-card">
-          <h4>云端语音助手</h4>
-          <p>对一般语音有较好的准确率，但无法针对你的词汇进行定制。没有纠正反馈循环。始终依赖云端处理带来隐私问题。</p>
-        </div>
-      </div>
-
-      <p>VoiceText 的不同之处在于：它将<strong>本地优先的处理</strong>（数据留在你的机器上）与<strong>智能、分层的纠错</strong>（适应你个人需求）相结合：</p>
-
-      <div class="table-wrapper">
-        <table class="compare-table">
-          <thead>
-            <tr>
-              <th>能力</th>
-              <th>基础工具</th>
-              <th>云端助手</th>
-              <th>VoiceText</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>离线支持</td>
-              <td>部分</td>
-              <td>无</td>
-              <td><strong>默认离线</strong></td>
-            </tr>
-            <tr>
-              <td>AI 纠错</td>
-              <td>无</td>
-              <td>有限</td>
-              <td><strong>可自定义 LLM</strong></td>
-            </tr>
-            <tr>
-              <td>个人词库</td>
-              <td>无</td>
-              <td>无</td>
-              <td><strong>基于向量的 RAG</strong></td>
-            </tr>
-            <tr>
-              <td>从纠正中学习</td>
-              <td>无</td>
-              <td>无</td>
-              <td><strong>自动学习</strong></td>
-            </tr>
-            <tr>
-              <td>对话上下文</td>
-              <td>无</td>
-              <td>单会话</td>
-              <td><strong>跨会话历史</strong></td>
-            </tr>
-            <tr>
-              <td>人工审核</td>
-              <td>无</td>
-              <td>无</td>
-              <td><strong>预览面板</strong></td>
-            </tr>
-            <tr>
-              <td>隐私</td>
-              <td>各异</td>
-              <td>依赖云端</td>
-              <td><strong>可完全本地</strong></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Navigation cards -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px;">
+    <div class="doc-nav">
       <a href="user-guide.html" class="doc-nav-card">
         <h3>&larr; 用户指南</h3>
         <p>从首次启动到高级用法的渐进式指南。</p>
       </a>
-      <a href="enhance-modes.html" class="doc-nav-card">
-        <h3>AI 增强模式 &rarr;</h3>
-        <p>内置模式、链式流水线、自定义创建和现成模板库。</p>
+      <a href="configuration.html" class="doc-nav-card">
+        <h3>配置参考 &rarr;</h3>
+        <p>所有配置选项详解。</p>
       </a>
     </div>
-
   </article>
 
 </body>

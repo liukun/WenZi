@@ -8,40 +8,43 @@
   <link rel="stylesheet" href="../css/style.css">
   <style>
     .doc-container { max-width: 800px; margin: 0 auto; padding: 80px 24px 60px; }
+    .doc-container h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .doc-container .doc-subtitle { font-size: 1.1rem; margin-bottom: 32px; color: var(--text-secondary); }
     .doc-container h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
     .doc-container h3 { font-size: 1.2rem; margin-top: 32px; margin-bottom: 12px; }
+    .doc-container h4 { font-size: 1.05rem; margin-top: 24px; margin-bottom: 8px; }
     .doc-container p { margin-bottom: 16px; color: var(--text-secondary); }
     .doc-container ul, .doc-container ol { margin-bottom: 16px; padding-left: 24px; color: var(--text-secondary); }
     .doc-container li { margin-bottom: 8px; }
+    .doc-container li > ul, .doc-container li > ol { margin-top: 8px; margin-bottom: 0; }
     .doc-container blockquote { border-left: 3px solid var(--purple); padding: 12px 16px; margin: 16px 0; background: var(--bg-alt); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
     .doc-container code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
-    .doc-container pre.code-block { margin-bottom: 16px; }
-    .doc-container .compare-table { margin-bottom: 24px; }
+    .doc-container pre { background: var(--code-bg); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px; }
+    .doc-container pre code { background: none; padding: 0; }
     .doc-container strong { color: var(--text); }
-    .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
-    .toc h2 { margin-top: 0 !important; border-bottom: none !important; }
-    .toc ul { list-style: none; padding-left: 0; }
-    .toc li { margin-bottom: 6px; }
-    .toc a { color: var(--purple); }
-    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-top: 48px; transition: box-shadow 0.2s; text-decoration: none; }
+    .doc-container img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 16px 0; }
+    .doc-container hr { border: none; border-top: 1px solid var(--card-border); margin: 32px 0; }
+    .doc-container .toc { background: var(--bg-alt); border-radius: 12px; padding: 24px 28px; margin-bottom: 40px; }
+    .doc-container .toc h2 { margin-top: 0 !important; border-bottom: none !important; font-size: 1.2rem; }
+    .doc-container .toc ul { list-style: none; padding-left: 0; }
+    .doc-container .toc li { margin-bottom: 6px; }
+    .doc-container .toc a { color: var(--purple); }
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 16px; }
+    .doc-container table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--card-border); }
+    .doc-container th, .doc-container td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--card-border); }
+    .doc-container th { background: var(--purple); color: #fff; font-weight: 600; font-size: 0.95rem; }
+    .doc-container tr:last-child td { border-bottom: none; }
+    .doc-container tr:hover td { background: var(--bg-alt); }
+    .doc-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+    .doc-nav-card { display: block; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; transition: box-shadow 0.2s; text-decoration: none; }
     .doc-nav-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-decoration: none; }
-    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; }
-    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.95rem; }
-    .mode-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
-    .mode-card h4 { font-size: 1.05rem; margin-bottom: 8px; color: var(--text); }
-    .mode-card p { margin-bottom: 8px; }
-    .mode-card .mode-meta { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; }
-    .mode-card .mode-meta span { display: inline-block; background: var(--bg-alt); padding: 2px 8px; border-radius: 4px; margin-right: 8px; }
-    .example-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
-    @media (max-width: 600px) { .example-grid { grid-template-columns: 1fr; } }
-    .example-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px 20px; }
-    .example-card h4 { font-size: 0.95rem; margin-bottom: 4px; color: var(--text); }
-    .example-card p { font-size: 0.88rem; margin: 0; color: var(--text-secondary); }
+    .doc-nav-card h3 { color: var(--text); margin-bottom: 4px; font-size: 1rem; }
+    .doc-nav-card p { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+    @media (max-width: 600px) { .doc-nav { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <header class="site-header">
     <nav class="nav container">
       <a href="../" class="nav-brand">
@@ -50,178 +53,196 @@
       </a>
       <ul class="nav-links">
         <li><a href="../">&larr; Back</a></li>
-        <li><a href="../zh/docs/enhance-modes.html" class="lang-switch">中文</a></li>
+        <li><a href="../../zh/docs/enhance-modes.html" class="lang-switch">中文</a></li>
         <li><a href="https://github.com/Airead/VoiceText" target="_blank">GitHub</a></li>
       </ul>
     </nav>
   </header>
 
-  <!-- Content -->
   <article class="doc-container">
-    <h1 style="font-size: 2.2rem; font-weight: 800; margin-bottom: 8px;">AI Enhancement Modes</h1>
-    <p style="font-size: 1.1rem; margin-bottom: 32px;">Define how VoiceText's AI post-processes your transcriptions &mdash; from proofreading and translation to shell commands and meeting notes.</p>
+    <h1>AI Enhancement Modes</h1>
+    <p class="doc-subtitle">Define how AI post-processes your transcriptions.</p>
 
-    <!-- Table of Contents -->
     <div class="toc">
       <h2>Table of Contents</h2>
-      <ul>
-        <li><a href="#how-it-works">How It Works</a> &mdash; The speech &rarr; ASR &rarr; LLM &rarr; output pipeline</li>
-        <li><a href="#built-in-modes">Built-in Modes</a> &mdash; Four modes included out of the box</li>
-        <li><a href="#file-format">File Format</a> &mdash; Markdown with YAML front matter</li>
-        <li><a href="#chain-modes">Chain Modes</a> &mdash; Multi-step enhancement pipelines</li>
-        <li><a href="#create-your-own">Create Your Own</a> &mdash; Add custom modes via Settings or files</li>
-        <li><a href="#example-library">Example Library</a> &mdash; Ready-to-use templates by category</li>
-        <li><a href="#prompt-tips">Prompt Writing Tips</a> &mdash; Best practices for effective prompts</li>
-        <li><a href="#manage-modes">Manage Modes</a> &mdash; Edit, remove, and organize</li>
-      </ul>
+      <div class="toc">
+<ul>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#file-format">File Format</a></li>
+<li><a href="#chain-modes">Chain Modes</a><ul>
+<li><a href="#chain-mode-example">Chain Mode Example</a></li>
+</ul>
+</li>
+<li><a href="#built-in-modes">Built-in Modes</a></li>
+<li><a href="#add-a-new-mode">Add a New Mode</a><ul>
+<li><a href="#option-a-from-the-menu">Option A: From the Menu</a></li>
+<li><a href="#option-b-create-a-file-manually">Option B: Create a File Manually</a></li>
+<li><a href="#example-formal-email-mode">Example: Formal Email Mode</a></li>
+<li><a href="#example-translate-to-japanese">Example: Translate to Japanese</a></li>
+</ul>
+</li>
+<li><a href="#edit-an-existing-mode">Edit an Existing Mode</a></li>
+<li><a href="#remove-a-mode">Remove a Mode</a></li>
+<li><a href="#tips">Tips</a></li>
+</ul>
+</div>
+
     </div>
 
-    <!-- How It Works -->
-    <section id="how-it-works">
-      <h2>How It Works</h2>
-      <p>AI enhancement is an optional post-processing step. When enabled, your transcribed text passes through an LLM before output:</p>
-<pre class="code-block">Speech &rarr; ASR transcription &rarr; Enhancement mode (LLM) &rarr; Final text</pre>
-      <p>Each enhancement mode is an independent <strong>Markdown file</strong> stored in <code>~/.config/VoiceText/enhance_modes/</code>. The file contains a system prompt that tells the LLM how to process the text.</p>
-      <ul>
-        <li>On startup, VoiceText ensures the built-in mode files exist. Missing ones are recreated; existing files are never overwritten.</li>
-        <li>All <code>.md</code> files in the directory are loaded and appear in the <strong>AI</strong> tab and mode switcher.</li>
-        <li>When a mode is active, the transcribed text is sent to the configured LLM with the mode's prompt as the system message.</li>
-      </ul>
-    </section>
-
-    <!-- Built-in Modes -->
-    <section id="built-in-modes">
-      <h2>Built-in Modes</h2>
-      <p>These four modes are created automatically on first launch:</p>
-
-      <div class="mode-card">
-        <h4>&#9998; Proofread</h4>
-        <div class="mode-meta">
-          <span>ID: proofread</span>
-          <span>Order: 10</span>
-          <span>Type: Single</span>
-        </div>
-        <p>Fix typos, grammar mistakes, and punctuation errors. Preserves the original meaning while polishing the text. The most universally useful mode &mdash; great as a default.</p>
-      </div>
-
-      <div class="mode-card">
-        <h4>&#127760; Translate to English</h4>
-        <div class="mode-meta">
-          <span>ID: translate_en</span>
-          <span>Order: 20</span>
-          <span>Type: Single</span>
-        </div>
-        <p>Translate Chinese input into natural, fluent English. Handles ASR errors by inferring the intended meaning.</p>
-      </div>
-
-      <div class="mode-card">
-        <h4>&#128279; Proofread + Translate EN</h4>
-        <div class="mode-meta">
-          <span>ID: translate_en_plus</span>
-          <span>Order: 25</span>
-          <span>Type: Chain (proofread &rarr; translate_en)</span>
-        </div>
-        <p>A chain mode that first proofreads the text, then translates the corrected text to English. Produces higher-quality translations by fixing errors before translating.</p>
-      </div>
-
-      <div class="mode-card">
-        <h4>&#128187; Commandline Master</h4>
-        <div class="mode-meta">
-          <span>ID: commandline_master</span>
-          <span>Order: 30</span>
-          <span>Type: Single</span>
-        </div>
-        <p>Convert natural language descriptions into executable shell commands. Say "find all Python files larger than 1MB" and get the right <code>find</code> command.</p>
-      </div>
-    </section>
-
-    <!-- File Format -->
-    <section id="file-format">
-      <h2>File Format</h2>
-      <p>Each mode is a <code>.md</code> file with YAML front matter followed by the prompt body:</p>
-<pre class="code-block">---
+<p>VoiceText uses AI enhancement modes to post-process transcribed text. Each mode is defined as an independent Markdown file stored in <code>~/.config/VoiceText/enhance_modes/</code>. You can add, edit, or remove modes without modifying any code.</p>
+<h2 id="how-it-works">How It Works</h2>
+<pre><code>Speech -&gt; ASR transcription -&gt; Enhancement mode (LLM) -&gt; Final text
+</code></pre>
+<ol>
+<li>On startup, VoiceText ensures the built-in mode files exist in the modes directory. Missing built-in files are recreated automatically; existing files are never overwritten.</li>
+<li>All <code>.md</code> files in the directory are loaded and appear in the <strong>AI Enhance</strong> menu.</li>
+<li>When an enhancement mode is active, the transcribed text is sent to the configured LLM with the mode's prompt as the system message.</li>
+</ol>
+<h2 id="file-format">File Format</h2>
+<p>Each <code>.md</code> file uses a simple YAML front matter followed by the prompt body:</p>
+<pre><code class="language-markdown">---
 label: Display Name
 order: 50
 ---
 System prompt content goes here.
-You can use multiple lines.</pre>
-
-      <div class="table-wrapper">
-        <table class="compare-table">
-          <thead>
-            <tr><th>Field</th><th>Required</th><th>Description</th></tr>
-          </thead>
-          <tbody>
-            <tr><td><code>label</code></td><td>No</td><td>Display name in the menu. Defaults to the filename.</td></tr>
-            <tr><td><code>order</code></td><td>No</td><td>Sort weight for menu ordering. Default <code>50</code>. Lower = higher in menu.</td></tr>
-            <tr><td><code>steps</code></td><td>No</td><td>Comma-separated mode IDs for chain execution (see <a href="#chain-modes">Chain Modes</a>).</td></tr>
-            <tr><td>body</td><td>Yes</td><td>The system prompt sent to the LLM. Everything after the second <code>---</code>.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p>The <strong>filename</strong> (without <code>.md</code>) serves as the mode ID. Use only letters, numbers, hyphens, and underscores.</p>
-      <blockquote>The reserved mode ID <code>off</code> disables enhancement and does not correspond to any file.</blockquote>
-    </section>
-
-    <!-- Chain Modes -->
-    <section id="chain-modes">
-      <h2>Chain Modes</h2>
-      <p>A chain mode runs multiple enhancement steps sequentially, passing the output of each step as input to the next. This lets you combine existing modes into a pipeline without duplicating prompts.</p>
-
-      <h3>How to Create</h3>
-      <p>Add a <code>steps</code> field listing the mode IDs to execute in order:</p>
-<pre class="code-block">---
-label: Proofread + Translate EN
+You can use multiple lines.
+</code></pre>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>label</code></td>
+<td>No</td>
+<td>Display name shown in the menu. Defaults to the filename</td>
+</tr>
+<tr>
+<td><code>order</code></td>
+<td>No</td>
+<td>Sort weight for menu ordering. Default <code>50</code>. Lower = higher in menu</td>
+</tr>
+<tr>
+<td><code>steps</code></td>
+<td>No</td>
+<td>Comma-separated list of mode IDs for chain execution (see <a href="#chain-modes">Chain Modes</a>)</td>
+</tr>
+<tr>
+<td>body</td>
+<td>Yes</td>
+<td>The system prompt sent to the LLM. Everything after the second <code>---</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>The <strong>filename</strong> (without <code>.md</code>) serves as the mode ID and must match the <code>mode</code> value in <code>config.json</code>. Use only letters, numbers, hyphens, and underscores.</p>
+<blockquote>
+<p>The reserved mode ID <code>off</code> disables enhancement and does not correspond to any file.</p>
+</blockquote>
+<h2 id="chain-modes">Chain Modes</h2>
+<p>A chain mode runs multiple enhancement steps sequentially, passing the output of each step as input to the next. This is useful for combining existing modes into a pipeline without duplicating prompts.</p>
+<p>To create a chain mode, add a <code>steps</code> field listing the mode IDs to execute in order:</p>
+<pre><code class="language-markdown">---
+label: Translate EN+ (Proofread → Translate)
 order: 25
 steps: proofread, translate_en
 ---
-First proofreads the text, then translates to English.
-(This body is documentation only &mdash; each step uses its own prompt.)</pre>
-
-      <h3>How It Executes</h3>
-      <ol>
-        <li>The input text is sent to the first step (<code>proofread</code>) using that mode's prompt.</li>
-        <li>The output of step 1 becomes the input for step 2 (<code>translate_en</code>).</li>
-        <li>The final output is the result of the last step.</li>
-      </ol>
-
-      <h3>UI Integration</h3>
-      <ul>
-        <li><strong>Preview mode:</strong> Each step's output is displayed with a separator. The Final Result shows only the last step's output.</li>
-        <li><strong>Direct mode:</strong> The streaming overlay shows step progress (e.g., "Step 1/2: Proofread") and updates in real-time.</li>
-      </ul>
-
-      <blockquote>The prompt body of a chain mode file is not sent to the LLM &mdash; each step uses its own mode's prompt. The body serves as documentation.</blockquote>
-    </section>
-
-    <!-- Create Your Own -->
-    <section id="create-your-own">
-      <h2>Create Your Own</h2>
-
-      <h3>Option A: From Settings (easy)</h3>
-      <ol>
-        <li>Open <strong>Settings...</strong> &rarr; <strong>AI</strong> tab &rarr; <strong>Add Mode...</strong></li>
-        <li>Edit the template in the dialog.</li>
-        <li>Click <strong>Save</strong>, enter a mode ID (e.g., <code>summarize</code>).</li>
-        <li>The new mode appears in the menu immediately.</li>
-      </ol>
-
-      <h3>Option B: Create a File (flexible)</h3>
-      <p>Create a new <code>.md</code> file in the modes directory:</p>
-<pre class="code-block">~/.config/VoiceText/enhance_modes/summarize.md</pre>
-<pre class="code-block">---
+This mode first proofreads the text, then translates it to English.
+</code></pre>
+<p><strong>How it works:</strong></p>
+<ol>
+<li>The input text is sent to the first step (<code>proofread</code>) using that mode's prompt.</li>
+<li>The output of step 1 becomes the input for step 2 (<code>translate_en</code>).</li>
+<li>The final output is the result of the last step.</li>
+</ol>
+<p><strong>In preview mode</strong>, each step's output is displayed with a separator, and the thinking text from each step is accumulated. The Final Result field shows only the last step's output.</p>
+<p><strong>In direct mode</strong>, the streaming overlay shows step progress (e.g., "Step 1/2: 纠错润色") and updates in real-time.</p>
+<blockquote>
+<p><strong>Note:</strong> The prompt body of a chain mode file is not sent to the LLM — each step uses its own mode's prompt. The body is only for documentation purposes.</p>
+</blockquote>
+<h3 id="chain-mode-example">Chain Mode Example</h3>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/translate_en_plus.md &lt;&lt; 'EOF'
+---
+label: Translate EN+ (纠错→翻译)
+order: 25
+steps: proofread, translate_en
+---
+Proofread first, then translate to English.
+This prompt body is not used — each step uses its own mode's prompt.
+EOF
+</code></pre>
+<h2 id="built-in-modes">Built-in Modes</h2>
+<p>These 4 modes are created automatically on first launch:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Label</th>
+<th>Order</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>proofread.md</code></td>
+<td>纠错润色</td>
+<td>10</td>
+<td>Single</td>
+<td>Fix typos, grammar, and punctuation</td>
+</tr>
+<tr>
+<td><code>translate_en.md</code></td>
+<td>翻译为英文</td>
+<td>20</td>
+<td>Single</td>
+<td>Translate Chinese to English</td>
+</tr>
+<tr>
+<td><code>translate_en_plus.md</code></td>
+<td>润色+翻译EN</td>
+<td>25</td>
+<td>Chain (proofread → translate_en)</td>
+<td>Proofread first, then translate to English</td>
+</tr>
+<tr>
+<td><code>commandline_master.md</code></td>
+<td>命令行大神</td>
+<td>30</td>
+<td>Single</td>
+<td>Convert natural language to shell commands</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="add-a-new-mode">Add a New Mode</h2>
+<h3 id="option-a-from-the-menu">Option A: From the Menu</h3>
+<ol>
+<li>Open <strong>Settings...</strong> → <strong>AI</strong> tab.</li>
+<li>Click <strong>Add Mode...</strong>.</li>
+<li>Edit the template in the dialog and click <strong>Save</strong>.</li>
+<li>Enter a mode ID (e.g., <code>summarize</code>) and confirm.</li>
+<li>The new mode appears in the menu immediately.</li>
+</ol>
+<h3 id="option-b-create-a-file-manually">Option B: Create a File Manually</h3>
+<p>Create a new <code>.md</code> file in the modes directory:</p>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/summarize.md &lt;&lt; 'EOF'
+---
 label: Summarize
 order: 55
 ---
 You are a text summarization assistant.
 Condense the user's input into a brief summary of 1-3 sentences.
 Preserve the key information and original meaning.
-Output only the summary without any explanation.</pre>
-      <p>Restart the app to load the new mode.</p>
-
-      <h3>Example: Formal Email Mode</h3>
-<pre class="code-block">---
+Output only the summary without any explanation.
+EOF
+</code></pre>
+<p>Restart the app to load the new mode.</p>
+<h3 id="example-formal-email-mode">Example: Formal Email Mode</h3>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/formal_email.md &lt;&lt; 'EOF'
+---
 label: Formal Email
 order: 60
 ---
@@ -229,174 +250,62 @@ You are a professional email writing assistant.
 Rewrite the user's input as a formal, polished email body.
 Use appropriate greetings and closings if context suggests an email.
 Maintain the original intent and key information.
-Output only the email text without any explanation.</pre>
-    </section>
-
-    <!-- Example Library -->
-    <section id="example-library">
-      <h2>Example Library</h2>
-      <p>Ready-to-use templates you can copy into <code>~/.config/VoiceText/enhance_modes/</code>. Click any card to see the full prompt on GitHub.</p>
-
-      <h3>Writing &amp; Communication</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#9993; Formal Email</h4>
-          <p>Turn spoken thoughts into a polished email body with appropriate greetings and closings.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128203; Meeting Notes</h4>
-          <p>Structure stream-of-consciousness speech into organized meeting notes with action items.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128588; Polite Rewrite</h4>
-          <p>Make direct or blunt speech more diplomatic and professional.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128241; Social Media</h4>
-          <p>Condense spoken content into a short, engaging post under 140 characters.</p>
-        </div>
-      </div>
-
-      <h3>Summarization &amp; Extraction</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#128196; Summarize</h4>
-          <p>Condense long speech into 1&ndash;3 sentences preserving key information.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#9745; Extract Action Items</h4>
-          <p>Pull out tasks and to-dos from spoken content as a checklist.</p>
-        </div>
-      </div>
-
-      <h3>Translation</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#127471;&#127477; Translate to Japanese</h4>
-          <p>Chinese to natural, fluent Japanese with appropriate politeness level.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#127472;&#127479; Translate to Korean</h4>
-          <p>Chinese to natural Korean using &#54644;&#50836;&#52404; (polite informal) by default.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#127760; Bilingual Output</h4>
-          <p>Output both corrected Chinese and English translation side by side.</p>
-        </div>
-      </div>
-
-      <h3>Developer Tools</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#128451; SQL Query</h4>
-          <p>Convert natural language to executable SQL statements.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128204; Git Commit</h4>
-          <p>Generate conventional commit messages from spoken descriptions.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#128221; Code Comment</h4>
-          <p>Convert spoken explanations into concise code comments.</p>
-        </div>
-      </div>
-
-      <h3>Domain-Specific</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#129658; Medical Notes</h4>
-          <p>Structure clinical observations into formatted medical records.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#9878; Legal Clause</h4>
-          <p>Rewrite spoken intent into formal legal language.</p>
-        </div>
-      </div>
-
-      <h3>Creative</h3>
-      <div class="example-grid">
-        <div class="example-card">
-          <h4>&#128516; Emoji Enhance</h4>
-          <p>Add expressive emojis to text at appropriate positions.</p>
-        </div>
-        <div class="example-card">
-          <h4>&#127800; Poetry Rewrite</h4>
-          <p>Transform spoken thoughts into elegant, poetic prose.</p>
-        </div>
-      </div>
-
-      <p>For complete prompt templates with full instructions, see the <a href="https://github.com/Airead/VoiceText/blob/main/docs/enhance-mode-examples.md" target="_blank" rel="noopener">Enhancement Mode Examples</a> on GitHub.</p>
-    </section>
-
-    <!-- Prompt Writing Tips -->
-    <section id="prompt-tips">
-      <h2>Prompt Writing Tips</h2>
-
-      <ol>
-        <li><strong>Be specific.</strong> Tell the LLM exactly what to do AND what NOT to do. Vague prompts produce inconsistent results.</li>
-        <li><strong>End with an output rule.</strong> Always include a rule like "Output only the processed text without any explanation" to prevent the LLM from adding commentary.</li>
-        <li><strong>Mention ASR context.</strong> Add "The user's input comes from ASR and may contain recognition errors" &mdash; this significantly improves error correction.</li>
-        <li><strong>Use numbered rules.</strong> Structured prompts with numbered rules produce more consistent behavior than paragraph-form instructions.</li>
-        <li><strong>Set order with gaps.</strong> Use <code>order</code> values like 10, 20, 30... so you can insert modes between them later without renumbering.</li>
-        <li><strong>Test with edge cases.</strong> Try short input, long input, mixed languages, and intentionally noisy ASR text.</li>
-        <li><strong>Iterate.</strong> Start simple, test, then add rules for cases the LLM gets wrong. Over-constrained prompts can make the LLM too rigid.</li>
-      </ol>
-
-      <h3>Example: Well-Structured Prompt</h3>
-<pre class="code-block">---
-label: Formal Email
-order: 100
+Output only the email text without any explanation.
+EOF
+</code></pre>
+<h3 id="example-translate-to-japanese">Example: Translate to Japanese</h3>
+<pre><code class="language-bash">cat &gt; ~/.config/VoiceText/enhance_modes/translate_ja.md &lt;&lt; 'EOF'
 ---
-You are a professional email writing assistant.
-The user's input comes from ASR and may contain recognition errors
-&mdash; infer the intended meaning.
-
-Rules:
-1. Rewrite the input as a formal, polished email body
-2. Add appropriate greeting and closing if the context suggests
-   a standalone email
-3. Maintain the original intent and key information
-4. If the user mentions a recipient name, use it in the greeting
-5. Output only the email text without any explanation</pre>
-    </section>
-
-    <!-- Manage Modes -->
-    <section id="manage-modes">
-      <h2>Manage Modes</h2>
-
-      <h3>Edit a Mode</h3>
-      <p>Open the file directly with any text editor, or use Settings &rarr; AI &rarr; select the mode &rarr; edit. Changes take effect after restarting the app (or reloading config).</p>
-      <blockquote>Built-in mode files can be freely edited. VoiceText will not overwrite a file that already exists.</blockquote>
-
-      <h3>Remove a Mode</h3>
-      <p>Delete the corresponding <code>.md</code> file and restart. If you delete a built-in mode file (e.g., <code>proofread.md</code>), it will be recreated on the next startup with default content.</p>
-      <p>To permanently disable a built-in mode, replace its prompt with a passthrough instruction:</p>
-<pre class="code-block">---
+label: Translate to Japanese
+order: 70
+---
+You are a Chinese-to-Japanese translator.
+Translate the user's Chinese input into natural, fluent Japanese.
+Preserve the original meaning and tone.
+Output only the translated text without any explanation.
+EOF
+</code></pre>
+<h2 id="edit-an-existing-mode">Edit an Existing Mode</h2>
+<p>Open the file directly with any text editor:</p>
+<pre><code class="language-bash"># Edit with your preferred editor
+open -e ~/.config/VoiceText/enhance_modes/proofread.md
+# or
+vim ~/.config/VoiceText/enhance_modes/proofread.md
+</code></pre>
+<p>Changes take effect after restarting the app.</p>
+<blockquote>
+<p>Built-in mode files can be freely edited. VoiceText will not overwrite a file that already exists.</p>
+</blockquote>
+<h2 id="remove-a-mode">Remove a Mode</h2>
+<p>Delete the corresponding <code>.md</code> file and restart:</p>
+<pre><code class="language-bash">rm ~/.config/VoiceText/enhance_modes/summarize.md
+</code></pre>
+<p><strong>Note:</strong> If you delete a built-in mode file (e.g., <code>proofread.md</code>), it will be recreated on the next startup with default content. To permanently disable a built-in mode, replace its prompt with a passthrough instruction instead:</p>
+<pre><code class="language-markdown">---
 label: (Disabled) Proofread
 order: 999
 ---
-Output the user's input exactly as-is, without any changes.</pre>
+Output the user's input exactly as-is, without any changes.
+</code></pre>
+<h2 id="tips">Tips</h2>
+<ul>
+<li><strong>Ordering</strong>: Use <code>order</code> values with gaps (10, 20, 30...) so you can insert new modes between existing ones without renumbering.</li>
+<li><strong>Prompt quality</strong>: Be specific in your prompts. Tell the LLM exactly what to do and what NOT to do. Always end with "Output only the processed text without any explanation" to avoid unwanted commentary.</li>
+<li><strong>Config compatibility</strong>: The <code>mode</code> field in <code>~/.config/VoiceText/config.json</code> stores the mode ID (filename). If a mode file is removed but the config still references it, the app falls back to the first available mode.</li>
+<li><strong>Non-<code>.md</code> files are ignored</strong>: You can safely keep notes (<code>.txt</code>) or backups (<code>.bak</code>) in the modes directory.</li>
+</ul>
+<p>For more inspiration, see <a href="enhance-mode-examples.md">Enhancement Mode Examples</a> — a collection of ready-to-use templates covering writing, translation, developer tools, and more.</p>
 
-      <h3>Organize Modes</h3>
-      <ul>
-        <li><strong>Non-<code>.md</code> files are ignored</strong> &mdash; you can safely keep notes (<code>.txt</code>) or backups (<code>.bak</code>) in the modes directory.</li>
-        <li><strong>Config compatibility:</strong> If a mode file is removed but the config still references it, the app falls back to the first available mode.</li>
-        <li><strong>Quick mode switch:</strong> Use <code>&#8984;1</code>&ndash;<code>&#8984;9</code> in the preview panel to switch modes on the fly.</li>
-      </ul>
-    </section>
-
-    <!-- Navigation cards -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px;">
-      <a href="error-correction.html" class="doc-nav-card">
-        <h3>&larr; Error Correction</h3>
-        <p>Five layers of correction that work together to fix speech recognition errors.</p>
+    <div class="doc-nav">
+      <a href="configuration.html" class="doc-nav-card">
+        <h3>&larr; Configuration Reference</h3>
+        <p>All configuration options explained.</p>
       </a>
-      <a href="prompt-optimization.html" class="doc-nav-card">
-        <h3>Prompt Optimization &rarr;</h3>
-        <p>Systematically improve AI enhancement quality using diagnostic tools.</p>
+      <a href="enhance-mode-examples.html" class="doc-nav-card">
+        <h3>Enhancement Mode Examples &rarr;</h3>
+        <p>Ready-to-use enhancement mode templates.</p>
       </a>
     </div>
-
   </article>
 
 </body>
