@@ -305,6 +305,44 @@ class TestDoTranscribeDirect:
         mock_app._conversation_history.log.assert_called_once()
 
     @patch("voicetext.controllers.recording_controller.type_text")
+    @patch("voicetext.controllers.recording_controller.time")
+    @patch("PyObjCTools.AppHelper")
+    def test_no_enhance_overlay_already_shown(
+        self, mock_apphelper, mock_time, mock_type_text, ctrl, mock_app
+    ):
+        """When overlay is already shown and no enhance, should update ASR text,
+        wait briefly, then close overlay and type text."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        ctrl.do_transcribe_direct(
+            "hello world", use_enhance=False, overlay_already_shown=True
+        )
+
+        mock_app._streaming_overlay.set_asr_text.assert_called_once_with("hello world")
+        mock_time.sleep.assert_called_once_with(0.8)
+        mock_app._streaming_overlay.close.assert_called_once()
+        mock_type_text.assert_called_once()
+
+    @patch("voicetext.controllers.recording_controller.type_text")
+    @patch("PyObjCTools.AppHelper")
+    def test_enhance_overlay_already_shown(
+        self, mock_apphelper, mock_type_text, ctrl, mock_app
+    ):
+        """When overlay is already shown with enhance, should update ASR text
+        and set cancel event instead of creating a new overlay."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.get_mode_definition.return_value = MagicMock(steps=None)
+        mock_app._enhancer.enhance_stream.side_effect = Exception("fail")
+
+        ctrl.do_transcribe_direct(
+            "hello", use_enhance=True, overlay_already_shown=True
+        )
+
+        mock_app._streaming_overlay.set_asr_text.assert_called_once_with("hello")
+        mock_app._streaming_overlay.set_cancel_event.assert_called_once()
+        # Should NOT call animate_out (overlay already visible)
+        mock_app._recording_indicator.animate_out.assert_not_called()
+
+    @patch("voicetext.controllers.recording_controller.type_text")
     @patch("PyObjCTools.AppHelper")
     def test_enhance_cancelled(self, mock_apphelper, mock_type_text, ctrl, mock_app):
         """When enhancement is cancelled, original text should not be typed."""

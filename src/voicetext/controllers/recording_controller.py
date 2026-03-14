@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -167,10 +168,10 @@ class RecordingController:
             app._set_status("VT")
             return
         use_enhance = bool(app._enhancer and app._enhancer.is_active)
-        # Keep indicator alive for animation when preview or direct+enhance
-        self.stop_recording_indicator(
-            animate=app._preview_enabled or use_enhance
-        )
+        # Always keep indicator alive for animate-out: preview mode animates
+        # into preview panel; direct mode animates into the streaming overlay
+        # (which is now shown immediately after recording ends)
+        self.stop_recording_indicator(animate=True)
 
         app._busy = True
 
@@ -193,6 +194,23 @@ class RecordingController:
             threading.Thread(target=_do_preview, daemon=True).start()
         else:
             app._set_status("Transcribing...")
+            # Show overlay immediately so user knows recording has ended
+            stt_info = app._current_stt_model()
+            llm_info = app._current_llm_model()
+
+            from PyObjCTools import AppHelper
+
+            def _show_direct_overlay():
+                app._recording_indicator.hide()
+                app._streaming_overlay.show(
+                    asr_text="",
+                    cancel_event=None,
+                    stt_info=stt_info,
+                    llm_info=llm_info if use_enhance else "",
+                )
+
+            AppHelper.callAfter(_show_direct_overlay)
+
             # Run transcription in background to keep UI responsive
             def _do_transcribe():
                 try:
@@ -202,13 +220,20 @@ class RecordingController:
                     text = app._transcriber.transcribe(wav_data)
                     if text and text.strip():
                         asr_text = text.strip()
-                        use_enhance = bool(app._enhancer and app._enhancer.is_active)
-                        self.do_transcribe_direct(asr_text, use_enhance)
+                        use_enhance_now = bool(
+                            app._enhancer and app._enhancer.is_active
+                        )
+                        self.do_transcribe_direct(
+                            asr_text, use_enhance_now,
+                            overlay_already_shown=True,
+                        )
                     else:
+                        AppHelper.callAfter(app._streaming_overlay.close)
                         app._set_status("(empty)")
                         logger.warning("Transcription returned empty text")
                 except Exception as e:
                     logger.error("Transcription failed: %s", e)
+                    AppHelper.callAfter(app._streaming_overlay.close)
                     app._set_status("Error")
                 finally:
                     app._busy = False
@@ -327,8 +352,21 @@ class RecordingController:
         fb_cfg["visual_indicator"] = app._recording_indicator.enabled
         save_config(app._config, app._config_path)
 
-    def do_transcribe_direct(self, asr_text: str, use_enhance: bool) -> None:
-        """Original flow: enhance (if enabled) and type directly."""
+    def do_transcribe_direct(
+        self,
+        asr_text: str,
+        use_enhance: bool,
+        overlay_already_shown: bool = False,
+    ) -> None:
+        """Original flow: enhance (if enabled) and type directly.
+
+        Args:
+            asr_text: Transcribed text from ASR.
+            use_enhance: Whether to run AI enhancement.
+            overlay_already_shown: If True, the streaming overlay is already
+                visible (shown immediately after recording ended). The method
+                will update ASR text and reuse it instead of creating a new one.
+        """
         from PyObjCTools import AppHelper
 
         app = self._app
@@ -346,24 +384,30 @@ class RecordingController:
 
         if use_enhance:
             app._set_status("Enhancing...")
-            # Animate recording indicator out, then show streaming overlay
-            indicator_frame = app._recording_indicator.current_frame
 
-            stt_info = app._current_stt_model()
-            llm_info = app._current_llm_model()
+            if overlay_already_shown:
+                # Overlay already visible — update ASR text and register
+                # cancel event for ESC key support
+                app._streaming_overlay.set_asr_text(asr_text)
+                app._streaming_overlay.set_cancel_event(cancel_event)
+            else:
+                # Legacy path (streaming transcription): show overlay now
+                indicator_frame = app._recording_indicator.current_frame
+                stt_info = app._current_stt_model()
+                llm_info = app._current_llm_model()
 
-            def _show_overlay():
-                app._recording_indicator.animate_out(
-                    completion=lambda: app._streaming_overlay.show(
-                        asr_text=asr_text,
-                        cancel_event=cancel_event,
-                        animate_from_frame=indicator_frame,
-                        stt_info=stt_info,
-                        llm_info=llm_info,
+                def _show_overlay():
+                    app._recording_indicator.animate_out(
+                        completion=lambda: app._streaming_overlay.show(
+                            asr_text=asr_text,
+                            cancel_event=cancel_event,
+                            animate_from_frame=indicator_frame,
+                            stt_info=stt_info,
+                            llm_info=llm_info,
+                        )
                     )
-                )
 
-            AppHelper.callAfter(_show_overlay)
+                AppHelper.callAfter(_show_overlay)
 
             try:
                 current_mode_def = app._enhancer.get_mode_definition(app._enhance_mode)
@@ -392,6 +436,13 @@ class RecordingController:
                 logger.error("AI enhancement failed: %s", e)
                 text = asr_text
             finally:
+                AppHelper.callAfter(app._streaming_overlay.close)
+        else:
+            # No enhancement — update overlay with ASR result, show briefly,
+            # then close
+            if overlay_already_shown:
+                app._streaming_overlay.set_asr_text(asr_text)
+                time.sleep(0.8)
                 AppHelper.callAfter(app._streaming_overlay.close)
 
         if cancel_event.is_set():

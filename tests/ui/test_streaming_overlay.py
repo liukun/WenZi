@@ -258,3 +258,36 @@ class TestStreamingOverlayPanel:
         panel._text_view.setString_.assert_called_with("")
         panel.append_text("result", completion_tokens=1)
         assert panel._text_view.textStorage().appendAttributedString_.call_count == 2
+
+    def test_show_positions_bottom_right(self, _mock_appkit):
+        """show() should position the panel (setFrameOrigin_ is called)."""
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        # Verify setFrameOrigin_ is called (bottom-right positioning)
+        panel._panel.setFrameOrigin_.assert_called_once()
+
+    def test_set_asr_text_updates_label(self, _mock_appkit):
+        """set_asr_text should update the ASR label."""
+        panel = _make_panel()
+        panel.show(asr_text="")
+        panel.set_asr_text("transcribed text")
+        panel._asr_label.setStringValue_.assert_called_with("transcribed text")
+
+    def test_set_cancel_event_registers_esc(self, _mock_appkit):
+        """set_cancel_event should attach event and register ESC monitor."""
+        mock_appkit_mod = _mock_appkit.appkit
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        # Reset ESC monitor to simulate show() without cancel_event
+        panel._esc_monitor = None
+        cancel = threading.Event()
+        panel.set_cancel_event(cancel)
+        assert panel._cancel_event is cancel
+        mock_appkit_mod.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_.assert_called()
+
+    def test_set_asr_text_after_close_no_crash(self, _mock_appkit):
+        """set_asr_text after close should not crash."""
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        panel.close()
+        panel.set_asr_text("new text")  # Should be a no-op

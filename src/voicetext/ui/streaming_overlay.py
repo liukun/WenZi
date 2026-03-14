@@ -308,13 +308,13 @@ class StreamingOverlayPanel:
 
             panel.setContentView_(content)
 
-            # Calculate center position as final target
+            # Calculate bottom-right position as final target
             screen = NSScreen.mainScreen()
             target_x, target_y = 0, 0
             if screen:
                 sf = screen.visibleFrame()
-                target_x = sf.origin.x + (sf.size.width - _PANEL_WIDTH) / 2
-                target_y = sf.origin.y + (sf.size.height - _PANEL_HEIGHT) / 2
+                target_x = sf.origin.x + sf.size.width - _PANEL_WIDTH - _SCREEN_MARGIN
+                target_y = sf.origin.y + _SCREEN_MARGIN
 
             if animate_from_frame is not None:
                 from AppKit import NSAnimationContext
@@ -502,6 +502,27 @@ class StreamingOverlayPanel:
         def _update():
             if self._status_label is not None:
                 self._status_label.setStringValue_(text)
+
+        AppHelper.callAfter(_update)
+
+    def set_asr_text(self, text: str) -> None:
+        """Update the ASR label text after transcription completes. Thread-safe."""
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._asr_label is not None:
+                self._asr_label.setStringValue_(text)
+
+        AppHelper.callAfter(_update)
+
+    def set_cancel_event(self, cancel_event: threading.Event) -> None:
+        """Attach a cancel event and register ESC monitor. Thread-safe."""
+        from PyObjCTools import AppHelper
+
+        def _update():
+            self._cancel_event = cancel_event
+            if self._esc_monitor is None:
+                self._register_esc_monitor()
 
         AppHelper.callAfter(_update)
 
