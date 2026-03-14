@@ -223,6 +223,38 @@ class TestApplyFilters:
         panel._apply_filters()
         assert len(panel._filtered_records) == 2
 
+    def test_tag_filter_model(self):
+        """Model names can be used as tags to filter."""
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
+
+        panel = HistoryBrowserPanel()
+        panel._time_range = "all"
+        panel._active_tags = {"whisper"}
+        panel._all_records = [
+            {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a", "stt_model": "whisper", "llm_model": "gpt-4"},
+            {"timestamp": "t2", "enhance_mode": "proofread", "final_text": "b", "stt_model": "funASR", "llm_model": "gpt-4"},
+            {"timestamp": "t3", "enhance_mode": "off", "final_text": "c", "stt_model": "funASR", "llm_model": ""},
+        ]
+
+        panel._apply_filters()
+        assert len(panel._filtered_records) == 1
+        assert panel._filtered_records[0]["stt_model"] == "whisper"
+
+    def test_tag_filter_llm_model(self):
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
+
+        panel = HistoryBrowserPanel()
+        panel._time_range = "all"
+        panel._active_tags = {"gpt-4"}
+        panel._all_records = [
+            {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a", "stt_model": "w", "llm_model": "gpt-4"},
+            {"timestamp": "t2", "enhance_mode": "proofread", "final_text": "b", "stt_model": "w", "llm_model": "claude"},
+        ]
+
+        panel._apply_filters()
+        assert len(panel._filtered_records) == 1
+        assert panel._filtered_records[0]["llm_model"] == "gpt-4"
+
     def test_combined_time_and_tag(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
@@ -488,9 +520,12 @@ class TestPushData:
         panel = _build_panel(HistoryBrowserPanel())
         panel._time_range = "all"
         panel._all_records = [
-            {"timestamp": "t1", "enhance_mode": "proofread", "user_corrected": True, "final_text": "a"},
-            {"timestamp": "t2", "enhance_mode": "translate_en", "user_corrected": False, "final_text": "b"},
-            {"timestamp": "t3", "enhance_mode": "proofread", "user_corrected": False, "final_text": "c"},
+            {"timestamp": "t1", "enhance_mode": "proofread", "user_corrected": True,
+             "final_text": "a", "stt_model": "whisper", "llm_model": "gpt-4"},
+            {"timestamp": "t2", "enhance_mode": "translate_en", "user_corrected": False,
+             "final_text": "b", "stt_model": "whisper", "llm_model": "claude"},
+            {"timestamp": "t3", "enhance_mode": "proofread", "user_corrected": False,
+             "final_text": "c", "stt_model": "funASR", "llm_model": ""},
         ]
 
         panel._push_tag_options()
@@ -500,14 +535,25 @@ class TestPushData:
         assert len(tag_calls) == 1
         data = json.loads(tag_calls[0][len("setTagOptions("):-1])
         names = [t["name"] for t in data]
+        # Mode tags
         assert "proofread" in names
         assert "translate_en" in names
+        # Model tags
+        assert "whisper" in names
+        assert "funASR" in names
+        assert "gpt-4" in names
+        assert "claude" in names
+        # Special
         assert "corrected" in names
-        # Check counts
-        counts = {t["name"]: t["count"] for t in data}
-        assert counts["proofread"] == 2
-        assert counts["translate_en"] == 1
-        assert counts["corrected"] == 1
+        # Check counts and groups
+        by_name = {t["name"]: t for t in data}
+        assert by_name["proofread"]["count"] == 2
+        assert by_name["proofread"]["group"] == "mode"
+        assert by_name["whisper"]["count"] == 2
+        assert by_name["whisper"]["group"] == "stt"
+        assert by_name["gpt-4"]["count"] == 1
+        assert by_name["gpt-4"]["group"] == "llm"
+        assert by_name["corrected"]["group"] == "special"
 
 
 # ---------------------------------------------------------------------------
@@ -524,7 +570,7 @@ class TestHtmlTemplate:
     def test_has_key_ui_elements(self):
         from voicetext.ui.history_browser_window_web import _HTML_TEMPLATE
 
-        for elem_id in ("search", "time-range", "query-btn", "clear-btn",
+        for elem_id in ("search", "time-range", "clear-btn",
                          "tag-row", "stats-line", "table-body",
                          "save-btn", "close-btn"):
             assert elem_id in _HTML_TEMPLATE
@@ -541,10 +587,10 @@ class TestHtmlTemplate:
         assert "Escape" in _HTML_TEMPLATE
         assert "metaKey" in _HTML_TEMPLATE
 
-    def test_has_six_columns(self):
+    def test_has_table_columns(self):
         from voicetext.ui.history_browser_window_web import _HTML_TEMPLATE
 
-        for col in ("col-time", "col-mode", "col-stt", "col-llm", "col-content", "col-tags"):
+        for col in ("col-time", "col-mode", "col-content", "col-tags"):
             assert col in _HTML_TEMPLATE
 
 

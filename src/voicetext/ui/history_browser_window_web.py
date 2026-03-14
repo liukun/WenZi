@@ -31,23 +31,23 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     --btn-primary-bg: #007aff; --btn-primary-text: #ffffff;
     --focus-ring: rgba(0, 122, 255, 0.4);
     --alt-row: #fafafa;
-    --tag-proofread: #007aff; --tag-translate: #af52de;
-    --tag-format: #34c759; --tag-off: #8e8e93;
-    --tag-corrected: #ff9500;
+    --tag-proofread: #4a90d9; --tag-translate: #9b6fb0;
+    --tag-format: #5da469; --tag-off: #8e8e93;
+    --tag-corrected: #cc8840; --tag-stt: #5a9eb8; --tag-llm: #c06080;
     --tag-pill-bg: rgba(0,0,0,0.06); --tag-pill-text: var(--secondary);
 }
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #1d1d1f; --text: #f5f5f7; --card-bg: #2c2c2e;
+        --bg: #1d1d1f; --text: #c8c8cc; --card-bg: #2c2c2e;
         --border: #48484a; --secondary: #98989d; --accent: #0a84ff;
         --text-bg: #1c1c1e; --row-hover: #2c3a50;
         --btn-bg: #3a3a3c; --btn-hover: #48484a;
         --btn-primary-bg: #0a84ff; --btn-primary-text: #ffffff;
         --focus-ring: rgba(10, 132, 255, 0.4);
         --alt-row: #242426;
-        --tag-proofread: #0a84ff; --tag-translate: #bf5af2;
-        --tag-format: #30d158; --tag-off: #636366;
-        --tag-corrected: #ff9f0a;
+        --tag-proofread: #5a9ad9; --tag-translate: #9a7ab8;
+        --tag-format: #6aad76; --tag-off: #787880;
+        --tag-corrected: #c89050; --tag-stt: #6aafc5; --tag-llm: #b87090;
         --tag-pill-bg: rgba(255,255,255,0.08); --tag-pill-text: var(--secondary);
     }
 }
@@ -94,31 +94,50 @@ body {
 
 /* Tag filter row */
 .tag-row {
-    display: flex; align-items: center; gap: 6px;
-    margin-bottom: 8px; flex-shrink: 0; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 5px;
+    margin-bottom: 8px; flex-shrink: 0;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
-.tag-row-label {
-    font-size: 11px; color: var(--secondary); font-weight: 600;
-    margin-right: 2px; white-space: nowrap;
+.tag-row::-webkit-scrollbar { display: none; }
+.tag-group-label {
+    font-size: 10px; color: var(--secondary); font-weight: 600;
+    white-space: nowrap; margin-left: 6px;
     -webkit-user-select: none; user-select: none;
+}
+.tag-group-label:first-child { margin-left: 0; }
+.tag-sep {
+    width: 1px; height: 16px; background: var(--border);
+    margin: 0 4px; flex-shrink: 0;
 }
 .tag-pill {
-    display: inline-flex; align-items: center;
-    height: 24px; padding: 0 10px; border-radius: 12px;
-    font-size: 11px; font-weight: 500; cursor: pointer;
+    display: inline-flex; align-items: center; flex-shrink: 0;
+    height: 20px; padding: 0 7px; border-radius: 10px;
+    font-size: 10px; font-weight: 500; cursor: pointer;
     border: 1px solid var(--border);
     background: var(--tag-pill-bg); color: var(--tag-pill-text);
-    transition: all 0.15s;
+    transition: all 0.15s; position: relative;
     -webkit-user-select: none; user-select: none;
 }
+.tag-pill .tip {
+    display: none; position: absolute; bottom: calc(100% + 4px); left: 50%;
+    transform: translateX(-50%); padding: 3px 8px; border-radius: 4px;
+    background: var(--text); color: var(--bg); font-size: 11px; font-weight: 400;
+    white-space: nowrap; z-index: 100; pointer-events: none;
+}
+.tag-pill:hover .tip { display: block; }
+/* Dimmed: color from --c custom property set via JS */
+.tag-pill {
+    --c: var(--secondary);
+    color: var(--c);
+    background: color-mix(in srgb, var(--c) 15%, transparent);
+    border-color: color-mix(in srgb, var(--c) 25%, transparent);
+}
 .tag-pill:hover { opacity: 0.85; }
-.tag-pill.active { color: #fff; border-color: transparent; }
-.tag-pill.active[data-color="proofread"] { background: var(--tag-proofread); }
-.tag-pill.active[data-color="translate"] { background: var(--tag-translate); }
-.tag-pill.active[data-color="format"] { background: var(--tag-format); }
-.tag-pill.active[data-color="off"] { background: var(--tag-off); }
-.tag-pill.active[data-color="corrected"] { background: var(--tag-corrected); }
-.tag-pill.active[data-color="other"] { background: var(--accent); }
+.tag-pill.active {
+    color: #fff; border-color: transparent;
+    background: var(--c);
+}
 
 /* Stats */
 .stats-line {
@@ -158,15 +177,35 @@ body {
     padding: 5px 8px; font-size: 12px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.col-time { width: 110px; flex-shrink: 0; color: var(--secondary); }
+.col-time { width: 140px; flex-shrink: 0; color: var(--secondary); }
 .col-mode { width: 80px; flex-shrink: 0; }
-.col-stt { width: 90px; flex-shrink: 0; color: var(--secondary); font-size: 11px; }
-.col-llm { width: 90px; flex-shrink: 0; color: var(--secondary); font-size: 11px; }
 .col-content { flex: 1; min-width: 0; }
-.col-tags { width: 80px; flex-shrink: 0; display: flex; gap: 3px; align-items: center; overflow: visible; }
+.col-tags {
+    flex-shrink: 0; width: auto;
+    display: flex; gap: 3px; align-items: center;
+    white-space: nowrap; padding-right: 8px;
+}
 .mini-tag {
-    display: inline-block; padding: 1px 6px; border-radius: 8px;
-    font-size: 9px; font-weight: 600; color: #fff; white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 62px; padding: 1px 4px; border-radius: 8px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 9px; font-weight: 600; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    cursor: default; position: relative; flex-shrink: 0;
+    --mc: #888;
+    color: var(--mc);
+    background: color-mix(in srgb, var(--mc) 18%, transparent);
+}
+.mini-tag .tip {
+    display: none; position: absolute; bottom: calc(100% + 4px); left: 50%;
+    transform: translateX(-50%); padding: 4px 8px; border-radius: 4px;
+    background: var(--text); color: var(--bg); font-size: 11px; font-weight: 400;
+    white-space: nowrap; z-index: 100; pointer-events: none;
+}
+.mini-tag:hover .tip { display: block; }
+.mini-tag.mini-corr { width: 34px; }
+.mini-tag-placeholder {
+    display: inline-block; width: 34px; height: 14px; flex-shrink: 0;
 }
 .empty-msg {
     padding: 24px; text-align: center; color: var(--secondary); font-size: 12px;
@@ -220,13 +259,10 @@ body {
         <option value="7d" selected>Last 7 Days</option>
         <option value="30d">Last 30 Days</option>
     </select>
-    <button class="btn btn-primary" id="query-btn">Query</button>
     <button class="btn" id="clear-btn">Clear</button>
 </div>
 
-<div class="tag-row" id="tag-row">
-    <span class="tag-row-label">Tags:</span>
-</div>
+<div class="tag-row" id="tag-row"></div>
 
 <div class="stats-line" id="stats-line"></div>
 
@@ -234,8 +270,6 @@ body {
     <div class="table-header">
         <div class="col col-time">Time ↓</div>
         <div class="col col-mode">Mode</div>
-        <div class="col col-stt">STT</div>
-        <div class="col col-llm">LLM</div>
         <div class="col col-content">Content</div>
         <div class="col col-tags">Tags</div>
     </div>
@@ -271,7 +305,6 @@ const tableBody = document.getElementById('table-body');
 const detail = document.getElementById('detail');
 const searchEl = document.getElementById('search');
 const timeRange = document.getElementById('time-range');
-const queryBtn = document.getElementById('query-btn');
 const clearBtn = document.getElementById('clear-btn');
 const tagRow = document.getElementById('tag-row');
 const statsLine = document.getElementById('stats-line');
@@ -290,40 +323,46 @@ let currentRecords = [];
 let originalFinalText = '';
 let activeTags = new Set();
 
-const TAG_COLORS = {
+const MODE_COLORS = {
     proofread: 'proofread', translate: 'translate',
-    format: 'format', off: 'off', corrected: 'corrected',
+    format: 'format', off: 'off',
 };
-function tagColor(tag) {
+function tagColor(tag, group) {
+    if (group === 'stt') return 'stt';
+    if (group === 'llm') return 'llm';
     if (tag === 'corrected') return 'corrected';
     if (tag.startsWith('translate')) return 'translate';
-    return TAG_COLORS[tag] || 'other';
+    return MODE_COLORS[tag] || 'other';
 }
-function tagBgColor(tag) {
+function tagBgColor(tag, group) {
     const map = {
         proofread: 'var(--tag-proofread)', translate: 'var(--tag-translate)',
         format: 'var(--tag-format)', off: 'var(--tag-off)',
-        corrected: 'var(--tag-corrected)', other: 'var(--accent)',
+        corrected: 'var(--tag-corrected)', stt: 'var(--tag-stt)',
+        llm: 'var(--tag-llm)', other: 'var(--accent)',
     };
-    return map[tagColor(tag)] || map.other;
+    return map[tagColor(tag, group)] || map.other;
 }
 
 function post(msg) {
     window.webkit.messageHandlers.action.postMessage(msg);
 }
 
-/* --- Search bar --- */
-queryBtn.addEventListener('click', () => {
-    post({type:'search', text: searchEl.value, timeRange: timeRange.value});
-});
+/* --- Search bar (auto-query with debounce) --- */
+let searchTimer = null;
+function triggerSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+        post({type:'search', text: searchEl.value, timeRange: timeRange.value});
+    }, 300);
+}
+searchEl.addEventListener('input', triggerSearch);
+timeRange.addEventListener('change', triggerSearch);
 clearBtn.addEventListener('click', () => {
     searchEl.value = '';
     timeRange.value = '7d';
     activeTags.clear();
     post({type:'clearFilters'});
-});
-searchEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); queryBtn.click(); }
 });
 
 /* --- Tag toggle --- */
@@ -397,31 +436,50 @@ function setRecords(records, totalCount) {
         const stt = r.stt_model || '';
         const llm = r.llm_model || '';
         let preview = (r.final_text || r.asr_text || '').replace(/\n/g, ' ');
-        if (preview.length > 60) preview = preview.substring(0, 60) + '\u2026';
-        /* Mini tags */
+        if (preview.length > 80) preview = preview.substring(0, 80) + '\u2026';
+        /* Mini tags: Corr first (with placeholder), then STT, LLM */
         let tags = '';
-        if (r._corrected) tags += miniTag('Corr', 'corrected');
+        if (r._corrected) tags += miniTag('Corr', 'corrected', 'User corrected', 'mini-corr');
+        else tags += '<span class="mini-tag-placeholder"></span>';
+        if (stt) tags += miniTag(abbr(stt), 'stt', 'STT: ' + stt);
+        if (llm) tags += miniTag(abbr(llm), 'llm', 'LLM: ' + llm);
         html += `<div class="row" data-idx="${i}">` +
             `<div class="col col-time">${esc(ts)}</div>` +
             `<div class="col col-mode">${esc(mode)}</div>` +
-            `<div class="col col-stt">${esc(stt)}</div>` +
-            `<div class="col col-llm">${esc(llm)}</div>` +
             `<div class="col col-content">${esc(preview)}</div>` +
             `<div class="col col-tags">${tags}</div></div>`;
     }
     tableBody.innerHTML = html;
 }
 
+const GROUP_LABELS = {mode: 'Mode', stt: 'STT', llm: 'LLM', special: ''};
 function setTagOptions(tags) {
-    /* tags = [{name, count}, ...] */
-    const label = tagRow.querySelector('.tag-row-label');
+    /* tags = [{name, count, group}, ...] where group is 'mode'|'stt'|'llm'|'special' */
     tagRow.innerHTML = '';
-    tagRow.appendChild(label);
+    let lastGroup = null;
     tags.forEach(t => {
+        if (t.group !== lastGroup) {
+            if (lastGroup !== null) {
+                const sep = document.createElement('span');
+                sep.className = 'tag-sep';
+                tagRow.appendChild(sep);
+            }
+            const gl = GROUP_LABELS[t.group];
+            if (gl) {
+                const lbl = document.createElement('span');
+                lbl.className = 'tag-group-label';
+                lbl.textContent = gl + ':';
+                tagRow.appendChild(lbl);
+            }
+            lastGroup = t.group;
+        }
         const pill = document.createElement('span');
         pill.className = 'tag-pill' + (activeTags.has(t.name) ? ' active' : '');
-        pill.setAttribute('data-color', tagColor(t.name));
-        pill.textContent = `${t.name}:${t.count}`;
+        pill.setAttribute('data-name', t.name);
+        pill.style.setProperty('--c', tagBgColor(t.name, t.group));
+        const short = abbr(t.name);
+        pill.innerHTML = esc(short + ':' + t.count)
+            + (short !== t.name ? `<span class="tip">${esc(t.name)}</span>` : '');
         pill.addEventListener('click', () => onTagClick(t.name));
         tagRow.appendChild(pill);
     });
@@ -429,7 +487,7 @@ function setTagOptions(tags) {
 
 function renderTagPills() {
     tagRow.querySelectorAll('.tag-pill').forEach(pill => {
-        const name = pill.textContent.split(':')[0];
+        const name = pill.getAttribute('data-name');
         if (activeTags.has(name)) pill.classList.add('active');
         else pill.classList.remove('active');
     });
@@ -486,12 +544,18 @@ function resetFilters() {
 
 /* --- Helpers --- */
 function fmtTs(ts) {
-    if (!ts || ts.length < 16) return ts;
-    return ts.substring(0, 10) + ' ' + ts.substring(11, 16);
+    if (!ts || ts.length < 19) return ts;
+    return ts.substring(0, 10) + ' ' + ts.substring(11, 19);
 }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function miniTag(label, color) {
-    return `<span class="mini-tag" style="background:${tagBgColor(color)}">${esc(label)}</span>`;
+function abbr(name) {
+    if (name.length <= 8) return name;
+    return name.substring(0, 4) + '\u2026' + name.slice(-4);
+}
+function miniTag(label, group, tooltip, extraCls) {
+    const tip = tooltip ? `<span class="tip">${esc(tooltip)}</span>` : '';
+    const cls = 'mini-tag' + (extraCls ? ' ' + extraCls : '');
+    return `<span class="${cls}" style="--mc:${tagBgColor(group, group)}">${esc(label)}${tip}</span>`;
 }
 </script>
 </body>
@@ -609,8 +673,8 @@ class HistoryBrowserPanel:
     Drop-in replacement for the AppKit-based HistoryBrowserPanel.
     """
 
-    _PANEL_WIDTH = 860
-    _PANEL_HEIGHT = 640
+    _PANEL_WIDTH = 1000
+    _PANEL_HEIGHT = 720
 
     def __init__(self) -> None:
         self._panel = None
@@ -704,8 +768,14 @@ class HistoryBrowserPanel:
             filtered = []
             for r in records:
                 mode = r.get("enhance_mode", "off") or "off"
+                stt = r.get("stt_model", "")
+                llm = r.get("llm_model", "")
                 is_corrected = ConversationHistory._is_corrected(r)
                 if mode in self._active_tags:
+                    filtered.append(r)
+                elif stt and stt in self._active_tags:
+                    filtered.append(r)
+                elif llm and llm in self._active_tags:
                     filtered.append(r)
                 elif "corrected" in self._active_tags and is_corrected:
                     filtered.append(r)
@@ -730,22 +800,34 @@ class HistoryBrowserPanel:
         from voicetext.enhance.conversation_history import ConversationHistory
 
         mode_counts: Dict[str, int] = {}
+        stt_counts: Dict[str, int] = {}
+        llm_counts: Dict[str, int] = {}
         corrected_count = 0
+        cutoff = _time_range_cutoff(self._time_range)
         for r in self._all_records:
-            # Apply time range filter for accurate counts
-            cutoff = _time_range_cutoff(self._time_range)
             if cutoff and r.get("timestamp", "") < cutoff:
                 continue
             mode = r.get("enhance_mode", "off") or "off"
             mode_counts[mode] = mode_counts.get(mode, 0) + 1
+            stt = r.get("stt_model", "")
+            if stt:
+                stt_counts[stt] = stt_counts.get(stt, 0) + 1
+            llm = r.get("llm_model", "")
+            if llm:
+                llm_counts[llm] = llm_counts.get(llm, 0) + 1
             if ConversationHistory._is_corrected(r):
                 corrected_count += 1
 
-        tags = []
-        for m in sorted(mode_counts.keys()):
-            tags.append({"name": m, "count": mode_counts[m]})
+        tags: List[Dict[str, Any]] = []
+        # Corrected first
         if corrected_count > 0:
-            tags.append({"name": "corrected", "count": corrected_count})
+            tags.append({"name": "corrected", "count": corrected_count, "group": "special"})
+        for m in sorted(mode_counts.keys()):
+            tags.append({"name": m, "count": mode_counts[m], "group": "mode"})
+        for s in sorted(stt_counts.keys()):
+            tags.append({"name": s, "count": stt_counts[s], "group": "stt"})
+        for lm in sorted(llm_counts.keys()):
+            tags.append({"name": lm, "count": llm_counts[lm], "group": "llm"})
         self._eval_js(f"setTagOptions({json.dumps(tags)})")
 
     # ------------------------------------------------------------------
@@ -858,7 +940,7 @@ class HistoryBrowserPanel:
             NSBackingStoreBuffered,
             False,
         )
-        panel.setMinSize_(NSMakeSize(700, 500))
+        panel.setMinSize_(NSMakeSize(800, 550))
         panel.setTitle_("Conversation History")
         panel.setLevel_(NSStatusWindowLevel)
         panel.setFloatingPanel_(True)
