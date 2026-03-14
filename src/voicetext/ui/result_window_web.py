@@ -206,11 +206,8 @@ select {
             <span class="section-info" id="enhance-info"></span>
         </div>
         <div class="right">
-            <label class="checkbox-wrap" id="thinking-wrap">
-                <input type="checkbox" id="thinking-cb">
-                <span>🧠</span>
-            </label>
-            <button class="btn disabled" id="thinking-btn" onclick="postAction('showThinking')">🧠</button>
+            <input type="checkbox" id="thinking-cb" style="width:14px;height:14px;cursor:pointer;">
+            <button class="btn disabled" id="thinking-btn" onclick="postAction('showThinking')" style="opacity:0.3;">🧠</button>
             <button class="btn disabled" id="prompt-btn" onclick="postAction('showPrompt')">Prompt ⓘ</button>
         </div>
     </div>
@@ -502,7 +499,8 @@ function setEnhanceLoading() {
     document.getElementById('enhance-section').classList.remove('hidden');
     document.getElementById('enhance-text').innerHTML = '';
     document.getElementById('enhance-info').textContent = '⏳ Processing...';
-    document.getElementById('thinking-btn').classList.add('disabled');
+    const _tb = document.getElementById('thinking-btn');
+    _tb.classList.add('disabled'); _tb.style.opacity = '0.3';
     userEdited = false;
 }
 
@@ -514,7 +512,8 @@ function setEnhanceOff() {
 function setEnhanceComplete(info, hasThinking, finalText) {
     document.getElementById('enhance-info').textContent = info;
     if (hasThinking) {
-        document.getElementById('thinking-btn').classList.remove('disabled');
+        const _tb = document.getElementById('thinking-btn');
+        _tb.classList.remove('disabled'); _tb.style.opacity = '1';
     }
     if (!userEdited) {
         document.getElementById('final-text').value =
@@ -540,7 +539,8 @@ function replayCachedResult(displayText, info, hasThinking, finalText) {
     el.textContent = displayText;
     document.getElementById('enhance-info').textContent = info;
     if (hasThinking) {
-        document.getElementById('thinking-btn').classList.remove('disabled');
+        const _tb = document.getElementById('thinking-btn');
+        _tb.classList.remove('disabled'); _tb.style.opacity = '1';
     }
     if (!userEdited) {
         document.getElementById('final-text').value =
