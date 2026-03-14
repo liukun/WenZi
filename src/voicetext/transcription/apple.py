@@ -89,6 +89,9 @@ class AppleSpeechTranscriber(BaseTranscriber):
         self._stream_final_event = threading.Event()
         self._stream_final_text: str = ""
         self._stream_on_partial: Optional[Callable[[str, bool], None]] = None
+        self._stream_accumulated: str = ""
+        self._stream_ending: bool = False
+        self._stream_best_partial: str = ""
 
     @property
     def initialized(self) -> bool:
@@ -243,6 +246,9 @@ class AppleSpeechTranscriber(BaseTranscriber):
         self._stream_runloop_stop.clear()
         self._stream_final_text = ""
         self._stream_on_partial = on_partial
+        self._stream_accumulated = ""
+        self._stream_ending = False
+        self._stream_best_partial = ""
 
         request = Speech.SFSpeechAudioBufferRecognitionRequest.alloc().init()
         request.setShouldReportPartialResults_(True)
@@ -258,7 +264,11 @@ class AppleSpeechTranscriber(BaseTranscriber):
                     if hasattr(error, "localizedDescription")
                     else str(error)
                 )
-                logger.warning("Streaming recognition error: %s", err_desc)
+                logger.warning(
+                    "[stream-diag] ERROR: %s | result=%s, ending=%s, accumulated=%r",
+                    err_desc, result is not None, self._stream_ending,
+                    self._stream_accumulated[:80] if self._stream_accumulated else "",
+                )
                 if result is None:
                     self._stream_final_event.set()
                     return
@@ -268,17 +278,59 @@ class AppleSpeechTranscriber(BaseTranscriber):
 
             text = result.bestTranscription().formattedString()
             is_final = result.isFinal()
+            logger.info(
+                "[stream-diag] text=%r, is_final=%s, ending=%s, accumulated=%r",
+                text[:80] if text else "", is_final, self._stream_ending,
+                self._stream_accumulated[:80] if self._stream_accumulated else "",
+            )
 
-            if is_final:
-                self._stream_final_text = text
+            if is_final and not self._stream_ending:
+                # Mid-session segment boundary (pause) — accumulate, report as partial
+                self._stream_accumulated += text
+                self._stream_best_partial = ""
+                cb = self._stream_on_partial
+                if cb is not None:
+                    try:
+                        cb(self._stream_accumulated, False)
+                    except Exception:
+                        logger.warning("on_partial callback error", exc_info=True)
+            elif is_final and self._stream_ending:
+                # Session ending — deliver final accumulated text
+                final_text = self._stream_accumulated + text
+                self._stream_final_text = final_text
                 self._stream_final_event.set()
+                cb = self._stream_on_partial
+                if cb is not None:
+                    try:
+                        cb(final_text, True)
+                    except Exception:
+                        logger.warning("on_partial callback error", exc_info=True)
+            else:
+                # Partial result within current segment
+                # Detect implicit segment reset (on-device model resets text
+                # without sending isFinal=True after a long pause)
+                best = self._stream_best_partial
+                if (
+                    best
+                    and len(text) < len(best) * 0.5
+                    and len(best) >= 2
+                ):
+                    logger.info(
+                        "[stream-diag] implicit segment reset detected: "
+                        "best_partial=%r -> text=%r",
+                        best[:80], text[:80] if text else "",
+                    )
+                    self._stream_accumulated += best
+                    self._stream_best_partial = text
+                elif len(text) >= len(best):
+                    self._stream_best_partial = text
 
-            cb = self._stream_on_partial
-            if cb is not None:
-                try:
-                    cb(text, is_final)
-                except Exception:
-                    logger.warning("on_partial callback error", exc_info=True)
+                cb = self._stream_on_partial
+                if cb is not None:
+                    try:
+                        cb(self._stream_accumulated + text, False)
+                    except Exception:
+                        logger.warning("on_partial callback error", exc_info=True)
 
         # Start recognition task on a dedicated RunLoop thread
         recognizer = self._recognizer
@@ -320,6 +372,7 @@ class AppleSpeechTranscriber(BaseTranscriber):
         """End audio and wait for the final transcription result."""
         request = self._stream_request
         if request is not None:
+            self._stream_ending = True
             request.endAudio()
             logger.info("Streaming endAudio sent, waiting for final result...")
 
@@ -331,7 +384,9 @@ class AppleSpeechTranscriber(BaseTranscriber):
                 self._stream_task.cancel()
 
         self._stop_runloop_thread()
-        text = self._stream_final_text
+        text = self._stream_final_text or (
+            self._stream_accumulated + self._stream_best_partial
+        )
         self._reset_streaming_state()
         logger.info("Streaming recognition stopped, final text: %s", text[:100] if text else "(empty)")
         return text
@@ -358,6 +413,9 @@ class AppleSpeechTranscriber(BaseTranscriber):
         self._stream_runloop_thread = None
         self._stream_on_partial = None
         self._stream_final_text = ""
+        self._stream_accumulated = ""
+        self._stream_ending = False
+        self._stream_best_partial = ""
 
     def cleanup(self) -> None:
         """Release the recognizer."""
