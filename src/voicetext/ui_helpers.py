@@ -47,6 +47,46 @@ def restore_accessory() -> None:
         AppHelper.callAfter(_do)
 
 
+def get_frontmost_app():
+    """Return the currently frontmost application (NSRunningApplication).
+
+    Returns None if the frontmost app cannot be determined.
+    """
+    try:
+        from AppKit import NSWorkspace
+        return NSWorkspace.sharedWorkspace().frontmostApplication()
+    except Exception as exc:
+        logger.debug("Failed to get frontmost app: %s", exc)
+        return None
+
+
+def reactivate_app(running_app) -> None:
+    """Reactivate a previously saved NSRunningApplication without raising all windows.
+
+    Uses ``activateWithOptions_`` with only ``NSApplicationActivateIgnoringOtherApps``
+    (value 2) and deliberately omits ``NSApplicationActivateAllWindows`` (value 1)
+    so that only the previously focused window regains focus — other windows of the
+    same application are not brought to the front.
+
+    Safe to call from any thread.
+    """
+    if running_app is None:
+        return
+
+    def _do():
+        try:
+            # NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
+            running_app.activateWithOptions_(2)
+        except Exception as exc:
+            logger.debug("Failed to reactivate app: %s", exc)
+
+    if threading.current_thread() is threading.main_thread():
+        _do()
+    else:
+        from PyObjCTools import AppHelper
+        AppHelper.callAfter(_do)
+
+
 def topmost_alert(title=None, message="", ok=None, cancel=None):
     """Show an NSAlert at NSStatusWindowLevel so it stays on top.
 

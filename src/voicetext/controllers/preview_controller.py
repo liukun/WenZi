@@ -26,7 +26,13 @@ from voicetext.transcription.model_registry import (
     is_backend_available,
 )
 from voicetext.transcription.base import create_transcriber
-from voicetext.ui_helpers import activate_for_dialog, restore_accessory, topmost_alert
+from voicetext.ui_helpers import (
+    activate_for_dialog,
+    get_frontmost_app,
+    reactivate_app,
+    restore_accessory,
+    topmost_alert,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +64,10 @@ class PreviewController:
         from PyObjCTools import AppHelper
 
         app = self._app
+
+        # Save the frontmost app before we steal focus with the preview panel.
+        # Used later to reactivate only the focused window (not all windows).
+        previous_app = get_frontmost_app()
 
         try:
             app._usage_stats.record_transcription(
@@ -294,9 +304,18 @@ class PreviewController:
         result_event.wait()
         app._busy = False
 
-        # Restore menu bar mode and inject text
-        AppHelper.callAfter(restore_accessory)
-        time.sleep(0.1)  # Brief delay for target app to regain focus
+        # Reactivate the previous app's focused window, then restore accessory mode.
+        # Order matters: activate first (without AllWindows) so macOS doesn't
+        # trigger its own all-windows activation when we drop to accessory.
+        def _activate_prev():
+            reactivate_app(previous_app)
+
+        def _go_accessory():
+            restore_accessory()
+
+        AppHelper.callAfter(_activate_prev)
+        AppHelper.callAfter(_go_accessory)
+        time.sleep(0.15)  # Brief delay for target app to regain focus
 
         if result_holder["confirmed"] and result_holder["text"]:
             final_text = result_holder["text"].strip()
@@ -411,6 +430,9 @@ class PreviewController:
 
         app = self._app
 
+        # Save the frontmost app before we steal focus with the preview panel.
+        previous_app = get_frontmost_app()
+
         try:
             app._usage_stats.record_clipboard_enhance(app._enhance_mode)
         except Exception as e:
@@ -514,8 +536,15 @@ class PreviewController:
 
         result_event.wait()
 
-        AppHelper.callAfter(restore_accessory)
-        time.sleep(0.1)
+        def _activate_prev():
+            reactivate_app(previous_app)
+
+        def _go_accessory():
+            restore_accessory()
+
+        AppHelper.callAfter(_activate_prev)
+        AppHelper.callAfter(_go_accessory)
+        time.sleep(0.15)
 
         if result_holder["confirmed"] and result_holder["text"]:
             final_text = result_holder["text"].strip()
