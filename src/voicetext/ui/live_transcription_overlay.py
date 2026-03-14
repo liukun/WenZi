@@ -38,8 +38,8 @@ class LiveTranscriptionOverlay:
                 ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
             )
             if name and "Dark" in str(name):
-                return NSColor.colorWithSRGBRed_green_blue_alpha_(0.9, 0.9, 0.9, 0.85)
-            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.85)
+                return NSColor.colorWithSRGBRed_green_blue_alpha_(0.15, 0.15, 0.15, 0.85)
+            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 0.85)
 
         return NSColor.colorWithName_dynamicProvider_(None, _provider)
 
@@ -53,8 +53,8 @@ class LiveTranscriptionOverlay:
                 ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
             )
             if name and "Dark" in str(name):
-                return NSColor.colorWithSRGBRed_green_blue_alpha_(0.1, 0.1, 0.1, 1.0)
-            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 1.0)
+                return NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 1.0)
+            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.1, 0.1, 0.1, 1.0)
 
         return NSColor.colorWithName_dynamicProvider_(None, _provider)
 

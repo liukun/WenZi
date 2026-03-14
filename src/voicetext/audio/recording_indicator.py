@@ -65,29 +65,31 @@ class RecordingIndicatorView:
         self._level = level
 
     @staticmethod
-    def _dynamic_bg_color():
-        """Create a dynamic background color that adapts to light/dark mode."""
+    def _dynamic_color(light_rgba, dark_rgba):
+        """Create a dynamic color that adapts to light/dark mode."""
         from AppKit import NSColor
 
         def _provider(appearance):
             name = appearance.bestMatchFromAppearancesWithNames_(
                 ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
             )
-            if name and "Dark" in str(name):
-                return NSColor.colorWithSRGBRed_green_blue_alpha_(0.9, 0.9, 0.9, 0.85)
-            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.85)
+            rgba = dark_rgba if name and "Dark" in str(name) else light_rgba
+            return NSColor.colorWithSRGBRed_green_blue_alpha_(*rgba)
 
         return NSColor.colorWithName_dynamicProvider_(None, _provider)
 
     def draw(self, rect: object) -> None:
         """Draw the indicator contents."""
-        from AppKit import NSBezierPath, NSColor
+        from AppKit import NSBezierPath
         from Foundation import NSMakeRect
 
         height = rect.size.height
 
         # Semi-transparent rounded background (adapts to light/dark mode)
-        bg_color = self._dynamic_bg_color()
+        bg_color = self._dynamic_color(
+            light_rgba=(0.95, 0.95, 0.95, 0.85),
+            dark_rgba=(0.15, 0.15, 0.15, 0.85),
+        )
         bg_color.setFill()
         bg_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
             rect, _BG_CORNER_RADIUS, _BG_CORNER_RADIUS
@@ -102,7 +104,10 @@ class RecordingIndicatorView:
         pulse = math.sin(elapsed * _DOT_PULSE_SPEED) * _DOT_PULSE_AMPLITUDE
         dot_radius = _DOT_BASE_RADIUS + pulse
 
-        dot_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.9, 0.15, 0.15, 1.0)
+        dot_color = self._dynamic_color(
+            light_rgba=(0.85, 0.15, 0.15, 1.0),
+            dark_rgba=(0.95, 0.25, 0.25, 1.0),
+        )
         dot_color.setFill()
         dot_rect = NSMakeRect(
             dot_x - dot_radius, dot_y - dot_radius,
@@ -115,7 +120,10 @@ class RecordingIndicatorView:
         bars_start_x = 38.0
         bar_y_base = (height - _BAR_MAX_HEIGHT) / 2.0
 
-        bar_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.4, 0.8, 0.4, 0.9)
+        bar_color = self._dynamic_color(
+            light_rgba=(0.2, 0.65, 0.2, 0.9),
+            dark_rgba=(0.4, 0.9, 0.4, 0.9),
+        )
         bar_color.setFill()
 
         level = self._level
