@@ -65,10 +65,13 @@ class SettingsController:
                     llm_models.append((pname, mname, f"{pname} / {mname}"))
             current_llm = (app._enhancer.provider_name, app._enhancer.model_name)
 
-        # Enhance modes (excluding "off")
+        # Enhance modes (excluding "off") with order for display
         enhance_modes = []
         if app._enhancer:
-            enhance_modes = list(app._enhancer.available_modes)
+            for mode_id, label in app._enhancer.available_modes:
+                mode_def = app._enhancer.get_mode_definition(mode_id)
+                order = mode_def.order if mode_def else 50
+                enhance_modes.append((mode_id, label, order))
 
         # Vocabulary count
         vocab_count = 0

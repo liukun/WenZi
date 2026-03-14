@@ -672,10 +672,11 @@ class SettingsPanel:
         edit_btn_w = 52
         edit_font = NSFont.systemFontOfSize_(11.0)
         edit_x = pad + 12 + 168
-        for mode_id, label in enhance_modes:
+        for mode_id, label, order in enhance_modes:
             y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
+            display_label = f"{label} (#{order})"
             btn = self._make_radio(
-                label, pad + 12, y, 160,
+                display_label, pad + 12, y, 160,
                 current_mode == mode_id, small_font, doc_view,
             )
             btn.setTarget_(self)

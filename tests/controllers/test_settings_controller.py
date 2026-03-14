@@ -43,6 +43,11 @@ def mock_app():
     app._enhancer.vocab_index = None
     app._enhancer.providers_with_models = {"openai": ["gpt-4o", "gpt-4o-mini"]}
     app._enhancer.available_modes = [("proofread", "Proofread"), ("translate", "Translate")]
+    mock_proofread = MagicMock()
+    mock_proofread.order = 10
+    mock_translate = MagicMock()
+    mock_translate.order = 20
+    app._enhancer.get_mode_definition = lambda mid: {"proofread": mock_proofread, "translate": mock_translate}.get(mid)
     app._hotkey_listener = MagicMock()
     app._hotkey_menu_items = {"fn": MagicMock(), "ctrl": MagicMock()}
     app._sound_manager = MagicMock()
@@ -358,6 +363,7 @@ class TestOnOpenSettings:
         assert "preview" in state
         assert "current_preset_id" in state
         assert state["last_tab"] == "general"
+        assert state["enhance_modes"] == [("proofread", "Proofread", 10), ("translate", "Translate", 20)]
 
         assert "on_hotkey_toggle" in callbacks
         assert "on_sound_toggle" in callbacks

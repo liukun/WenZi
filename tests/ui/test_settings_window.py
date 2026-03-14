@@ -38,8 +38,8 @@ def _make_state():
         ],
         "current_llm": ("ollama", "qwen2.5:7b"),
         "enhance_modes": [
-            ("proofread", "纠错"),
-            ("format", "格式化"),
+            ("proofread", "纠错", 10),
+            ("format", "格式化", 30),
         ],
         "current_enhance_mode": "proofread",
         "thinking": False,
@@ -303,9 +303,9 @@ class TestEnhanceModeOrder:
         state = _make_state()
         # Provide modes whose alphabetical label order differs from list order
         state["enhance_modes"] = [
-            ("proofread", "纠错"),      # order=10
-            ("translate", "翻译为英文"),  # order=20
-            ("format", "格式化"),        # order=30
+            ("proofread", "纠错", 10),
+            ("translate", "翻译为英文", 20),
+            ("format", "格式化", 30),
         ]
         callbacks = _make_callbacks()
         panel.show(state, callbacks)
