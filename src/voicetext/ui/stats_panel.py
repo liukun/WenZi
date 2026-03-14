@@ -53,7 +53,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 }
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #1d1d1f; --text: #f5f5f7; --card-bg: #2c2c2e;
+        --bg: #1d1d1f; --text: #c8c8cc; --card-bg: #2c2c2e;
         --border: #48484a; --secondary: #98989d; --accent: #0a84ff;
         --green: #30d158; --orange: #ff9f0a; --red: #ff453a;
         --purple: #bf5af2; --teal: #64d2ff; --pink: #ff375f;
@@ -139,7 +139,7 @@ body {
 const DATA = __STATS_DATA__;
 
 const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-Chart.defaults.color = isDark ? '#f5f5f7' : '#1d1d1f';
+Chart.defaults.color = isDark ? '#c8c8cc' : '#1d1d1f';
 Chart.defaults.borderColor = isDark ? 'rgba(72,72,74,0.5)' : 'rgba(210,210,215,0.5)';
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
 Chart.defaults.font.size = 12;

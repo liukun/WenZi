@@ -29,16 +29,20 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     --text-bg: #ffffff; --enhance-bg: #edf1f8;
     --btn-bg: #e5e5ea; --btn-hover: #d1d1d6;
     --segment-bg: #e5e5ea; --segment-active: #ffffff;
+    --segment-hover: rgba(0, 0, 0, 0.06);
+    --shadow: rgba(0, 0, 0, 0.12);
     --focus-ring: rgba(0, 122, 255, 0.4);
 }
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #1d1d1f; --text: #f5f5f7; --card-bg: #2c2c2e;
+        --bg: #1d1d1f; --text: #c8c8cc; --card-bg: #2c2c2e;
         --border: #48484a; --secondary: #98989d; --accent: #0a84ff;
         --green: #30d158; --orange: #ff9f0a; --red: #ff453a;
         --text-bg: #1c1c1e; --enhance-bg: #1e2230;
         --btn-bg: #3a3a3c; --btn-hover: #48484a;
         --segment-bg: #3a3a3c; --segment-active: #636366;
+        --segment-hover: rgba(255, 255, 255, 0.1);
+        --shadow: rgba(0, 0, 0, 0.4);
         --focus-ring: rgba(10, 132, 255, 0.4);
     }
 }
@@ -88,7 +92,7 @@ body {
 }
 .final-area {
     width: 100%; min-height: 36px;
-    background: var(--text-bg); border: 2px solid var(--accent);
+    background: var(--text-bg); border: 1px solid var(--border);
     border-radius: 6px; padding: 6px 10px;
     font-family: "SF Mono", Menlo, monospace; font-size: 12px;
     color: var(--text); line-height: 1.4;
@@ -149,10 +153,10 @@ select {
 }
 .segment-btn.active {
     background: var(--segment-active);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    box-shadow: 0 1px 3px var(--shadow);
     font-weight: 500;
 }
-.segment-btn:hover:not(.active) { background: rgba(128,128,128,0.15); }
+.segment-btn:hover:not(.active) { background: var(--segment-hover); }
 
 /* Button bar */
 .button-bar {
@@ -231,7 +235,7 @@ select {
 <div class="section expand">
     <div class="section-header">
         <div class="left">
-            <span class="section-title" style="color: var(--accent);">Final Result (editable)</span>
+            <span class="section-title">Final Result (editable)</span>
         </div>
         <div class="right">
             <button class="btn" id="translate-btn" onclick="doTranslate()">Translate ↗</button>
