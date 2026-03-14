@@ -15,13 +15,13 @@ def _mock_appkit(mock_appkit_modules):
 
 @pytest.fixture(autouse=True)
 def _mock_overlay_internals():
-    """Mock _is_dark_mode and BgView so tests run without a live NSApp."""
+    """Mock _is_dark_mode and _StreamingBgView for headless testing."""
     mock_view = MagicMock()
     mock_cls = MagicMock()
     mock_cls.alloc.return_value.initWithFrame_.return_value = mock_view
     with (
         patch("voicetext.ui.streaming_overlay._is_dark_mode", return_value=False),
-        patch("voicetext.ui.streaming_overlay._get_overlay_bg_view_class", return_value=mock_cls),
+        patch("voicetext.ui.streaming_overlay._StreamingBgView", mock_cls),
     ):
         yield
 

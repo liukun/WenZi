@@ -24,9 +24,6 @@ _SCREEN_MARGIN = 20
 # ESC key code
 _ESC_KEY_CODE = 53
 
-# Appearance change notification name
-_APPEARANCE_NOTIFICATION = "AppleInterfaceThemeChangedNotification"
-
 
 def _is_dark_mode() -> bool:
     """Detect whether the system is currently in dark mode."""
@@ -38,45 +35,37 @@ def _is_dark_mode() -> bool:
         return False
 
 
-# Lazy-initialized custom NSView for drawRect_-based background
-_OverlayBgView = None
+# Module-level NSView subclass for drawRect_-based background
+try:
+    from AppKit import NSBezierPath as _BP
+    from AppKit import NSColor as _NC
+    from AppKit import NSView as _NV
 
+    class _StreamingBgView(_NV):
+        def isOpaque(self):
+            return False
 
-def _get_overlay_bg_view_class():
-    global _OverlayBgView
-    if _OverlayBgView is None:
-        from AppKit import NSBezierPath, NSColor, NSView
-        import objc
-
-        class StreamingOverlayBgView(NSView):
-            _dark = objc.ivar.bool()
-
-            def initWithFrame_(self, frame):
-                self = objc.super(StreamingOverlayBgView, self).initWithFrame_(frame)
-                if self is not None:
-                    self._dark = _is_dark_mode()
-                return self
-
-            def isOpaque(self):
-                return False
-
-            def drawRect_(self, rect):
-                if self._dark:
-                    c = NSColor.colorWithSRGBRed_green_blue_alpha_(0.15, 0.15, 0.15, 0.85)
-                else:
-                    c = NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 0.85)
-                c.setFill()
-                path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-                    rect, _CORNER_RADIUS, _CORNER_RADIUS,
+        def drawRect_(self, rect):
+            def _provider(appearance):
+                name = appearance.bestMatchFromAppearancesWithNames_(
+                    ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
                 )
-                path.fill()
+                if name and "Dark" in str(name):
+                    return _NC.colorWithSRGBRed_green_blue_alpha_(0.15, 0.15, 0.15, 0.85)
+                return _NC.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 0.85)
 
-            def updateDarkMode(self):
-                self._dark = _is_dark_mode()
-                self.setNeedsDisplay_(True)
+            _NC.colorWithName_dynamicProvider_(None, _provider).setFill()
+            _BP.bezierPathWithRoundedRect_xRadius_yRadius_(
+                rect, _CORNER_RADIUS, _CORNER_RADIUS
+            ).fill()
 
-        _OverlayBgView = StreamingOverlayBgView
-    return _OverlayBgView
+        def refresh_(self, timer):
+            self.setNeedsDisplay_(True)
+
+except Exception:
+    _StreamingBgView = None
+
+
 
 
 class StreamingOverlayPanel:
@@ -103,13 +92,6 @@ class StreamingOverlayPanel:
         self._llm_info: str = ""
 
     @staticmethod
-    def _bg_color(dark: bool):
-        from AppKit import NSColor
-        if dark:
-            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.15, 0.15, 0.15, 0.85)
-        return NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 0.85)
-
-    @staticmethod
     def _text_color(dark: bool):
         from AppKit import NSColor
         if dark:
@@ -131,11 +113,8 @@ class StreamingOverlayPanel:
         return NSColor.colorWithSRGBRed_green_blue_alpha_(0.3, 0.3, 0.3, 0.5)
 
     def _apply_colors(self) -> None:
-        """Detect current appearance and apply all colors to UI elements."""
+        """Detect current appearance and apply text/separator colors."""
         dark = _is_dark_mode()
-
-        if self._content_view is not None:
-            self._content_view.updateDarkMode()
 
         if self._separator is not None:
             layer = self._separator.layer()
@@ -154,36 +133,50 @@ class StreamingOverlayPanel:
         if self._text_view is not None:
             self._text_view.setTextColor_(text_c)
 
-    def _on_appearance_changed_(self, notification) -> None:
-        """Handle system appearance change notification."""
-        try:
-            from PyObjCTools import AppHelper
-            AppHelper.callAfter(self._apply_colors)
-        except Exception:
-            logger.error("Failed to handle appearance change", exc_info=True)
+    def _start_appearance_timer(self) -> None:
+        """Start a refresh timer that redraws bg view and checks text colors.
 
-    def _register_appearance_observer(self) -> None:
-        """Register observer for system appearance changes."""
+        Same pattern as RecordingIndicatorPanel: timer triggers drawRect_
+        with a fresh dynamic NSColor each frame. Also polls _is_dark_mode()
+        to update text/separator colors when appearance changes.
+        """
+        self._stop_appearance_timer()
+        self._last_dark = _is_dark_mode()
         try:
-            from Foundation import NSDistributedNotificationCenter
-            center = NSDistributedNotificationCenter.defaultCenter()
-            center.addObserver_selector_name_object_(
-                self, b"_on_appearance_changed:", _APPEARANCE_NOTIFICATION, None,
-            )
-            self._appearance_observer = center
-        except Exception:
-            logger.error("Failed to register appearance observer", exc_info=True)
-
-    def _remove_appearance_observer(self) -> None:
-        """Remove the appearance change observer."""
-        if self._appearance_observer is not None:
-            try:
-                self._appearance_observer.removeObserver_name_object_(
-                    self, _APPEARANCE_NOTIFICATION, None,
+            from Foundation import NSTimer
+            # Timer on content view for bg refresh (drawRect_ with dynamic NSColor)
+            if self._content_view is not None:
+                self._appearance_observer = (
+                    NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                        0.5, self._content_view, b"refresh:", None, True,
+                    )
                 )
-            except Exception:
-                logger.error("Failed to remove appearance observer", exc_info=True)
-            self._appearance_observer = None
+            # Timer on self for text/separator color polling
+            self._appearance_text_timer = (
+                NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                    1.0, self, b"refreshAppearance:", None, True,
+                )
+            )
+        except Exception:
+            logger.error("Failed to start appearance timer", exc_info=True)
+
+    def _stop_appearance_timer(self) -> None:
+        """Stop the appearance refresh timers."""
+        for attr in ("_appearance_observer", "_appearance_text_timer"):
+            timer = getattr(self, attr, None)
+            if timer is not None:
+                try:
+                    timer.invalidate()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
+    def refreshAppearance_(self, timer) -> None:
+        """NSTimer callback: update text/separator colors when appearance changes."""
+        dark = _is_dark_mode()
+        if dark != self._last_dark:
+            self._last_dark = dark
+            self._apply_colors()
 
     def show(
         self,
@@ -233,8 +226,7 @@ class StreamingOverlayPanel:
             panel.setCollectionBehavior_(1 << 4)  # canJoinAllSpaces
 
             # Build content view with drawRect_-based rounded background
-            BgViewCls = _get_overlay_bg_view_class()
-            content = BgViewCls.alloc().initWithFrame_(
+            content = _StreamingBgView.alloc().initWithFrame_(
                 NSMakeRect(0, 0, _PANEL_WIDTH, _PANEL_HEIGHT)
             )
             self._content_view = content
@@ -351,7 +343,7 @@ class StreamingOverlayPanel:
             self._register_esc_monitor()
 
             # Register appearance change observer
-            self._register_appearance_observer()
+            self._start_appearance_timer()
 
             # Start loading timer
             self._start_loading_timer()
@@ -552,7 +544,7 @@ class StreamingOverlayPanel:
         def _close():
             self._stop_loading_timer()
             self._remove_esc_monitor()
-            self._remove_appearance_observer()
+            self._stop_appearance_timer()
             self._cancel_event = None
 
             if self._panel is not None:

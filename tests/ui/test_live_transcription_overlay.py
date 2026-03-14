@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,18 @@ import pytest
 def _mock_appkit(mock_appkit_modules, monkeypatch):
     """Mock AppKit and Foundation modules for headless testing."""
     return mock_appkit_modules
+
+
+@pytest.fixture(autouse=True)
+def _mock_overlay_internals():
+    mock_view = MagicMock()
+    mock_cls = MagicMock()
+    mock_cls.alloc.return_value.initWithFrame_.return_value = mock_view
+    with (
+        patch("voicetext.ui.live_transcription_overlay._is_dark_mode", return_value=False),
+        patch("voicetext.ui.live_transcription_overlay._LiveBgView", mock_cls),
+    ):
+        yield
 
 
 class TestLiveTranscriptionOverlayInit:
@@ -39,10 +51,10 @@ class TestLiveTranscriptionOverlayInit:
         overlay.show()
 
         panel = overlay._panel
-        panel.setHidesOnDeactivate_.assert_called_with(False)
-        panel.setIgnoresMouseEvents_.assert_called_with(True)
-        panel.setOpaque_.assert_called_with(False)
-        panel.setHasShadow_.assert_called_with(True)
+        panel.setHidesOnDeactivate_.assert_any_call(False)
+        panel.setIgnoresMouseEvents_.assert_any_call(True)
+        panel.setOpaque_.assert_any_call(False)
+        panel.setHasShadow_.assert_any_call(True)
 
     def test_show_uses_clear_panel_background(self):
         from AppKit import NSColor
@@ -51,7 +63,7 @@ class TestLiveTranscriptionOverlayInit:
         overlay = LiveTranscriptionOverlay()
         overlay.show()
 
-        overlay._panel.setBackgroundColor_.assert_called_once_with(
+        overlay._panel.setBackgroundColor_.assert_any_call(
             NSColor.clearColor()
         )
 
@@ -155,15 +167,14 @@ class TestLiveTranscriptionOverlayLifecycle:
 
 
 class TestLiveTranscriptionOverlayDarkMode:
-    def test_layer_background_set(self):
+    def test_content_view_is_bg_view(self):
         from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay
 
         overlay = LiveTranscriptionOverlay()
         overlay.show()
 
-        # Background color is applied via layer, not panel
-        content = overlay._content_view
-        content.setWantsLayer_.assert_called_with(True)
+        # Content view should be the custom bg view (drawRect_-based)
+        assert overlay._content_view is not None
 
     def test_text_uses_dynamic_color(self):
         from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay

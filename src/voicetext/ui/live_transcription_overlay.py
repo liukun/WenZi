@@ -15,6 +15,46 @@ _CORNER_RADIUS = 10
 _SCREEN_Y_OFFSET = 80  # offset below center (below recording indicator)
 
 
+# Module-level NSView subclass for drawRect_-based background
+try:
+    from AppKit import NSBezierPath as _BP
+    from AppKit import NSColor as _NC
+    from AppKit import NSView as _NV
+
+    class _LiveBgView(_NV):
+        def isOpaque(self):
+            return False
+
+        def drawRect_(self, rect):
+            def _provider(appearance):
+                name = appearance.bestMatchFromAppearancesWithNames_(
+                    ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
+                )
+                if name and "Dark" in str(name):
+                    return _NC.colorWithSRGBRed_green_blue_alpha_(0.15, 0.15, 0.15, 0.85)
+                return _NC.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 0.85)
+
+            _NC.colorWithName_dynamicProvider_(None, _provider).setFill()
+            _BP.bezierPathWithRoundedRect_xRadius_yRadius_(
+                rect, _CORNER_RADIUS, _CORNER_RADIUS
+            ).fill()
+
+        def refresh_(self, timer):
+            self.setNeedsDisplay_(True)
+
+except Exception:
+    _LiveBgView = None
+
+
+def _is_dark_mode() -> bool:
+    """Detect whether the system is currently in dark mode."""
+    try:
+        from AppKit import NSApp
+        return "Dark" in str(NSApp.effectiveAppearance().name())
+    except Exception:
+        return False
+
+
 class LiveTranscriptionOverlay:
     """Non-interactive floating overlay that shows partial STT text during recording.
 
@@ -27,21 +67,8 @@ class LiveTranscriptionOverlay:
         self._text_field: object = None
         self._content_view: object = None
         self._screen_center_y: float = 0  # cached for repositioning
-
-    @staticmethod
-    def _dynamic_bg_color():
-        """Create a dynamic background color matching RecordingIndicatorPanel."""
-        from AppKit import NSColor
-
-        def _provider(appearance):
-            name = appearance.bestMatchFromAppearancesWithNames_(
-                ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
-            )
-            if name and "Dark" in str(name):
-                return NSColor.colorWithSRGBRed_green_blue_alpha_(0.15, 0.15, 0.15, 0.85)
-            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 0.85)
-
-        return NSColor.colorWithName_dynamicProvider_(None, _provider)
+        self._last_dark: bool = False
+        self._appearance_timer: object = None
 
     @staticmethod
     def _dynamic_text_color():
@@ -68,7 +95,6 @@ class LiveTranscriptionOverlay:
                 NSScreen,
                 NSStatusWindowLevel,
                 NSTextField,
-                NSView,
             )
             from Foundation import NSMakeRect
 
@@ -90,16 +116,10 @@ class LiveTranscriptionOverlay:
             panel.setHidesOnDeactivate_(False)
             panel.setCollectionBehavior_(1 << 4)  # canJoinAllSpaces
 
-            # Content view with rounded background
-            content = NSView.alloc().initWithFrame_(
+            # Content view with drawRect_-based rounded background
+            content = _LiveBgView.alloc().initWithFrame_(
                 NSMakeRect(0, 0, _PANEL_WIDTH, init_h)
             )
-            content.setWantsLayer_(True)
-            content.layer().setCornerRadius_(_CORNER_RADIUS)
-            content.layer().setMasksToBounds_(True)
-
-            bg_color = self._dynamic_bg_color()
-            content.layer().setBackgroundColor_(bg_color.CGColor())
 
             # Text field for partial transcription (no line limit, wraps freely)
             inner_width = _PANEL_WIDTH - 2 * _PADDING
@@ -128,13 +148,30 @@ class LiveTranscriptionOverlay:
 
             panel.orderFront_(None)
             self._panel = panel
+            self._last_dark = _is_dark_mode()
+
+            # Refresh timer for dynamic background (same as recording indicator)
+            from Foundation import NSTimer
+            self._appearance_timer = (
+                NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                    0.5, content, b"refresh:", None, True,
+                )
+            )
+
             logger.debug("Live transcription overlay shown")
         except Exception:
             logger.error("Failed to show live transcription overlay", exc_info=True)
 
+    def checkAppearance_(self, timer) -> None:
+        """NSTimer callback: check if appearance changed and refresh colors."""
+        self._refresh_colors_if_changed()
+
     def hide(self) -> None:
         """Hide and clean up the overlay panel. Must be called on the main thread."""
         try:
+            if self._appearance_timer is not None:
+                self._appearance_timer.invalidate()
+                self._appearance_timer = None
             if self._panel is not None:
                 self._panel.orderOut_(None)
                 self._panel = None
@@ -144,11 +181,21 @@ class LiveTranscriptionOverlay:
         except Exception as e:
             logger.warning("Failed to hide live transcription overlay: %s", e)
 
+    def _refresh_colors_if_changed(self) -> None:
+        """Check if appearance changed and update text color."""
+        dark = _is_dark_mode()
+        if dark == self._last_dark:
+            return
+        self._last_dark = dark
+        if self._text_field is not None:
+            self._text_field.setTextColor_(self._dynamic_text_color())
+
     def update_text(self, text: str) -> None:
         """Update the displayed partial transcription text. Must be called on the main thread."""
         if self._text_field is None or self._panel is None:
             return
 
+        self._refresh_colors_if_changed()
         self._text_field.setStringValue_(text)
         self._resize_panel()
 
