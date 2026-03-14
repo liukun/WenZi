@@ -15,16 +15,36 @@ _PADDING = 12
 _FONT_SIZE = 15.0
 
 
-def _dynamic_color(light_rgba, dark_rgba):
-    """Create an appearance-aware dynamic NSColor."""
+def _dynamic_bg_color():
+    """Create a dynamic background color matching RecordingIndicatorPanel.
+
+    Inverted scheme: dark bg in light mode, light bg in dark mode —
+    consistent with other floating overlays in the app.
+    """
     from AppKit import NSColor
 
     def _provider(appearance):
         name = appearance.bestMatchFromAppearancesWithNames_(
             ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
         )
-        rgba = dark_rgba if name and "Dark" in str(name) else light_rgba
-        return NSColor.colorWithSRGBRed_green_blue_alpha_(*rgba)
+        if name and "Dark" in str(name):
+            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.9, 0.9, 0.9, 0.9)
+        return NSColor.colorWithSRGBRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.9)
+
+    return NSColor.colorWithName_dynamicProvider_(None, _provider)
+
+
+def _dynamic_text_color():
+    """Create a dynamic text color that contrasts with the background."""
+    from AppKit import NSColor
+
+    def _provider(appearance):
+        name = appearance.bestMatchFromAppearancesWithNames_(
+            ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"]
+        )
+        if name and "Dark" in str(name):
+            return NSColor.colorWithSRGBRed_green_blue_alpha_(0.1, 0.1, 0.1, 1.0)
+        return NSColor.colorWithSRGBRed_green_blue_alpha_(0.95, 0.95, 0.95, 1.0)
 
     return NSColor.colorWithName_dynamicProvider_(None, _provider)
 
@@ -62,6 +82,7 @@ class LiveTranscriptionOverlay:
 
     def __init__(self) -> None:
         self._panel = None
+        self._content_view = None
         self._text_field = None
         self._close_delegate = None
         self._current_text = ""
@@ -73,61 +94,63 @@ class LiveTranscriptionOverlay:
     def show(self) -> None:
         """Show the overlay panel."""
         from AppKit import (
-            NSBackingStoreBuffered,
-            NSBorderlessWindowMask,
             NSColor,
             NSFont,
             NSPanel,
+            NSScreen,
             NSStatusWindowLevel,
             NSTextField,
+            NSView,
         )
-        from Foundation import NSMakeRect, NSScreen
+        from Foundation import NSMakeRect
 
         if self._panel is not None:
             self._panel.orderOut_(None)
             self._panel = None
 
+        # Create borderless panel with clear background (layer handles visuals)
         panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, _PANEL_WIDTH, _PANEL_MIN_HEIGHT),
-            NSBorderlessWindowMask,
-            NSBackingStoreBuffered,
+            0,  # NSBorderlessWindowMask
+            2,  # NSBackingStoreBuffered
             False,
         )
         panel.setLevel_(NSStatusWindowLevel + 1)
-        panel.setFloatingPanel_(True)
-        panel.setHidesOnDeactivate_(False)
-        panel.setIgnoresMouseEvents_(True)
         panel.setOpaque_(False)
+        panel.setBackgroundColor_(NSColor.clearColor())
+        panel.setIgnoresMouseEvents_(True)
+        panel.setHasShadow_(True)
+        panel.setHidesOnDeactivate_(False)
+        panel.setCollectionBehavior_(1 << 4)  # canJoinAllSpaces
 
-        # Background color
-        bg_color = _dynamic_color(
-            (0.95, 0.95, 0.95, 0.92),  # light mode
-            (0.15, 0.15, 0.15, 0.92),  # dark mode
+        # Content view with rounded background via layer
+        content = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, _PANEL_WIDTH, _PANEL_MIN_HEIGHT)
         )
-        panel.setBackgroundColor_(bg_color)
-
-        content = panel.contentView()
         content.setWantsLayer_(True)
-        layer = content.layer()
-        if layer:
-            layer.setCornerRadius_(_CORNER_RADIUS)
-            layer.setMasksToBounds_(True)
+        content.layer().setCornerRadius_(_CORNER_RADIUS)
+        content.layer().setMasksToBounds_(True)
 
-        # Text field
-        text_field = NSTextField.labelWithString_("")
+        bg_color = _dynamic_bg_color()
+        content.layer().setBackgroundColor_(bg_color.CGColor())
+
+        # Text field — wrapping label for multi-line support
+        text_field = NSTextField.wrappingLabelWithString_("")
         text_field.setFrame_(NSMakeRect(
             _PADDING, _PADDING,
             _PANEL_WIDTH - 2 * _PADDING,
             _PANEL_MIN_HEIGHT - 2 * _PADDING,
         ))
         text_field.setFont_(NSFont.systemFontOfSize_(_FONT_SIZE))
-        text_field.setTextColor_(NSColor.labelColor())
+        text_field.setTextColor_(_dynamic_text_color())
+        text_field.setDrawsBackground_(False)
         text_field.setMaximumNumberOfLines_(0)  # unlimited
-        text_field.setLineBreakMode_(0)  # NSLineBreakByWordWrapping
-        text_field.setPreferredMaxLayoutWidth_(_PANEL_WIDTH - 2 * _PADDING)
 
         content.addSubview_(text_field)
+        panel.setContentView_(content)
+
         self._text_field = text_field
+        self._content_view = content
         self._panel = panel
         self._current_text = ""
 
@@ -139,7 +162,7 @@ class LiveTranscriptionOverlay:
             cy = screen_frame.origin.y + screen_frame.size.height / 2 - _PANEL_MIN_HEIGHT / 2
             panel.setFrameOrigin_((cx, cy))
 
-        panel.makeKeyAndOrderFront_(None)
+        panel.orderFrontRegardless()
         logger.debug("Live transcription overlay shown")
 
     def hide(self) -> None:
@@ -170,6 +193,12 @@ class LiveTranscriptionOverlay:
             frame.size.height = new_height
             self._panel.setFrame_display_(frame, True)
 
+            # Resize content view to match
+            if self._content_view is not None:
+                self._content_view.setFrame_(
+                    NSMakeRect(0, 0, _PANEL_WIDTH, new_height)
+                )
+
             # Reposition text field
             self._text_field.setFrame_(NSMakeRect(
                 _PADDING, _PADDING,
@@ -182,6 +211,7 @@ class LiveTranscriptionOverlay:
         if self._panel is not None:
             self._panel.orderOut_(None)
             self._panel = None
+        self._content_view = None
         self._text_field = None
         self._close_delegate = None
         self._current_text = ""

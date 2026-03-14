@@ -36,6 +36,7 @@ class TestLiveTranscriptionOverlayInit:
 
         assert overlay._panel is not None
         assert overlay._text_field is not None
+        assert overlay._content_view is not None
 
     def test_show_sets_panel_properties(self):
         from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay
@@ -44,10 +45,21 @@ class TestLiveTranscriptionOverlayInit:
         overlay.show()
 
         panel = overlay._panel
-        panel.setFloatingPanel_.assert_called_with(True)
         panel.setHidesOnDeactivate_.assert_called_with(False)
         panel.setIgnoresMouseEvents_.assert_called_with(True)
         panel.setOpaque_.assert_called_with(False)
+        panel.setHasShadow_.assert_called_with(True)
+
+    def test_show_uses_clear_panel_background(self):
+        from AppKit import NSColor
+        from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay
+
+        overlay = LiveTranscriptionOverlay()
+        overlay.show()
+
+        overlay._panel.setBackgroundColor_.assert_called_once_with(
+            NSColor.clearColor()
+        )
 
 
 class TestLiveTranscriptionOverlayText:
@@ -116,6 +128,7 @@ class TestLiveTranscriptionOverlayLifecycle:
         overlay.close()
 
         assert overlay._panel is None
+        assert overlay._content_view is None
         assert overlay._text_field is None
         assert overlay._current_text == ""
 
@@ -138,20 +151,29 @@ class TestLiveTranscriptionOverlayLifecycle:
 
 
 class TestLiveTranscriptionOverlayDarkMode:
-    def test_dynamic_color_used_for_background(self):
+    def test_layer_background_set(self):
         from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay
 
         overlay = LiveTranscriptionOverlay()
         overlay.show()
 
-        # Background color should be set (dynamic color provider)
-        overlay._panel.setBackgroundColor_.assert_called_once()
+        # Background color is applied via layer, not panel
+        content = overlay._content_view
+        content.setWantsLayer_.assert_called_with(True)
 
-    def test_label_color_for_text(self):
-        from AppKit import NSColor
+    def test_text_uses_dynamic_color(self):
         from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay
 
         overlay = LiveTranscriptionOverlay()
         overlay.show()
 
-        overlay._text_field.setTextColor_.assert_called_once_with(NSColor.labelColor())
+        # Text color should be set (dynamic, not hardcoded)
+        overlay._text_field.setTextColor_.assert_called_once()
+
+    def test_text_draws_no_background(self):
+        from voicetext.ui.live_transcription_overlay import LiveTranscriptionOverlay
+
+        overlay = LiveTranscriptionOverlay()
+        overlay.show()
+
+        overlay._text_field.setDrawsBackground_.assert_called_once_with(False)
