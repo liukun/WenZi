@@ -291,3 +291,55 @@ class TestStreamingOverlayPanel:
         panel.show(asr_text="test")
         panel.close()
         panel.set_asr_text("new text")  # Should be a no-op
+
+    def test_close_with_delay_schedules_timer(self, _mock_appkit):
+        """close_with_delay should schedule an NSTimer."""
+        mock_foundation = _mock_appkit.foundation
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        panel.close_with_delay()
+        mock_foundation.NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_.assert_called()
+        assert panel._close_timer is not None
+
+    def test_delayed_close_fires_when_mouse_outside(self, _mock_appkit):
+        """_delayedCloseCheck_ should close when mouse is not over panel."""
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        # Mock mouse outside panel
+        with patch(
+            "voicetext.ui.streaming_overlay.StreamingOverlayPanel._is_mouse_over_panel",
+            return_value=False,
+        ), patch(
+            "voicetext.ui.streaming_overlay.StreamingOverlayPanel._fade_out_and_close",
+        ) as mock_fade:
+            panel._delayedCloseCheck_(None)
+            mock_fade.assert_called_once()
+
+    def test_delayed_close_rechecks_when_mouse_hovering(self, _mock_appkit):
+        """_delayedCloseCheck_ should reschedule when mouse is over panel."""
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        with patch(
+            "voicetext.ui.streaming_overlay.StreamingOverlayPanel._is_mouse_over_panel",
+            return_value=True,
+        ):
+            panel._delayedCloseCheck_(None)
+            # Should have scheduled a new timer (recheck)
+            assert panel._close_timer is not None
+
+    def test_close_cancels_delayed_close(self, _mock_appkit):
+        """Immediate close() should cancel any pending delayed close."""
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        panel.close_with_delay()
+        mock_timer = panel._close_timer
+        panel.close()
+        mock_timer.invalidate.assert_called()
+        assert panel._close_timer is None
+
+    def test_close_with_delay_after_close_no_crash(self, _mock_appkit):
+        """close_with_delay after close should not crash."""
+        panel = _make_panel()
+        panel.show(asr_text="test")
+        panel.close()
+        panel.close_with_delay()  # Should be a no-op

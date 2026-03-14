@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -448,14 +447,15 @@ class RecordingController:
                 logger.error("AI enhancement failed: %s", e)
                 text = asr_text
             finally:
-                AppHelper.callAfter(app._streaming_overlay.close)
+                if cancel_event.is_set():
+                    AppHelper.callAfter(app._streaming_overlay.close)
+                else:
+                    app._streaming_overlay.close_with_delay()
         else:
-            # No enhancement — update overlay with ASR result, show briefly,
-            # then close
+            # No enhancement — update overlay with ASR result, then fade out
             if overlay_already_shown:
                 app._streaming_overlay.set_asr_text(asr_text)
-                time.sleep(0.8)
-                AppHelper.callAfter(app._streaming_overlay.close)
+                app._streaming_overlay.close_with_delay()
 
         if cancel_event.is_set():
             app._set_status("VT")

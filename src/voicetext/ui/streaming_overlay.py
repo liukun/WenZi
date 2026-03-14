@@ -24,6 +24,11 @@ _SCREEN_MARGIN = 20
 # ESC key code
 _ESC_KEY_CODE = 53
 
+# Delayed close
+_CLOSE_DELAY = 1.0
+_HOVER_RECHECK_INTERVAL = 0.5
+_FADE_OUT_DURATION = 0.3
+
 
 def _is_dark_mode() -> bool:
     """Detect whether the system is currently in dark mode."""
@@ -90,6 +95,7 @@ class StreamingOverlayPanel:
         self._loading_timer: object = None
         self._loading_seconds: int = 0
         self._llm_info: str = ""
+        self._close_timer: object = None
 
     @staticmethod
     def _text_color(dark: bool):
@@ -559,27 +565,113 @@ class StreamingOverlayPanel:
 
         AppHelper.callAfter(_clear)
 
-    def close(self) -> None:
-        """Close and clean up the overlay panel. Thread-safe."""
+    # ------------------------------------------------------------------
+    # Delayed close with hover detection
+    # ------------------------------------------------------------------
+
+    def close_with_delay(self, delay: float = _CLOSE_DELAY) -> None:
+        """Close the overlay after *delay* seconds, with fade-out animation.
+
+        If the mouse cursor is hovering over the panel when the timer fires,
+        the close is postponed until the cursor leaves. Thread-safe.
+        """
         from PyObjCTools import AppHelper
 
-        def _close():
-            self._stop_loading_timer()
-            self._remove_esc_monitor()
-            self._stop_appearance_timer()
-            self._cancel_event = None
+        def _schedule():
+            self._stop_close_timer()
+            try:
+                from Foundation import NSTimer
 
-            if self._panel is not None:
-                self._panel.orderOut_(None)
-                self._panel = None
+                self._close_timer = (
+                    NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                        delay, self, b"_delayedCloseCheck:", None, False,
+                    )
+                )
+            except Exception:
+                logger.error("Failed to schedule delayed close", exc_info=True)
 
-            self._asr_title = None
-            self._asr_label = None
-            self._status_label = None
-            self._text_view = None
-            self._scroll_view = None
-            self._content_view = None
-            self._separator = None
-            logger.debug("Streaming overlay closed")
+        AppHelper.callAfter(_schedule)
 
-        AppHelper.callAfter(_close)
+    def _delayedCloseCheck_(self, timer) -> None:
+        """NSTimer callback: fade out if mouse is not hovering, else recheck."""
+        self._close_timer = None
+        if self._panel is None:
+            return
+
+        if self._is_mouse_over_panel():
+            # Mouse is hovering — recheck after a short interval
+            try:
+                from Foundation import NSTimer
+
+                self._close_timer = (
+                    NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                        _HOVER_RECHECK_INTERVAL, self, b"_delayedCloseCheck:", None, False,
+                    )
+                )
+            except Exception:
+                self._do_close()
+        else:
+            self._fade_out_and_close()
+
+    def _is_mouse_over_panel(self) -> bool:
+        """Return True if the mouse cursor is inside the panel frame."""
+        try:
+            from AppKit import NSEvent
+            from Foundation import NSPointInRect
+
+            mouse_loc = NSEvent.mouseLocation()
+            return bool(NSPointInRect(mouse_loc, self._panel.frame()))
+        except Exception:
+            return False
+
+    def _fade_out_and_close(self) -> None:
+        """Animate the panel to transparent, then clean up."""
+        if self._panel is None:
+            return
+        try:
+            from AppKit import NSAnimationContext
+
+            NSAnimationContext.beginGrouping()
+            ctx = NSAnimationContext.currentContext()
+            ctx.setDuration_(_FADE_OUT_DURATION)
+            ctx.setCompletionHandler_(self._do_close)
+            self._panel.animator().setAlphaValue_(0.0)
+            NSAnimationContext.endGrouping()
+        except Exception:
+            self._do_close()
+
+    def _stop_close_timer(self) -> None:
+        """Cancel any pending delayed-close timer."""
+        if self._close_timer is not None:
+            try:
+                self._close_timer.invalidate()
+            except Exception:
+                pass
+            self._close_timer = None
+
+    def _do_close(self) -> None:
+        """Immediate cleanup — shared by close() and fade-out completion."""
+        self._stop_loading_timer()
+        self._stop_close_timer()
+        self._remove_esc_monitor()
+        self._stop_appearance_timer()
+        self._cancel_event = None
+
+        if self._panel is not None:
+            self._panel.orderOut_(None)
+            self._panel = None
+
+        self._asr_title = None
+        self._asr_label = None
+        self._status_label = None
+        self._text_view = None
+        self._scroll_view = None
+        self._content_view = None
+        self._separator = None
+        logger.debug("Streaming overlay closed")
+
+    def close(self) -> None:
+        """Close and clean up the overlay panel immediately. Thread-safe."""
+        from PyObjCTools import AppHelper
+
+        AppHelper.callAfter(self._do_close)

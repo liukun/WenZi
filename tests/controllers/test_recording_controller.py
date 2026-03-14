@@ -305,21 +305,19 @@ class TestDoTranscribeDirect:
         mock_app._conversation_history.log.assert_called_once()
 
     @patch("voicetext.controllers.recording_controller.type_text")
-    @patch("voicetext.controllers.recording_controller.time")
     @patch("PyObjCTools.AppHelper")
     def test_no_enhance_overlay_already_shown(
-        self, mock_apphelper, mock_time, mock_type_text, ctrl, mock_app
+        self, mock_apphelper, mock_type_text, ctrl, mock_app
     ):
         """When overlay is already shown and no enhance, should update ASR text,
-        wait briefly, then close overlay and type text."""
+        schedule delayed close, and type text."""
         mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
         ctrl.do_transcribe_direct(
             "hello world", use_enhance=False, overlay_already_shown=True
         )
 
         mock_app._streaming_overlay.set_asr_text.assert_called_once_with("hello world")
-        mock_time.sleep.assert_called_once_with(0.8)
-        mock_app._streaming_overlay.close.assert_called_once()
+        mock_app._streaming_overlay.close_with_delay.assert_called_once()
         mock_type_text.assert_called_once()
 
     @patch("voicetext.controllers.recording_controller.type_text")
