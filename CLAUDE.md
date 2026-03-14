@@ -110,6 +110,17 @@ When adding new user-facing behaviors or interactions, always add corresponding 
 4. Update the stats display in `_on_show_usage_stats()`
 5. Add tests in `tests/test_usage_stats.py`
 
+## Pre-PR Local Verification
+
+Before creating a pull request, always run the CI checks locally to catch issues early:
+
+```bash
+uv run ruff check              # Lint
+uv run pytest tests/ -v --cov=voicetext  # Tests with coverage
+```
+
+Only create the PR after both pass. This mirrors the CI pipeline in `.github/workflows/test.yml`.
+
 ## Release Process
 
 1. Ensure all changes are committed and tests pass (`uv run pytest tests/`)

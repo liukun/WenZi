@@ -58,3 +58,6 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/build_docs.py" = ["E501"]
