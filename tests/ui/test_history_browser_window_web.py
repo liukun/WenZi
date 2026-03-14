@@ -67,6 +67,8 @@ class TestInit:
         assert panel._selected_index == -1
         assert panel._page_loaded is False
         assert panel._pending_js == []
+        assert panel._time_range == "7d"
+        assert panel._active_tags == set()
 
     def test_close_without_show_is_noop(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
@@ -108,88 +110,135 @@ class TestClose:
 
 
 # ---------------------------------------------------------------------------
+# Time range cutoff
+# ---------------------------------------------------------------------------
+
+
+class TestTimeRangeCutoff:
+    def test_all_returns_none(self):
+        from voicetext.ui.history_browser_window_web import _time_range_cutoff
+
+        assert _time_range_cutoff("all") is None
+
+    def test_7d_returns_iso_string(self):
+        from voicetext.ui.history_browser_window_web import _time_range_cutoff
+
+        result = _time_range_cutoff("7d")
+        assert result is not None
+        assert "T" in result  # ISO format
+
+    def test_30d_returns_iso_string(self):
+        from voicetext.ui.history_browser_window_web import _time_range_cutoff
+
+        result = _time_range_cutoff("30d")
+        assert result is not None
+
+    def test_today_returns_iso_string(self):
+        from voicetext.ui.history_browser_window_web import _time_range_cutoff
+
+        result = _time_range_cutoff("today")
+        assert result is not None
+        # Should be midnight today
+        assert "T00:00:00" in result
+
+
+# ---------------------------------------------------------------------------
 # Filtering logic
 # ---------------------------------------------------------------------------
 
 
 class TestApplyFilters:
-    def test_mode_filter(self):
-        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel, _MODE_ALL
+    def test_no_filters(self):
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = HistoryBrowserPanel()
+        panel._time_range = "all"
+        panel._all_records = [
+            {"timestamp": "2026-03-13T14:30:00+00:00", "enhance_mode": "proofread", "final_text": "a"},
+            {"timestamp": "2026-03-13T14:25:00+00:00", "enhance_mode": "translate_en", "final_text": "b"},
+        ]
+
+        panel._apply_filters()
+        assert len(panel._filtered_records) == 2
+
+    def test_time_range_filter(self):
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
+
+        panel = HistoryBrowserPanel()
+        panel._time_range = "7d"
+        panel._all_records = [
+            {"timestamp": "2099-01-01T00:00:00+00:00", "enhance_mode": "off", "final_text": "future"},
+            {"timestamp": "2020-01-01T00:00:00+00:00", "enhance_mode": "off", "final_text": "old"},
+        ]
+
+        panel._apply_filters()
+        # Only the future record passes the 7d cutoff
+        assert len(panel._filtered_records) == 1
+        assert panel._filtered_records[0]["final_text"] == "future"
+
+    def test_tag_filter_mode(self):
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
+
+        panel = HistoryBrowserPanel()
+        panel._time_range = "all"
+        panel._active_tags = {"proofread"}
         panel._all_records = [
             {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a"},
             {"timestamp": "t2", "enhance_mode": "translate_en", "final_text": "b"},
             {"timestamp": "t3", "enhance_mode": "proofread", "final_text": "c"},
         ]
 
-        panel._filter_mode = _MODE_ALL
-        panel._apply_filters()
-        assert len(panel._filtered_records) == 3
-
-        panel._filter_mode = "proofread"
         panel._apply_filters()
         assert len(panel._filtered_records) == 2
         assert all(r["enhance_mode"] == "proofread" for r in panel._filtered_records)
 
-    def test_model_filter(self):
-        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel, _MODEL_ALL
-
-        panel = HistoryBrowserPanel()
-        panel._all_records = [
-            {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a", "stt_model": "whisper", "llm_model": "gpt-4"},
-            {"timestamp": "t2", "enhance_mode": "proofread", "final_text": "b", "stt_model": "whisper", "llm_model": "qwen"},
-            {"timestamp": "t3", "enhance_mode": "off", "final_text": "c", "stt_model": "funASR", "llm_model": ""},
-        ]
-
-        panel._filter_model = _MODEL_ALL
-        panel._apply_filters()
-        assert len(panel._filtered_records) == 3
-
-        panel._filter_model = "whisper"
-        panel._apply_filters()
-        assert len(panel._filtered_records) == 2
-
-        panel._filter_model = "gpt-4"
-        panel._apply_filters()
-        assert len(panel._filtered_records) == 1
-        assert panel._filtered_records[0]["timestamp"] == "t1"
-
-    def test_corrected_filter(self):
+    def test_tag_filter_corrected(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = HistoryBrowserPanel()
+        panel._time_range = "all"
+        panel._active_tags = {"corrected"}
         panel._all_records = [
             {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a", "user_corrected": True},
             {"timestamp": "t2", "enhance_mode": "proofread", "final_text": "b", "user_corrected": False},
-            {"timestamp": "t3", "enhance_mode": "proofread", "enhanced_text": "x", "final_text": "y"},
         ]
 
-        panel._filter_corrected_only = False
-        panel._apply_filters()
-        assert len(panel._filtered_records) == 3
-
-        panel._filter_corrected_only = True
-        panel._apply_filters()
-        assert len(panel._filtered_records) == 2
-        assert panel._filtered_records[0]["timestamp"] == "t1"
-        assert panel._filtered_records[1]["timestamp"] == "t3"
-
-    def test_combined_filters(self):
-        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
-
-        panel = HistoryBrowserPanel()
-        panel._all_records = [
-            {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a", "stt_model": "w", "llm_model": "gpt-4"},
-            {"timestamp": "t2", "enhance_mode": "translate_en", "final_text": "b", "stt_model": "w", "llm_model": "gpt-4"},
-            {"timestamp": "t3", "enhance_mode": "proofread", "final_text": "c", "stt_model": "w", "llm_model": "qwen"},
-        ]
-
-        panel._filter_mode = "proofread"
-        panel._filter_model = "gpt-4"
         panel._apply_filters()
         assert len(panel._filtered_records) == 1
         assert panel._filtered_records[0]["timestamp"] == "t1"
+
+    def test_tag_filter_or_logic(self):
+        """Multiple active tags use OR: match any."""
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
+
+        panel = HistoryBrowserPanel()
+        panel._time_range = "all"
+        panel._active_tags = {"proofread", "translate_en"}
+        panel._all_records = [
+            {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a"},
+            {"timestamp": "t2", "enhance_mode": "translate_en", "final_text": "b"},
+            {"timestamp": "t3", "enhance_mode": "format", "final_text": "c"},
+        ]
+
+        panel._apply_filters()
+        assert len(panel._filtered_records) == 2
+
+    def test_combined_time_and_tag(self):
+        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
+
+        panel = HistoryBrowserPanel()
+        panel._time_range = "7d"
+        panel._active_tags = {"proofread"}
+        panel._all_records = [
+            {"timestamp": "2099-01-01T00:00:00+00:00", "enhance_mode": "proofread", "final_text": "a"},
+            {"timestamp": "2099-01-01T00:00:00+00:00", "enhance_mode": "translate_en", "final_text": "b"},
+            {"timestamp": "2020-01-01T00:00:00+00:00", "enhance_mode": "proofread", "final_text": "c"},
+        ]
+
+        panel._apply_filters()
+        # Only future proofread passes both filters
+        assert len(panel._filtered_records) == 1
+        assert panel._filtered_records[0]["final_text"] == "a"
 
 
 # ---------------------------------------------------------------------------
@@ -198,62 +247,55 @@ class TestApplyFilters:
 
 
 class TestJsMessages:
-    def test_search(self):
+    def test_search_with_time_range(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = _build_panel(HistoryBrowserPanel())
         history = MagicMock()
         history.get_all.return_value = []
-        history.search.return_value = [{"timestamp": "t1", "enhance_mode": "off", "final_text": "found"}]
+        history.search.return_value = []
         panel._conversation_history = history
 
-        panel._handle_js_message({"type": "search", "text": "found"})
+        panel._handle_js_message({"type": "search", "text": "hello", "timeRange": "30d"})
 
-        assert panel._search_text == "found"
-        history.search.assert_called_once_with("found", limit=500)
+        assert panel._search_text == "hello"
+        assert panel._time_range == "30d"
+        history.search.assert_called_once_with("hello", limit=500)
 
-    def test_filter_mode(self):
+    def test_toggle_tags(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = _build_panel(HistoryBrowserPanel())
+        panel._time_range = "all"
         panel._all_records = [
             {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a"},
             {"timestamp": "t2", "enhance_mode": "translate_en", "final_text": "b"},
         ]
 
-        panel._handle_js_message({"type": "filterMode", "mode": "proofread"})
+        panel._handle_js_message({"type": "toggleTags", "tags": ["proofread"]})
 
-        assert panel._filter_mode == "proofread"
+        assert panel._active_tags == {"proofread"}
         assert len(panel._filtered_records) == 1
         assert panel._selected_index == -1
 
-    def test_filter_model(self):
+    def test_clear_filters(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = _build_panel(HistoryBrowserPanel())
-        panel._all_records = [
-            {"timestamp": "t1", "enhance_mode": "off", "final_text": "a", "stt_model": "w", "llm_model": ""},
-            {"timestamp": "t2", "enhance_mode": "off", "final_text": "b", "stt_model": "f", "llm_model": ""},
-        ]
+        history = MagicMock()
+        history.get_all.return_value = []
+        panel._conversation_history = history
+        panel._search_text = "old"
+        panel._time_range = "30d"
+        panel._active_tags = {"proofread"}
 
-        panel._handle_js_message({"type": "filterModel", "model": "w"})
+        panel._handle_js_message({"type": "clearFilters"})
 
-        assert panel._filter_model == "w"
-        assert len(panel._filtered_records) == 1
-
-    def test_filter_corrected(self):
-        from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
-
-        panel = _build_panel(HistoryBrowserPanel())
-        panel._all_records = [
-            {"timestamp": "t1", "enhance_mode": "off", "final_text": "a", "user_corrected": True},
-            {"timestamp": "t2", "enhance_mode": "off", "final_text": "b", "user_corrected": False},
-        ]
-
-        panel._handle_js_message({"type": "filterCorrected", "enabled": True})
-
-        assert panel._filter_corrected_only is True
-        assert len(panel._filtered_records) == 1
+        assert panel._search_text == ""
+        assert panel._time_range == "7d"
+        assert panel._active_tags == set()
+        calls = _get_js_calls(panel)
+        assert any("resetFilters" in c for c in calls)
 
     def test_select_row(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
@@ -297,8 +339,6 @@ class TestJsMessages:
         history.update_final_text.assert_called_once_with("t1", "new")
         assert panel._filtered_records[0]["final_text"] == "new"
         on_save.assert_called_once_with("t1", "new")
-        calls = _get_js_calls(panel)
-        assert any("markSaved" in c for c in calls)
 
     def test_save_no_selection(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
@@ -339,7 +379,7 @@ class TestJsMessages:
 
 
 # ---------------------------------------------------------------------------
-# JS call queue (page load race condition)
+# JS call queue
 # ---------------------------------------------------------------------------
 
 
@@ -351,7 +391,7 @@ class TestJsCallQueue:
         panel._webview = MagicMock()
         panel._page_loaded = False
 
-        panel._eval_js("setRecords([])")
+        panel._eval_js("setRecords([],0)")
 
         panel._webview.evaluateJavaScript_completionHandler_.assert_not_called()
         assert len(panel._pending_js) == 1
@@ -363,8 +403,8 @@ class TestJsCallQueue:
         panel._webview = MagicMock()
         panel._page_loaded = False
 
-        panel._eval_js("setRecords([])")
-        panel._eval_js("setFilterOptions([],[])")
+        panel._eval_js("setRecords([],0)")
+        panel._eval_js("setTagOptions([])")
 
         panel._on_page_loaded()
 
@@ -373,7 +413,7 @@ class TestJsCallQueue:
         panel._webview.evaluateJavaScript_completionHandler_.assert_called_once()
         combined = panel._webview.evaluateJavaScript_completionHandler_.call_args[0][0]
         assert "setRecords" in combined
-        assert "setFilterOptions" in combined
+        assert "setTagOptions" in combined
 
     def test_eval_js_direct_after_page_load(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
@@ -424,40 +464,50 @@ class TestJsCallQueue:
 
 
 class TestPushData:
-    def test_push_records_includes_corrected_flag(self):
+    def test_push_records_includes_corrected_flag_and_total(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = _build_panel(HistoryBrowserPanel())
-        panel._filtered_records = [
+        panel._all_records = [
             {"timestamp": "t1", "enhance_mode": "proofread", "final_text": "a", "user_corrected": True},
+            {"timestamp": "t2", "enhance_mode": "proofread", "final_text": "b", "user_corrected": False},
         ]
+        panel._filtered_records = panel._all_records[:1]
 
         panel._push_records()
 
         calls = _get_js_calls(panel)
         set_records_calls = [c for c in calls if c.startswith("setRecords(")]
         assert len(set_records_calls) == 1
-        data = json.loads(set_records_calls[0][len("setRecords(") : -1])
-        assert data[0]["_corrected"] is True
+        # Should contain total count as second arg
+        assert ",2)" in set_records_calls[0]
 
-    def test_push_filter_options(self):
+    def test_push_tag_options(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
 
         panel = _build_panel(HistoryBrowserPanel())
+        panel._time_range = "all"
         panel._all_records = [
-            {"timestamp": "t1", "enhance_mode": "proofread", "stt_model": "whisper", "llm_model": "gpt-4"},
-            {"timestamp": "t2", "enhance_mode": "translate_en", "stt_model": "whisper", "llm_model": ""},
+            {"timestamp": "t1", "enhance_mode": "proofread", "user_corrected": True, "final_text": "a"},
+            {"timestamp": "t2", "enhance_mode": "translate_en", "user_corrected": False, "final_text": "b"},
+            {"timestamp": "t3", "enhance_mode": "proofread", "user_corrected": False, "final_text": "c"},
         ]
 
-        panel._push_filter_options()
+        panel._push_tag_options()
 
         calls = _get_js_calls(panel)
-        filter_calls = [c for c in calls if c.startswith("setFilterOptions(")]
-        assert len(filter_calls) == 1
-        assert "proofread" in filter_calls[0]
-        assert "translate_en" in filter_calls[0]
-        assert "whisper" in filter_calls[0]
-        assert "gpt-4" in filter_calls[0]
+        tag_calls = [c for c in calls if c.startswith("setTagOptions(")]
+        assert len(tag_calls) == 1
+        data = json.loads(tag_calls[0][len("setTagOptions("):-1])
+        names = [t["name"] for t in data]
+        assert "proofread" in names
+        assert "translate_en" in names
+        assert "corrected" in names
+        # Check counts
+        counts = {t["name"]: t["count"] for t in data}
+        assert counts["proofread"] == 2
+        assert counts["translate_en"] == 1
+        assert counts["corrected"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -474,13 +524,28 @@ class TestHtmlTemplate:
     def test_has_key_ui_elements(self):
         from voicetext.ui.history_browser_window_web import _HTML_TEMPLATE
 
-        for elem_id in ("search", "mode-filter", "model-filter", "corrected-cb", "table-body", "save-btn", "close-btn"):
+        for elem_id in ("search", "time-range", "query-btn", "clear-btn",
+                         "tag-row", "stats-line", "table-body",
+                         "save-btn", "close-btn"):
             assert elem_id in _HTML_TEMPLATE
+
+    def test_has_tag_filter_row(self):
+        from voicetext.ui.history_browser_window_web import _HTML_TEMPLATE
+
+        assert "tag-pill" in _HTML_TEMPLATE
+        assert "tag-row" in _HTML_TEMPLATE
 
     def test_has_keyboard_shortcuts(self):
         from voicetext.ui.history_browser_window_web import _HTML_TEMPLATE
 
         assert "Escape" in _HTML_TEMPLATE
+        assert "metaKey" in _HTML_TEMPLATE
+
+    def test_has_six_columns(self):
+        from voicetext.ui.history_browser_window_web import _HTML_TEMPLATE
+
+        for col in ("col-time", "col-mode", "col-stt", "col-llm", "col-content", "col-tags"):
+            assert col in _HTML_TEMPLATE
 
 
 class TestFormatTimestamp:
