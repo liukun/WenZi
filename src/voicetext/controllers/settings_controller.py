@@ -17,6 +17,7 @@ from voicetext.transcription.model_registry import (
     PRESET_BY_ID,
     PRESETS,
     build_remote_asr_models,
+    clear_model_cache,
     is_backend_available,
     is_model_cached,
 )
@@ -365,9 +366,10 @@ class SettingsController:
 
                 cached = is_model_cached(preset)
                 if not cached:
+                    monitor_args = app._model_controller._make_download_monitor_args(preset)
                     monitor_thread = threading.Thread(
                         target=app._model_controller._monitor_download_progress,
-                        args=(preset, stop_event),
+                        args=(stop_event, monitor_args),
                         daemon=True,
                     )
                     monitor_thread.start()
@@ -416,12 +418,124 @@ class SettingsController:
                     monitor_thread.join(timeout=2)
                 logger.error("Model switch failed: %s", e)
                 app._set_status("Error")
+
+                can_clear = preset.backend not in ("apple", "whisper-api")
+                if can_clear:
+                    result = topmost_alert(
+                        title="Model Switch Failed",
+                        message=(
+                            f"Failed to load model: {preset.display_name}\n\n"
+                            f"Error: {str(e)[:200]}\n\n"
+                            "This may be caused by corrupted cache files. "
+                            "Click 'Clear Cache & Retry' to delete cached "
+                            "files and try again."
+                        ),
+                        ok="Clear Cache & Retry",
+                        cancel="Close",
+                    )
+                    restore_accessory()
+                    if result == 1:
+                        self._clear_cache_and_retry_switch(
+                            preset, old_preset_id
+                        )
+                        return
+                else:
+                    topmost_alert(
+                        title="Model Switch Failed",
+                        message=(
+                            f"Failed to load model: {preset.display_name}\n\n"
+                            f"Error: {str(e)[:200]}"
+                        ),
+                    )
+                    restore_accessory()
+
                 app._model_controller._try_restore_previous_model(old_preset_id)
+                self._revert_settings_panel_selection(old_preset_id)
 
             finally:
                 app._busy = False
 
         threading.Thread(target=_do_switch, daemon=True).start()
+
+    def _clear_cache_and_retry_switch(self, preset, old_preset_id) -> None:
+        """Clear model cache and retry the switch (settings panel path)."""
+        app = self._app
+        stop_event = threading.Event()
+        monitor_thread = None
+        try:
+            app._set_status("Clearing...")
+            clear_model_cache(preset)
+
+            monitor_args = app._model_controller._make_download_monitor_args(preset)
+            monitor_thread = threading.Thread(
+                target=app._model_controller._monitor_download_progress,
+                args=(stop_event, monitor_args),
+                daemon=True,
+            )
+            monitor_thread.start()
+
+            asr_cfg = app._config["asr"]
+            new_transcriber = create_transcriber(
+                backend=preset.backend,
+                use_vad=asr_cfg.get("use_vad", True),
+                use_punc=asr_cfg.get("use_punc", True),
+                language=preset.language or asr_cfg.get("language"),
+                model=preset.model,
+                temperature=asr_cfg.get("temperature"),
+            )
+            new_transcriber.initialize()
+
+            stop_event.set()
+            monitor_thread.join(timeout=2)
+
+            app._transcriber = new_transcriber
+            app._current_preset_id = preset.id
+            app._current_remote_asr = None
+            app._menu_builder.update_model_checkmarks()
+
+            app._config["asr"]["preset"] = preset.id
+            app._config["asr"]["backend"] = preset.backend
+            app._config["asr"]["model"] = preset.model
+            app._config["asr"]["language"] = preset.language
+            app._config["asr"]["default_provider"] = None
+            app._config["asr"]["default_model"] = None
+            save_config(app._config, app._config_path)
+
+            app._set_status("VT")
+            logger.info(
+                "Model switched after cache clear: %s (from settings)",
+                preset.display_name,
+            )
+        except Exception as e2:
+            stop_event.set()
+            if monitor_thread:
+                monitor_thread.join(timeout=2)
+            logger.error("Retry after cache clear failed: %s", e2)
+            app._set_status("Error")
+            topmost_alert(
+                title="Model Switch Failed",
+                message=(
+                    f"Retry failed.\n\n"
+                    f"Error: {str(e2)[:200]}\n\n"
+                    "Please check your network connection and try again."
+                ),
+            )
+            restore_accessory()
+            app._model_controller._try_restore_previous_model(old_preset_id)
+            self._revert_settings_panel_selection(old_preset_id)
+        finally:
+            app._busy = False
+
+    def _revert_settings_panel_selection(self, old_preset_id) -> None:
+        """Revert settings panel radio to the previous model after switch failure."""
+        from PyObjCTools import AppHelper
+
+        app = self._app
+        AppHelper.callAfter(
+            app._settings_panel.update_stt_model,
+            old_preset_id,
+            app._current_remote_asr,
+        )
 
     def stt_remote_select(self, provider: str, model: str) -> None:
         """Handle remote STT model selection from Settings panel."""

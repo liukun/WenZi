@@ -152,18 +152,21 @@ def get_model_cache_dir(preset: ModelPreset) -> Path:
 
     if preset.backend == "funasr":
         # FunASR models are cached under modelscope
+        from modelscope.utils.file_utils import get_modelscope_cache_dir
         from voicetext.config import MODELS
 
         asr_model = MODELS["asr"]
         short_name = asr_model.split("/")[-1] if "/" in asr_model else asr_model
-        return home / ".cache" / "modelscope" / "hub" / "models" / "iic" / short_name
+        return Path(get_modelscope_cache_dir()) / "models" / "iic" / short_name
 
     if preset.backend == "mlx-whisper" and preset.model:
         # HuggingFace models are cached under huggingface hub
+        from huggingface_hub import constants as hf_constants
+
         repo_id = preset.model
         # HF cache uses -- as separator: models--org--name
         cache_name = "models--" + repo_id.replace("/", "--")
-        return home / ".cache" / "huggingface" / "hub" / cache_name
+        return Path(hf_constants.HF_HUB_CACHE) / cache_name
 
     if preset.backend == "sherpa-onnx" and preset.model:
         from .sherpa import _get_model_dir
@@ -236,6 +239,21 @@ def find_fallback_preset() -> Optional[ModelPreset]:
         if is_backend_available(preset.backend):
             return preset
     return None
+
+
+def clear_model_cache(preset: ModelPreset) -> bool:
+    """Delete cached model files for a preset.
+
+    Returns True if a cache directory was found and removed.
+    """
+    import shutil
+
+    cache_dir = get_model_cache_dir(preset)
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+        logger.info("Cleared model cache: %s", cache_dir)
+        return True
+    return False
 
 
 def build_remote_asr_models(providers: Dict[str, Any]) -> List[RemoteASRModel]:

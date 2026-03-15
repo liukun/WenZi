@@ -500,8 +500,28 @@ class PreviewController:
                 AppHelper.callAfter(_on_stt_done)
             except Exception as e:
                 logger.error("Background STT failed: %s", e)
+                from voicetext.transcription.model_registry import PRESET_BY_ID
+
+                preset_id = app._current_preset_id
+                preset = PRESET_BY_ID.get(preset_id) if preset_id else None
+                has_cache = (
+                    preset is not None
+                    and preset.backend not in ("apple", "whisper-api")
+                )
+                if has_cache:
+                    hint = (
+                        "This may be caused by corrupted cache files from "
+                        "an interrupted download. Try clearing cache via "
+                        "the model load error alert, or switch to a "
+                        "different model from the menu."
+                    )
+                else:
+                    hint = (
+                        "Please try switching to a different model "
+                        "from the menu."
+                    )
                 app._preview_panel.set_asr_result(
-                    f"(error: {e})",
+                    f"(error: {e})\n\n{hint}",
                     request_id=0,
                 )
 

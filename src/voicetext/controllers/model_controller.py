@@ -16,6 +16,7 @@ from voicetext.transcription.model_registry import (
     PRESET_BY_ID,
     ModelPreset,
     RemoteASRModel,
+    clear_model_cache,
     get_model_cache_dir,
     is_backend_available,
     is_model_cached,
@@ -32,7 +33,7 @@ from voicetext.ui_helpers import (
 
 logger = logging.getLogger(__name__)
 
-# Approximate download size for FunASR models.
+# Approximate total download size for all FunASR models (~502 MB).
 _FUNASR_APPROX_SIZE = 502 * 1024 * 1024
 
 
@@ -355,9 +356,10 @@ models:
 
                 cached = is_model_cached(preset)
                 if not cached:
+                    monitor_args = self._make_download_monitor_args(preset)
                     monitor_thread = threading.Thread(
                         target=self._monitor_download_progress,
-                        args=(preset, stop_event),
+                        args=(stop_event, monitor_args),
                         daemon=True,
                     )
                     monitor_thread.start()
@@ -410,14 +412,36 @@ models:
 
                 logger.error("Model switch failed: %s", e)
                 app._set_status("Error")
-                try:
-                    send_notification(
-                        "VoiceText",
-                        "Model switch failed",
-                        str(e)[:100],
+
+                can_clear = preset.backend not in ("apple", "whisper-api")
+                if can_clear:
+                    result = topmost_alert(
+                        title="Model Switch Failed",
+                        message=(
+                            f"Failed to load model: {preset.display_name}\n\n"
+                            f"Error: {str(e)[:200]}\n\n"
+                            "This may be caused by corrupted cache files. "
+                            "Click 'Clear Cache & Retry' to delete cached "
+                            "files and try again."
+                        ),
+                        ok="Clear Cache & Retry",
+                        cancel="Close",
                     )
-                except Exception:
-                    logger.debug("Notification unavailable, skipping")
+                    restore_accessory()
+                    if result == 1:
+                        self._clear_cache_and_retry_switch(
+                            preset, old_preset_id
+                        )
+                        return
+                else:
+                    topmost_alert(
+                        title="Model Switch Failed",
+                        message=(
+                            f"Failed to load model: {preset.display_name}\n\n"
+                            f"Error: {str(e)[:200]}"
+                        ),
+                    )
+                    restore_accessory()
 
                 self._try_restore_previous_model(old_preset_id)
 
@@ -432,21 +456,48 @@ models:
 
         threading.Thread(target=_do_switch, daemon=True).start()
 
-    def _monitor_download_progress(
-        self, preset: ModelPreset, stop_event: threading.Event
-    ) -> None:
-        """Monitor download progress by checking cache directory size."""
-        app = self._app
+    def _make_download_monitor_args(self, preset: ModelPreset):
+        """Pre-compute monitor paths on the calling thread.
+
+        Must be called BEFORE starting the monitor thread so that modelscope
+        imports happen before parallel download threads cause import deadlocks.
+
+        Returns (expected_size, monitor_dir, temp_dir) or None.
+        """
         expected_size = self._get_expected_model_size(preset)
         if not expected_size:
+            return None
+
+        cache_dir = get_model_cache_dir(preset)
+        if preset.backend == "funasr":
+            # FunASR loads ASR + VAD + Punc in parallel under the same
+            # parent dir; monitor the parent to capture total progress.
+            monitor_dir = cache_dir.parent
+        else:
+            monitor_dir = cache_dir
+        # modelscope downloads to a ._____temp sibling before moving
+        # to the final path; monitor both to track real progress.
+        temp_dir = monitor_dir.parent / "._____temp" / monitor_dir.name
+        return expected_size, monitor_dir, temp_dir
+
+    def _monitor_download_progress(
+        self, stop_event: threading.Event, monitor_args
+    ) -> None:
+        """Monitor download progress by checking cache directory size.
+
+        ``monitor_args`` should come from ``_make_download_monitor_args``,
+        called on the parent thread before this thread starts.
+        """
+        app = self._app
+        if monitor_args is None:
             app._set_status("Downloading...")
             stop_event.wait()
             return
 
-        cache_dir = get_model_cache_dir(preset)
+        expected_size, monitor_dir, temp_dir = monitor_args
 
         while not stop_event.is_set():
-            current_size = _get_dir_size(cache_dir)
+            current_size = _get_dir_size(monitor_dir) + _get_dir_size(temp_dir)
             pct = min(int(current_size / expected_size * 100), 99)
             app._set_status(f"DL {pct}%")
             stop_event.wait(1.0)
@@ -460,7 +511,7 @@ models:
             try:
                 from huggingface_hub import model_info
 
-                info = model_info(preset.model)
+                info = model_info(preset.model, files_metadata=True)
                 total = sum(
                     s.size for s in (info.siblings or []) if s.size is not None
                 )
@@ -499,6 +550,79 @@ models:
         except Exception as e2:
             logger.error("Failed to restore previous model: %s", e2)
             app._set_status("Error")
+
+    def _clear_cache_and_retry_switch(
+        self, preset: ModelPreset, old_preset_id
+    ) -> None:
+        """Clear model cache and retry the switch."""
+        app = self._app
+        stop_event = threading.Event()
+        monitor_thread = None
+        try:
+            app._set_status("Clearing...")
+            clear_model_cache(preset)
+
+            monitor_args = self._make_download_monitor_args(preset)
+            monitor_thread = threading.Thread(
+                target=self._monitor_download_progress,
+                args=(stop_event, monitor_args),
+                daemon=True,
+            )
+            monitor_thread.start()
+
+            asr_cfg = app._config["asr"]
+            new_transcriber = create_transcriber(
+                backend=preset.backend,
+                use_vad=asr_cfg.get("use_vad", True),
+                use_punc=asr_cfg.get("use_punc", True),
+                language=preset.language or asr_cfg.get("language"),
+                model=preset.model,
+                temperature=asr_cfg.get("temperature"),
+            )
+            new_transcriber.initialize()
+
+            stop_event.set()
+            monitor_thread.join(timeout=2)
+
+            app._transcriber = new_transcriber
+            app._current_preset_id = preset.id
+            app._current_remote_asr = None
+            app._menu_builder.update_model_checkmarks()
+
+            app._config["asr"]["preset"] = preset.id
+            app._config["asr"]["backend"] = preset.backend
+            app._config["asr"]["model"] = preset.model
+            app._config["asr"]["language"] = preset.language
+            app._config["asr"]["default_provider"] = None
+            app._config["asr"]["default_model"] = None
+            save_config(app._config, app._config_path)
+
+            app._set_status("VT")
+            logger.info("Model switched after cache clear: %s", preset.display_name)
+        except Exception as e2:
+            stop_event.set()
+            if monitor_thread:
+                monitor_thread.join(timeout=2)
+            logger.error("Retry after cache clear failed: %s", e2)
+            app._set_status("Error")
+            topmost_alert(
+                title="Model Switch Failed",
+                message=(
+                    f"Retry failed.\n\n"
+                    f"Error: {str(e2)[:200]}\n\n"
+                    "Please check your network connection and try again."
+                ),
+            )
+            restore_accessory()
+            self._try_restore_previous_model(old_preset_id)
+        finally:
+            for pid, item in app._model_menu_items.items():
+                p = PRESET_BY_ID[pid]
+                if is_backend_available(p.backend):
+                    item.set_callback(self.on_model_select)
+            for item in app._remote_asr_menu_items.values():
+                item.set_callback(self.on_remote_asr_select)
+            app._busy = False
 
     # ── Remote ASR model selection ────────────────────────────────────
 

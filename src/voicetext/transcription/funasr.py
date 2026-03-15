@@ -175,9 +175,9 @@ class FunASRTranscriber(BaseTranscriber):
     def _get_model_dir(self, model_name: str) -> str:
         """Get local model cache path, download if needed."""
         from pathlib import Path
+        from modelscope.utils.file_utils import get_modelscope_cache_dir
 
-        home = Path.home()
-        cache_base = home / ".cache" / "modelscope" / "hub" / "models" / "iic"
+        cache_base = Path(get_modelscope_cache_dir()) / "models" / "iic"
         short_name = model_name.split("/")[-1] if "/" in model_name else model_name
         model_dir = cache_base / short_name
 
