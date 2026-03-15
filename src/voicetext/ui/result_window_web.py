@@ -493,10 +493,6 @@ function appendEnhanceText(chunk) {
     const el = document.getElementById('enhance-text');
     el.textContent += chunk;
     el.scrollTop = el.scrollHeight;
-    // Sync final text
-    if (!userEdited) {
-        document.getElementById('final-text').value = el.textContent;
-    }
 }
 
 function appendThinkingText(chunk) {
@@ -515,7 +511,6 @@ function appendThinkingText(chunk) {
 function setEnhanceResult(text) {
     const el = document.getElementById('enhance-text');
     el.textContent = text;
-    if (!userEdited) document.getElementById('final-text').value = text;
 }
 
 function setEnhanceInfo(text) {
