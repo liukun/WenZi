@@ -23,6 +23,7 @@ from .ui.result_window_web import ResultPreviewPanel as WebResultPreviewPanel
 from .ui.settings_window import SettingsPanel
 from .hotkey import MultiHotkeyListener, TapHotkeyListener, _is_fn_key
 from .transcription.model_registry import (
+    find_fallback_preset,
     resolve_preset_from_config,
 )
 from .audio.recorder import Recorder
@@ -807,6 +808,42 @@ class VoiceTextApp(StatusBarApp):
         # Load models in background
         def _init_models():
             try:
+                # For Apple Speech, verify Siri/Dictation before initializing
+                asr_cfg = self._config["asr"]
+                if (
+                    not self._current_remote_asr
+                    and asr_cfg.get("backend") == "apple"
+                ):
+                    from .transcription.apple import check_siri_available
+
+                    self._set_status("Checking...")
+                    siri_ok, _ = check_siri_available(
+                        language=asr_cfg.get("language") or "zh",
+                        on_device=(asr_cfg.get("model") == "on-device"),
+                    )
+                    if not siri_ok:
+                        fallback = find_fallback_preset()
+                        if fallback:
+                            logger.warning(
+                                "Siri/Dictation disabled, using %s for this session",
+                                fallback.display_name,
+                            )
+                            self._transcriber = create_transcriber(
+                                backend=fallback.backend,
+                                use_vad=asr_cfg.get("use_vad", True),
+                                use_punc=asr_cfg.get("use_punc", True),
+                                language=fallback.language
+                                or asr_cfg.get("language"),
+                                model=fallback.model,
+                                temperature=asr_cfg.get("temperature"),
+                            )
+                            self._current_preset_id = fallback.id
+                            self._menu_builder.update_model_checkmarks()
+                        else:
+                            logger.warning(
+                                "Siri/Dictation disabled and no fallback available"
+                            )
+
                 if not self._config_degraded:
                     self._set_status("Loading...")
                 self._transcriber.initialize()

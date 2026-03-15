@@ -217,6 +217,27 @@ def get_model_size(preset: ModelPreset) -> Optional[int]:
     return total
 
 
+def find_fallback_preset() -> Optional[ModelPreset]:
+    """Find the best non-Apple preset to fall back to.
+
+    Prefers already-cached models (no download), then any available backend.
+    Returns None if no alternative is available.
+    """
+    # First pass: cached models (no download needed)
+    for preset in PRESETS:
+        if preset.backend == "apple":
+            continue
+        if is_backend_available(preset.backend) and is_model_cached(preset):
+            return preset
+    # Second pass: any available backend (may require download)
+    for preset in PRESETS:
+        if preset.backend == "apple":
+            continue
+        if is_backend_available(preset.backend):
+            return preset
+    return None
+
+
 def build_remote_asr_models(providers: Dict[str, Any]) -> List[RemoteASRModel]:
     """Build a list of RemoteASRModel from the asr.providers config section."""
     result = []

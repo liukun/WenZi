@@ -284,6 +284,33 @@ class SettingsController:
             stop_event = threading.Event()
             monitor_thread = None
             try:
+                # For Apple Speech, verify Siri/Dictation is enabled first
+                if preset.backend == "apple":
+                    from voicetext.transcription.apple import (
+                        check_siri_available,
+                        prompt_enable_siri,
+                    )
+
+                    app._set_status("Checking...")
+                    ok, err = check_siri_available(
+                        language=preset.language
+                        or app._config.get("asr", {}).get("language", "zh"),
+                        on_device=(preset.model == "on-device"),
+                    )
+                    if not ok:
+                        logger.warning("Apple Speech preflight failed: %s", err)
+                        prompt_enable_siri()
+                        # Revert settings panel radio back to the previous model
+                        from PyObjCTools import AppHelper
+
+                        AppHelper.callAfter(
+                            app._settings_panel.update_stt_model,
+                            old_preset_id,
+                            app._current_remote_asr,
+                        )
+                        app._set_status("VT")
+                        return
+
                 app._set_status("Unloading...")
                 old_transcriber.cleanup()
 

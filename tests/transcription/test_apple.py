@@ -1,11 +1,14 @@
 """Tests for the Apple Speech transcriber module."""
 
+import sys
 from unittest.mock import MagicMock
 
+import pytest
 
 from voicetext.transcription.base import BaseTranscriber
 from voicetext.transcription.apple import (
     AppleSpeechTranscriber,
+    SIRI_SETTINGS_URL,
     _LANG_TO_LOCALE,
     _resolve_locale,
 )
@@ -140,3 +143,133 @@ class TestAppleSpeechTranscriberLanguageMapping:
     def test_full_locale_preserved(self):
         t = AppleSpeechTranscriber(language="en-GB")
         assert t._locale_id == "en-GB"
+
+
+class TestSiriSettingsUrl:
+    def test_url_is_string(self):
+        assert isinstance(SIRI_SETTINGS_URL, str)
+        assert SIRI_SETTINGS_URL.startswith("x-apple.systempreferences:")
+
+
+class TestCheckSiriAvailable:
+    """Tests for check_siri_available() with mocked Apple frameworks."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_apple_frameworks(self, monkeypatch):
+        self.mock_speech = MagicMock()
+        self.mock_foundation = MagicMock()
+        self.mock_corefoundation = MagicMock()
+
+        monkeypatch.setitem(sys.modules, "Speech", self.mock_speech)
+        monkeypatch.setitem(sys.modules, "Foundation", self.mock_foundation)
+        monkeypatch.setitem(sys.modules, "CoreFoundation", self.mock_corefoundation)
+
+        self.mock_corefoundation.CFRunLoopRunInMode = MagicMock()
+        self.mock_corefoundation.kCFRunLoopDefaultMode = "default"
+
+        # Default: authorization granted
+        self.mock_speech.SFSpeechRecognizerAuthorizationStatusAuthorized = 3
+
+        def _fake_request_auth(callback):
+            callback(3)  # authorized
+
+        self.mock_speech.SFSpeechRecognizer.requestAuthorization_ = _fake_request_auth
+
+        # Default: recognizer available
+        mock_recognizer = MagicMock()
+        mock_recognizer.isAvailable.return_value = True
+        mock_recognizer.supportsOnDeviceRecognition.return_value = True
+        self.mock_recognizer = mock_recognizer
+        self.mock_speech.SFSpeechRecognizer.alloc.return_value.initWithLocale_.return_value = (
+            mock_recognizer
+        )
+
+    def test_siri_available_no_error(self):
+        """When no error fires within timeout, check returns True."""
+        # recognition task handler is never called (no error)
+        self.mock_recognizer.recognitionTaskWithRequest_resultHandler_ = MagicMock(
+            return_value=MagicMock()
+        )
+        from voicetext.transcription.apple import check_siri_available
+
+        ok, err = check_siri_available(language="zh", on_device=True)
+        assert ok is True
+        assert err is None
+
+    def test_siri_disabled_returns_false(self):
+        """When recognition fires a 'Siri' error, check returns False."""
+        mock_task = MagicMock()
+
+        def _start_recognition(request, handler):
+            # Simulate immediate Siri error
+            mock_error = MagicMock()
+            mock_error.localizedDescription.return_value = (
+                "Siri and Dictation are disabled"
+            )
+            handler(None, mock_error)
+            return mock_task
+
+        self.mock_recognizer.recognitionTaskWithRequest_resultHandler_ = (
+            _start_recognition
+        )
+
+        from voicetext.transcription.apple import check_siri_available
+
+        ok, err = check_siri_available(language="zh", on_device=True)
+        assert ok is False
+        assert "Siri" in err
+
+    def test_non_siri_error_returns_true(self):
+        """Non-Siri errors are ignored (let initialize() handle them)."""
+        mock_task = MagicMock()
+
+        def _start_recognition(request, handler):
+            mock_error = MagicMock()
+            mock_error.localizedDescription.return_value = "No speech detected"
+            handler(None, mock_error)
+            return mock_task
+
+        self.mock_recognizer.recognitionTaskWithRequest_resultHandler_ = (
+            _start_recognition
+        )
+
+        from voicetext.transcription.apple import check_siri_available
+
+        ok, err = check_siri_available(language="zh", on_device=True)
+        assert ok is True
+
+    def test_auth_not_granted_returns_true(self):
+        """Auth denied is not a Siri issue — return True to let init handle it."""
+
+        def _fake_request_auth(callback):
+            callback(2)  # denied
+
+        self.mock_speech.SFSpeechRecognizer.requestAuthorization_ = (
+            _fake_request_auth
+        )
+
+        from voicetext.transcription.apple import check_siri_available
+
+        ok, err = check_siri_available(language="zh", on_device=True)
+        assert ok is True  # not a Siri issue
+
+    def test_language_none_does_not_crash(self):
+        """Passing language=None should not raise TypeError."""
+        self.mock_recognizer.recognitionTaskWithRequest_resultHandler_ = MagicMock(
+            return_value=MagicMock()
+        )
+        from voicetext.transcription.apple import check_siri_available
+
+        ok, err = check_siri_available(language=None, on_device=True)
+        assert ok is True
+
+    def test_recognizer_unavailable_returns_true(self):
+        """Unavailable recognizer is not a Siri issue."""
+        self.mock_speech.SFSpeechRecognizer.alloc.return_value.initWithLocale_.return_value = (
+            None
+        )
+
+        from voicetext.transcription.apple import check_siri_available
+
+        ok, err = check_siri_available(language="zh", on_device=True)
+        assert ok is True

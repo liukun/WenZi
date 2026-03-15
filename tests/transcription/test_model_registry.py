@@ -3,9 +3,12 @@
 from pathlib import Path
 
 
+from unittest.mock import patch
+
 from voicetext.transcription.model_registry import (
     PRESET_BY_ID,
     PRESETS,
+    find_fallback_preset,
     get_model_cache_dir,
     get_model_size,
     is_backend_available,
@@ -182,6 +185,59 @@ class TestIsBackendAvailable:
         r1 = is_backend_available("funasr")
         r2 = is_backend_available("funasr")
         assert r1 == r2
+
+
+class TestFindFallbackPreset:
+    def test_skips_apple_presets(self):
+        result = find_fallback_preset()
+        if result is not None:
+            assert result.backend != "apple"
+
+    def test_returns_none_when_nothing_available(self):
+        with patch(
+            "voicetext.transcription.model_registry.is_backend_available",
+            return_value=False,
+        ):
+            assert find_fallback_preset() is None
+
+    def test_prefers_cached_model(self):
+        def _available(backend):
+            return backend in ("funasr", "mlx-whisper")
+
+        def _cached(preset):
+            return preset.backend == "mlx-whisper"
+
+        with (
+            patch(
+                "voicetext.transcription.model_registry.is_backend_available",
+                side_effect=_available,
+            ),
+            patch(
+                "voicetext.transcription.model_registry.is_model_cached",
+                side_effect=_cached,
+            ),
+        ):
+            result = find_fallback_preset()
+            assert result is not None
+            assert result.backend == "mlx-whisper"
+
+    def test_falls_back_to_available_if_none_cached(self):
+        def _available(backend):
+            return backend == "funasr"
+
+        with (
+            patch(
+                "voicetext.transcription.model_registry.is_backend_available",
+                side_effect=_available,
+            ),
+            patch(
+                "voicetext.transcription.model_registry.is_model_cached",
+                return_value=False,
+            ),
+        ):
+            result = find_fallback_preset()
+            assert result is not None
+            assert result.backend == "funasr"
 
 
 class TestIsModelCached:

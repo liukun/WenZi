@@ -30,6 +30,115 @@ _LANG_TO_LOCALE = {
 RECOGNITION_TIMEOUT = 30  # seconds
 STREAMING_FINAL_TIMEOUT = 10  # seconds to wait for final result after endAudio
 
+# macOS System Settings deep link for Siri / Dictation
+SIRI_SETTINGS_URL = "x-apple.systempreferences:com.apple.Siri-Settings.extension"
+
+
+def check_siri_available(language="zh", on_device=True):
+    """Quick check whether Siri/Dictation is enabled for Apple Speech.
+
+    Starts a recognition request and watches for an immediate
+    "Siri and Dictation are disabled" error.  Must be called from a
+    background thread (drives the RunLoop while waiting).
+
+    Returns ``(True, None)`` when Siri is available, or
+    ``(False, error_message)`` when it is disabled.
+    Non-Siri errors (auth, availability) return ``(True, None)`` so that
+    the normal ``initialize()`` path can surface them instead.
+    """
+    import Speech
+    from Foundation import NSLocale
+    from CoreFoundation import CFRunLoopRunInMode, kCFRunLoopDefaultMode
+
+    # -- authorization (fast if already granted) --
+    auth_event = threading.Event()
+    auth_status = [None]
+
+    def _on_auth(status):
+        auth_status[0] = status
+        auth_event.set()
+
+    Speech.SFSpeechRecognizer.requestAuthorization_(_on_auth)
+
+    deadline = time.monotonic() + 5
+    while not auth_event.is_set() and time.monotonic() < deadline:
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, False)
+
+    if not auth_event.is_set():
+        return True, None  # can't determine — let initialize() handle it
+
+    if auth_status[0] != Speech.SFSpeechRecognizerAuthorizationStatusAuthorized:
+        return True, None  # not a Siri issue — let initialize() handle it
+
+    # -- create recognizer --
+    locale_id = _resolve_locale(language or "zh")
+    locale = NSLocale.alloc().initWithLocaleIdentifier_(locale_id)
+    recognizer = Speech.SFSpeechRecognizer.alloc().initWithLocale_(locale)
+
+    if recognizer is None or not recognizer.isAvailable():
+        return True, None  # not a Siri issue
+
+    # -- quick recognition test --
+    request = Speech.SFSpeechAudioBufferRecognitionRequest.alloc().init()
+    if on_device and recognizer.supportsOnDeviceRecognition():
+        request.setRequiresOnDeviceRecognition_(True)
+
+    error_holder = [None]
+    error_event = threading.Event()
+
+    def _handler(result, error):
+        if error is not None:
+            error_holder[0] = (
+                str(error.localizedDescription())
+                if hasattr(error, "localizedDescription")
+                else str(error)
+            )
+            error_event.set()
+
+    task = recognizer.recognitionTaskWithRequest_resultHandler_(request, _handler)
+    request.endAudio()
+
+    # Siri-disabled errors fire within milliseconds; 0.3 s is plenty.
+    deadline = time.monotonic() + 0.3
+    while not error_event.is_set() and time.monotonic() < deadline:
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, False)
+
+    if task is not None:
+        try:
+            task.cancel()
+        except Exception:
+            pass
+
+    err = error_holder[0]
+    if err and "Siri" in err:
+        logger.warning("Siri/Dictation check failed: %s", err)
+        return False, err
+
+    return True, None
+
+
+def prompt_enable_siri():
+    """Show a dialog prompting the user to enable Siri, with an Open Settings button.
+
+    Safe to call from any thread (dispatches to main thread internally).
+    """
+    from voicetext.ui_helpers import restore_accessory, topmost_alert
+
+    result = topmost_alert(
+        title="Siri and Dictation Disabled",
+        message=(
+            "Apple Speech requires Siri and Dictation to be enabled.\n\n"
+            "Please enable it in System Settings > Apple Intelligence & Siri."
+        ),
+        ok="Open Settings",
+        cancel="Cancel",
+    )
+    if result == 1:
+        import subprocess
+
+        subprocess.Popen(["open", SIRI_SETTINGS_URL])
+    restore_accessory()
+
 
 _audio_fmt = None  # Cached AVAudioFormat (created once per sample rate)
 _audio_fmt_sr = None

@@ -331,6 +331,25 @@ models:
             monitor_thread = None
 
             try:
+                # For Apple Speech, verify Siri/Dictation is enabled first
+                if preset.backend == "apple":
+                    from voicetext.transcription.apple import (
+                        check_siri_available,
+                        prompt_enable_siri,
+                    )
+
+                    app._set_status("Checking...")
+                    ok, err = check_siri_available(
+                        language=preset.language
+                        or app._config.get("asr", {}).get("language", "zh"),
+                        on_device=(preset.model == "on-device"),
+                    )
+                    if not ok:
+                        logger.warning("Apple Speech preflight failed: %s", err)
+                        prompt_enable_siri()
+                        app._set_status("VT")
+                        return
+
                 app._set_status("Unloading...")
                 old_transcriber.cleanup()
 
