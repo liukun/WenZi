@@ -48,12 +48,12 @@ class ClipboardMonitor:
 
     def __init__(
         self,
-        max_items: int = 50,
+        max_days: int = 7,
         poll_interval: float = 0.5,
         persist_path: Optional[str] = None,
         image_dir: Optional[str] = None,
     ) -> None:
-        self._max_items = max_items
+        self._max_days = max_days
         self._poll_interval = poll_interval
         self._persist_path = persist_path
         self._image_dir = image_dir or _DEFAULT_IMAGE_DIR
@@ -238,12 +238,7 @@ class ClipboardMonitor:
             )
             self._entries.insert(0, entry)
 
-            # Trim to max size — collect removed image paths
-            removed = []
-            if len(self._entries) > self._max_items:
-                removed_entries = self._entries[self._max_items:]
-                self._entries = self._entries[: self._max_items]
-                removed = [e.image_path for e in removed_entries if e.image_path]
+            removed = self._trim_expired_locked()
             snapshot = [asdict(e) for e in self._entries]
 
         if self._save_to_disk(snapshot) and removed:
@@ -332,17 +327,28 @@ class ClipboardMonitor:
             )
             self._entries.insert(0, entry)
 
-            # Trim to max size — collect removed image paths
-            removed = []
-            if len(self._entries) > self._max_items:
-                removed_entries = self._entries[self._max_items:]
-                self._entries = self._entries[: self._max_items]
-                removed = [e.image_path for e in removed_entries if e.image_path]
+            removed = self._trim_expired_locked()
             snapshot = [asdict(e) for e in self._entries]
 
         if self._save_to_disk(snapshot) and removed:
             self._cleanup_image_files(removed)
         logger.debug("Clipboard entry added: %s...", text[:40])
+
+    def _trim_expired_locked(self) -> List[str]:
+        """Remove entries older than max_days. Must be called with _lock held.
+
+        Returns a list of image filenames that were removed (for cleanup).
+        """
+        cutoff = time.time() - self._max_days * 86400
+        kept = []
+        removed_images: List[str] = []
+        for entry in self._entries:
+            if entry.timestamp >= cutoff:
+                kept.append(entry)
+            elif entry.image_path:
+                removed_images.append(entry.image_path)
+        self._entries = kept
+        return removed_images
 
     def _save_to_disk(self, snapshot: Optional[list] = None) -> bool:
         """Persist entries to JSON file. Returns True on success.
@@ -403,10 +409,19 @@ class ClipboardMonitor:
                 )
             with self._lock:
                 self._entries = entries
+                expired_images = self._trim_expired_locked()
+            need_save = dropped > 0 or len(expired_images) > 0
             if dropped:
                 logger.info(
                     "Dropped %d clipboard image entries (files missing)", dropped
                 )
+            if expired_images:
+                logger.info(
+                    "Dropped %d expired clipboard entries (>%d days)",
+                    len(expired_images), self._max_days,
+                )
+                self._cleanup_image_files(expired_images)
+            if need_save:
                 self._save_to_disk()
             logger.info("Loaded %d clipboard history entries", len(self._entries))
         except Exception:

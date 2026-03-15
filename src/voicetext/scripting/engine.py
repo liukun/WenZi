@@ -91,13 +91,13 @@ class ScriptEngine:
                 from voicetext.scripting.clipboard_monitor import ClipboardMonitor
                 from voicetext.scripting.sources.clipboard_source import ClipboardSource
 
-                max_items = chooser_config.get("clipboard_max_items", 50)
+                max_days = chooser_config.get("clipboard_max_days", 7)
                 persist_path = os.path.expanduser(
                     "~/.config/VoiceText/clipboard_history.json"
                 )
 
                 self._clipboard_monitor = ClipboardMonitor(
-                    max_items=max_items,
+                    max_days=max_days,
                     persist_path=persist_path,
                 )
                 self._clipboard_monitor.start()

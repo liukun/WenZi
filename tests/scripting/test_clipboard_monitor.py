@@ -44,39 +44,47 @@ class TestClipboardEntry:
 
 class TestClipboardMonitor:
     def test_add_entry(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("hello")
         assert len(monitor.entries) == 1
         assert monitor.entries[0].text == "hello"
 
     def test_add_entry_with_source_app(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("hello", source_app="Safari")
         assert monitor.entries[0].source_app == "Safari"
 
     def test_deduplication(self):
         """Consecutive identical texts should not create duplicate entries."""
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("hello")
         monitor._add_entry("hello")
         assert len(monitor.entries) == 1
 
     def test_different_texts_not_deduplicated(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("hello")
         monitor._add_entry("world")
         assert len(monitor.entries) == 2
 
-    def test_max_items(self):
-        monitor = ClipboardMonitor(max_items=3)
-        for i in range(5):
-            monitor._add_entry(f"item {i}")
-        assert len(monitor.entries) == 3
-        # Most recent should be first
-        assert monitor.entries[0].text == "item 4"
+    def test_expired_entries_trimmed(self):
+        """Entries older than max_days should be removed on add."""
+        import time as _time
+
+        monitor = ClipboardMonitor(max_days=1)
+        # Manually add an old entry (2 days ago)
+        old_entry = ClipboardEntry(
+            text="old", timestamp=_time.time() - 2 * 86400
+        )
+        monitor._entries.append(old_entry)
+
+        # Adding a new entry should trim the expired one
+        monitor._add_entry("new")
+        assert len(monitor.entries) == 1
+        assert monitor.entries[0].text == "new"
 
     def test_newest_first(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("first")
         monitor._add_entry("second")
         monitor._add_entry("third")
@@ -84,13 +92,13 @@ class TestClipboardMonitor:
         assert monitor.entries[2].text == "first"
 
     def test_clear(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("hello")
         monitor.clear()
         assert len(monitor.entries) == 0
 
     def test_entries_returns_copy(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._add_entry("hello")
         entries = monitor.entries
         entries.clear()
@@ -100,7 +108,7 @@ class TestClipboardMonitor:
         persist_path = str(tmp_path / "clipboard.json")
 
         # Create monitor and add entries
-        monitor1 = ClipboardMonitor(max_items=10, persist_path=persist_path)
+        monitor1 = ClipboardMonitor(max_days=7, persist_path=persist_path)
         monitor1._add_entry("first", source_app="Safari")
         monitor1._add_entry("second")
 
@@ -108,7 +116,7 @@ class TestClipboardMonitor:
         assert (tmp_path / "clipboard.json").exists()
 
         # Load in a new monitor
-        monitor2 = ClipboardMonitor(max_items=10, persist_path=persist_path)
+        monitor2 = ClipboardMonitor(max_days=7, persist_path=persist_path)
         assert len(monitor2.entries) == 2
         assert monitor2.entries[0].text == "second"
         assert monitor2.entries[1].text == "first"
@@ -119,7 +127,7 @@ class TestClipboardMonitor:
         with open(persist_path, "w") as f:
             f.write("not json")
 
-        monitor = ClipboardMonitor(max_items=10, persist_path=persist_path)
+        monitor = ClipboardMonitor(max_days=7, persist_path=persist_path)
         assert len(monitor.entries) == 0
 
     def test_is_concealed(self):
@@ -143,7 +151,7 @@ class TestClipboardMonitor:
 
     def test_start_stop(self):
         """Start and stop should not raise."""
-        monitor = ClipboardMonitor(max_items=10, poll_interval=10.0)
+        monitor = ClipboardMonitor(max_days=7, poll_interval=10.0)
         # Mock NSPasteboard to avoid actual clipboard access
         with patch("voicetext.scripting.clipboard_monitor.ClipboardMonitor._check_clipboard"):
             monitor.start()
@@ -174,7 +182,7 @@ class TestImageEntries:
 
     def test_add_image_entry_saves_file(self, tmp_path):
         image_dir = str(tmp_path / "images")
-        monitor = ClipboardMonitor(max_items=10, image_dir=image_dir)
+        monitor = ClipboardMonitor(max_days=7, image_dir=image_dir)
 
         # Mock _save_image to avoid AppKit dependency
         monitor._save_image = MagicMock(
@@ -193,7 +201,7 @@ class TestImageEntries:
 
     def test_image_deduplication(self, tmp_path):
         image_dir = str(tmp_path / "images")
-        monitor = ClipboardMonitor(max_items=10, image_dir=image_dir)
+        monitor = ClipboardMonitor(max_days=7, image_dir=image_dir)
 
         monitor._save_image = MagicMock(
             return_value=("same_file.png", 100, 50, 1234)
@@ -203,35 +211,36 @@ class TestImageEntries:
 
         assert len(monitor.entries) == 1
 
-    def test_image_max_items_cleanup(self, tmp_path):
-        """Overflow should delete old image files."""
+    def test_expired_image_cleanup(self, tmp_path):
+        """Expired image entries should have their files deleted."""
+        import time as _time
+
         image_dir = str(tmp_path / "images")
         os.makedirs(image_dir, exist_ok=True)
 
-        # Create fake image files
-        for i in range(4):
-            with open(os.path.join(image_dir, f"img_{i}.png"), "wb") as f:
-                f.write(b"fake")
+        # Create a fake image file for the old entry
+        with open(os.path.join(image_dir, "old_img.png"), "wb") as f:
+            f.write(b"fake")
 
-        monitor = ClipboardMonitor(max_items=3, image_dir=image_dir)
+        monitor = ClipboardMonitor(max_days=1, image_dir=image_dir)
 
-        # Manually populate entries
-        for i in range(3):
-            monitor._entries.append(
-                ClipboardEntry(
-                    image_path=f"img_{i}.png",
-                    image_width=100,
-                    image_height=100,
-                    image_size=4,
-                )
+        # Manually add an expired image entry (2 days old)
+        monitor._entries.append(
+            ClipboardEntry(
+                image_path="old_img.png",
+                image_width=100,
+                image_height=100,
+                image_size=4,
+                timestamp=_time.time() - 2 * 86400,
             )
+        )
 
-        # Add a text entry that overflows
-        monitor._add_entry("overflow text")
+        # Adding a new entry should trim the expired one and delete its file
+        monitor._add_entry("new text")
 
-        assert len(monitor.entries) == 3
-        # img_2.png was the last (oldest) and should be removed
-        assert not os.path.exists(os.path.join(image_dir, "img_2.png"))
+        assert len(monitor.entries) == 1
+        assert monitor.entries[0].text == "new text"
+        assert not os.path.exists(os.path.join(image_dir, "old_img.png"))
 
     def test_clear_removes_image_files(self, tmp_path):
         image_dir = str(tmp_path / "images")
@@ -240,7 +249,7 @@ class TestImageEntries:
         with open(os.path.join(image_dir, "test.png"), "wb") as f:
             f.write(b"fake")
 
-        monitor = ClipboardMonitor(max_items=10, image_dir=image_dir)
+        monitor = ClipboardMonitor(max_days=7, image_dir=image_dir)
         monitor._entries.append(
             ClipboardEntry(image_path="test.png", image_width=100, image_height=100)
         )
@@ -250,7 +259,7 @@ class TestImageEntries:
         assert not os.path.exists(os.path.join(image_dir, "test.png"))
 
     def test_promote_image(self, tmp_path):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._entries = [
             ClipboardEntry(text="text1"),
             ClipboardEntry(image_path="img1.png", image_width=100, image_height=100),
@@ -261,7 +270,7 @@ class TestImageEntries:
         assert monitor.entries[0].image_path == "img1.png"
 
     def test_promote_image_not_found(self):
-        monitor = ClipboardMonitor(max_items=10)
+        monitor = ClipboardMonitor(max_days=7)
         monitor._entries = [ClipboardEntry(text="text1")]
         monitor.promote_image("nonexistent.png")  # Should not raise
 
@@ -275,7 +284,7 @@ class TestImageEntries:
             f.write(b"fake png")
 
         monitor1 = ClipboardMonitor(
-            max_items=10, persist_path=persist_path, image_dir=image_dir
+            max_days=7, persist_path=persist_path, image_dir=image_dir
         )
         with monitor1._lock:
             monitor1._entries = [
@@ -291,7 +300,7 @@ class TestImageEntries:
         monitor1._save_to_disk()
 
         monitor2 = ClipboardMonitor(
-            max_items=10, persist_path=persist_path, image_dir=image_dir
+            max_days=7, persist_path=persist_path, image_dir=image_dir
         )
         assert len(monitor2.entries) == 2
         assert monitor2.entries[0].image_path == "img1.png"
@@ -302,6 +311,8 @@ class TestImageEntries:
 
     def test_load_drops_entries_with_missing_image_files(self, tmp_path):
         """Image entries whose files are gone should be filtered out on load."""
+        import time as _time
+
         persist_path = str(tmp_path / "clipboard.json")
         image_dir = str(tmp_path / "images")
         os.makedirs(image_dir, exist_ok=True)
@@ -310,46 +321,81 @@ class TestImageEntries:
         with open(os.path.join(image_dir, "exists.png"), "wb") as f:
             f.write(b"fake png")
 
+        recent_ts = _time.time() - 3600
         data = [
-            {"image_path": "missing.png", "image_width": 100, "image_height": 50},
-            {"text": "hello"},
-            {"image_path": "exists.png", "image_width": 200, "image_height": 100},
+            {"image_path": "missing.png", "image_width": 100, "image_height": 50,
+             "timestamp": recent_ts},
+            {"text": "hello", "timestamp": recent_ts},
+            {"image_path": "exists.png", "image_width": 200, "image_height": 100,
+             "timestamp": recent_ts},
         ]
         with open(persist_path, "w") as f:
             json.dump(data, f)
 
         monitor = ClipboardMonitor(
-            max_items=10, persist_path=persist_path, image_dir=image_dir
+            max_days=7, persist_path=persist_path, image_dir=image_dir
         )
         assert len(monitor.entries) == 2
         assert monitor.entries[0].text == "hello"
         assert monitor.entries[1].image_path == "exists.png"
 
-    def test_load_old_format_backward_compatible(self, tmp_path):
-        """Old JSON without image fields should load correctly."""
+    def test_load_trims_expired_entries(self, tmp_path):
+        """Entries older than max_days should be removed on load."""
+        import time as _time
+
         persist_path = str(tmp_path / "clipboard.json")
+        image_dir = str(tmp_path / "images")
+        os.makedirs(image_dir, exist_ok=True)
+        with open(os.path.join(image_dir, "old.png"), "wb") as f:
+            f.write(b"fake")
+
+        recent_ts = _time.time() - 3600  # 1 hour ago
+        old_ts = _time.time() - 10 * 86400  # 10 days ago
         data = [
-            {"text": "hello", "timestamp": 1000.0, "source_app": "Safari"},
-            {"text": "world"},
+            {"text": "recent", "timestamp": recent_ts},
+            {"text": "old", "timestamp": old_ts},
+            {"image_path": "old.png", "image_width": 100, "image_height": 50,
+             "timestamp": old_ts},
         ]
         with open(persist_path, "w") as f:
             json.dump(data, f)
 
-        monitor = ClipboardMonitor(max_items=10, persist_path=persist_path)
+        monitor = ClipboardMonitor(
+            max_days=7, persist_path=persist_path, image_dir=image_dir
+        )
+        assert len(monitor.entries) == 1
+        assert monitor.entries[0].text == "recent"
+        # Expired image file should be cleaned up
+        assert not os.path.exists(os.path.join(image_dir, "old.png"))
+
+    def test_load_old_format_backward_compatible(self, tmp_path):
+        """Old JSON without image fields should load correctly."""
+        import time as _time
+
+        persist_path = str(tmp_path / "clipboard.json")
+        recent_ts = _time.time() - 3600  # 1 hour ago (not expired)
+        data = [
+            {"text": "hello", "timestamp": recent_ts, "source_app": "Safari"},
+            {"text": "world", "timestamp": recent_ts},
+        ]
+        with open(persist_path, "w") as f:
+            json.dump(data, f)
+
+        monitor = ClipboardMonitor(max_days=7, persist_path=persist_path)
         assert len(monitor.entries) == 2
         assert monitor.entries[0].image_path == ""
         assert monitor.entries[0].image_width == 0
 
     def test_save_image_returns_none_on_failure(self, tmp_path):
         image_dir = str(tmp_path / "images")
-        monitor = ClipboardMonitor(max_items=10, image_dir=image_dir)
+        monitor = ClipboardMonitor(max_days=7, image_dir=image_dir)
         # Invalid image data
         result = monitor._save_image(b"not an image", "png")
         assert result is None
 
     def test_add_image_entry_skips_on_save_failure(self, tmp_path):
         image_dir = str(tmp_path / "images")
-        monitor = ClipboardMonitor(max_items=10, image_dir=image_dir)
+        monitor = ClipboardMonitor(max_days=7, image_dir=image_dir)
         monitor._save_image = MagicMock(return_value=None)
         monitor._add_image_entry(b"bad", "png")
         assert len(monitor.entries) == 0
