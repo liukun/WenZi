@@ -428,6 +428,35 @@ section:nth-child(even) {
   color: #fff;
 }
 
+.badge-yes,
+.badge-no {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.badge-yes {
+  background: #34c759;
+  color: #fff;
+}
+
+.badge-no {
+  font-weight: 500;
+  background: var(--bg-alt);
+  color: var(--text-muted);
+}
+
+.compare-table td:has(.badge-yes),
+.compare-table td:has(.badge-no) {
+  text-align: center;
+}
+
+.compare-table th:nth-last-child(2) {
+  text-align: center;
+}
+
 /* ---------- Installation cards ---------- */
 .install-grid {
   display: grid;
