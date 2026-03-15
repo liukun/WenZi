@@ -34,6 +34,16 @@ class TestConversationHistoryLog:
         path = os.path.join(history_dir, "conversation_history.jsonl")
         assert os.path.exists(path)
 
+    def test_log_returns_timestamp(self, history, history_dir):
+        ts = history.log("hello", "Hello.", "Hello.", "proofread", True)
+        assert ts is not None
+        assert isinstance(ts, str)
+        # Verify it matches the record
+        path = os.path.join(history_dir, "conversation_history.jsonl")
+        with open(path, "r", encoding="utf-8") as f:
+            record = json.loads(f.readline())
+        assert record["timestamp"] == ts
+
     def test_log_appends_records(self, history, history_dir):
         history.log("a", "A", "A", "proofread", True)
         history.log("b", "B", "B", "proofread", True)
@@ -330,6 +340,82 @@ class TestConversationHistoryGetAll:
 
         results = history.get_all()
         assert len(results) == 2
+
+
+class TestConversationHistoryUpdateRecord:
+    def test_update_multiple_fields(self, history, history_dir):
+        history.log("hello", "Hello.", "Hello.", "proofread", True,
+                    stt_model="funasr", llm_model="openai/gpt-4o")
+
+        path = os.path.join(history_dir, "conversation_history.jsonl")
+        with open(path, "r", encoding="utf-8") as f:
+            record = json.loads(f.readline())
+        ts = record["timestamp"]
+
+        result = history.update_record(
+            ts,
+            final_text="Updated!",
+            enhanced_text="Updated enhanced",
+            enhance_mode="translate",
+            stt_model="whisper",
+            llm_model="anthropic/claude",
+        )
+        assert result is True
+
+        with open(path, "r", encoding="utf-8") as f:
+            updated = json.loads(f.readline())
+        assert updated["final_text"] == "Updated!"
+        assert updated["enhanced_text"] == "Updated enhanced"
+        assert updated["enhance_mode"] == "translate"
+        assert updated["stt_model"] == "whisper"
+        assert updated["llm_model"] == "anthropic/claude"
+        assert "edited_at" in updated
+
+    def test_update_single_field(self, history, history_dir):
+        history.log("hello", "Hello.", "Hello.", "proofread", True)
+
+        path = os.path.join(history_dir, "conversation_history.jsonl")
+        with open(path, "r", encoding="utf-8") as f:
+            record = json.loads(f.readline())
+        ts = record["timestamp"]
+
+        history.update_record(ts, enhance_mode="translate")
+
+        with open(path, "r", encoding="utf-8") as f:
+            updated = json.loads(f.readline())
+        assert updated["enhance_mode"] == "translate"
+        assert updated["final_text"] == "Hello."  # unchanged
+
+    def test_update_no_fields(self, history):
+        history.log("hello", "Hello.", "Hello.", "proofread", True)
+        assert history.update_record("any", ) is False
+
+    def test_update_not_found(self, history):
+        history.log("hello", "Hello.", "Hello.", "proofread", True)
+        assert history.update_record("nonexistent", final_text="x") is False
+
+    def test_update_no_file(self, history):
+        assert history.update_record("ts", final_text="x") is False
+
+    def test_update_preserves_other_records(self, history, history_dir):
+        history.log("first", "First", "First", "proofread", True)
+        history.log("second", "Second", "Second", "proofread", True)
+
+        path = os.path.join(history_dir, "conversation_history.jsonl")
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        ts2 = json.loads(lines[1])["timestamp"]
+
+        history.update_record(ts2, final_text="Modified", enhance_mode="translate")
+
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        r1 = json.loads(lines[0])
+        r2 = json.loads(lines[1])
+        assert r1["final_text"] == "First"
+        assert r1["enhance_mode"] == "proofread"
+        assert r2["final_text"] == "Modified"
+        assert r2["enhance_mode"] == "translate"
 
 
 class TestConversationHistoryUpdateFinalText:

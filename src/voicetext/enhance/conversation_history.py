@@ -35,12 +35,17 @@ class ConversationHistory:
         llm_model: str = "",
         user_corrected: bool = False,
         audio_duration: float = 0.0,
-    ) -> None:
-        """Write a single conversation record to the JSONL file."""
+    ) -> str:
+        """Write a single conversation record to the JSONL file.
+
+        Returns:
+            The ISO timestamp of the logged record.
+        """
         os.makedirs(self._config_dir, exist_ok=True)
 
+        ts = datetime.now(timezone.utc).isoformat()
         record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": ts,
             "asr_text": asr_text,
             "enhanced_text": enhanced_text,
             "final_text": final_text,
@@ -57,6 +62,7 @@ class ConversationHistory:
 
         logger.debug("Conversation logged: %s", self._history_path)
         self._maybe_rotate()
+        return ts
 
     def _maybe_rotate(self) -> None:
         """Archive old records when the history file exceeds _MAX_RECORDS."""
@@ -273,6 +279,23 @@ class ConversationHistory:
         Returns:
             True if record was found and updated, False otherwise.
         """
+        return self.update_record(timestamp, final_text=new_final_text)
+
+    def update_record(self, timestamp: str, **fields: Any) -> bool:
+        """Update one or more fields of a record identified by timestamp.
+
+        Sets ``edited_at`` automatically.  Uses atomic file replacement.
+
+        Args:
+            timestamp: The ISO timestamp identifying the record.
+            **fields: Field names and new values to set (e.g.
+                ``final_text="new"``, ``enhance_mode="translate"``).
+
+        Returns:
+            True if record was found and updated, False otherwise.
+        """
+        if not fields:
+            return False
         if not os.path.exists(self._history_path):
             return False
 
@@ -297,7 +320,8 @@ class ConversationHistory:
                 continue
 
             if record.get("timestamp") == timestamp and not found:
-                record["final_text"] = new_final_text
+                for key, value in fields.items():
+                    record[key] = value
                 record["edited_at"] = datetime.now(timezone.utc).isoformat()
                 new_lines.append(json.dumps(record, ensure_ascii=False) + "\n")
                 found = True

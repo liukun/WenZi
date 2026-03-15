@@ -141,7 +141,7 @@ class ResultPreviewPanel:
         self._google_translate_button = None
         self._translate_webview = None
         self._on_google_translate: Optional[Callable[[], None]] = None
-        self._on_browse_history: Optional[Callable[[], None]] = None
+        self._on_select_history: Optional[Callable[[int], None]] = None
 
     def show(
         self,
@@ -167,36 +167,11 @@ class ResultPreviewPanel:
         thinking_enabled: bool = False,
         on_thinking_toggle: Optional[Callable[[bool], None]] = None,
         on_google_translate: Optional[Callable[[], None]] = None,
-        on_browse_history: Optional[Callable[[], None]] = None,
+        on_select_history: Optional[Callable[[int], None]] = None,
+        preview_history_items: Optional[list] = None,
         animate_from_frame: object = None,
     ) -> None:
-        """Show the preview panel with ASR text.
-
-        Args:
-            asr_text: The raw ASR transcription result.
-            show_enhance: Whether to show the AI enhancement section.
-            on_confirm: Callback with final text when user confirms.
-            on_cancel: Callback when user cancels.
-            available_modes: List of (mode_id, label) pairs for mode switcher.
-            current_mode: Currently selected mode_id.
-            on_mode_change: Callback when user switches mode in the segmented control.
-            asr_info: Model/duration info string to display in ASR label.
-            asr_wav_data: Raw WAV audio bytes for playback.
-            enhance_info: Provider/model info string to display in enhance label.
-            stt_models: Display name list for STT model popup.
-            stt_current_index: Currently selected STT model index.
-            on_stt_model_change: Callback when user changes STT model popup.
-            llm_models: Display name list for LLM model popup.
-            llm_current_index: Currently selected LLM model index.
-            on_llm_model_change: Callback when user changes LLM model popup.
-            source: Source of text - "voice" (default) or "clipboard".
-            punc_enabled: Whether punctuation restoration is enabled.
-            on_punc_toggle: Callback when user toggles the Punc checkbox.
-            thinking_enabled: Whether AI thinking mode is enabled.
-            on_thinking_toggle: Callback when user toggles the Thinking checkbox.
-            on_google_translate: Callback when user opens Google Translate WebView.
-            on_browse_history: Callback when user clicks the History button.
-        """
+        """Show the preview panel with ASR text."""
         self._on_confirm = on_confirm
         self._on_cancel = on_cancel
         self._on_mode_change = on_mode_change
@@ -207,7 +182,7 @@ class ResultPreviewPanel:
         self._on_thinking_toggle = on_thinking_toggle
         self._thinking_enabled = thinking_enabled
         self._on_google_translate = on_google_translate
-        self._on_browse_history = on_browse_history
+        self._on_select_history = on_select_history
         self._user_edited = False
         self._show_enhance = show_enhance
         self._asr_text = asr_text
@@ -910,16 +885,7 @@ class ResultPreviewPanel:
         from AppKit import NSButton
         from Foundation import NSMakeRect
 
-        # History button (left-aligned)
-        if self._on_browse_history is not None:
-            history_btn = NSButton.alloc().initWithFrame_(
-                NSMakeRect(self._PADDING, y, self._BUTTON_WIDTH, self._BUTTON_HEIGHT)
-            )
-            history_btn.setTitle_("History")
-            history_btn.setBezelStyle_(1)
-            history_btn.setTarget_(self)
-            history_btn.setAction_(b"historyClicked:")
-            content_view.addSubview_(history_btn)
+        # History button removed — preview history is only in web panel
 
         cancel_btn = NSButton.alloc().initWithFrame_(
             NSMakeRect(
@@ -1512,9 +1478,8 @@ class ResultPreviewPanel:
             callback()
 
     def historyClicked_(self, sender) -> None:
-        """Handle History button click — open history browser."""
-        if self._on_browse_history is not None:
-            self._on_browse_history()
+        """Handle History button click — no-op, preview history is web-only."""
+        pass
 
     def googleTranslateClicked_(self, sender) -> None:
         """Handle Translate ↗ button click — open Google Translate in a WebView."""

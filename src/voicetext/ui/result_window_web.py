@@ -246,7 +246,14 @@ select {
 
 <!-- Button Bar -->
 <div class="button-bar">
-    <button class="bar-btn left-group hidden" id="history-btn" onclick="postAction('browseHistory')">History</button>
+    <div class="left-group" id="history-dropdown-wrap" style="position:relative;">
+        <button class="bar-btn" id="history-btn" onclick="toggleHistoryDropdown()" style="display:none;">History</button>
+        <div id="history-dropdown" style="display:none; position:absolute; bottom:100%; left:0; margin-bottom:4px;
+            min-width:280px; max-width:360px; max-height:240px; overflow-y:auto;
+            background:var(--card-bg); border:1px solid var(--border); border-radius:8px;
+            box-shadow:0 4px 16px var(--shadow); z-index:100;">
+        </div>
+    </div>
     <button class="bar-btn" id="cancel-btn" onclick="postAction('cancel')">Cancel</button>
     <button class="bar-btn primary" id="confirm-btn" onclick="doConfirm(false)">Confirm ⏎</button>
 </div>
@@ -356,8 +363,11 @@ function init() {
     });
 
     // History button
-    if (CONFIG.hasHistory) {
-        document.getElementById('history-btn').classList.remove('hidden');
+    if (CONFIG.previewHistory && CONFIG.previewHistory.length > 0) {
+        const btn = document.getElementById('history-btn');
+        btn.style.display = '';
+        btn.textContent = 'History (' + CONFIG.previewHistory.length + ')';
+        buildHistoryDropdown(CONFIG.previewHistory);
     }
 
     // Final text edit tracking
@@ -579,6 +589,102 @@ function setStepInfo(text) {
     document.getElementById('enhance-info').textContent = text;
 }
 
+// --- History dropdown ---
+let historyDropdownVisible = false;
+
+function toggleHistoryDropdown() {
+    const dd = document.getElementById('history-dropdown');
+    historyDropdownVisible = !historyDropdownVisible;
+    dd.style.display = historyDropdownVisible ? 'block' : 'none';
+}
+
+function buildHistoryDropdown(items) {
+    const dd = document.getElementById('history-dropdown');
+    dd.innerHTML = '';
+    items.forEach((item, i) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);'
+            + 'font-size:12px;display:flex;gap:8px;align-items:baseline;';
+        row.addEventListener('mouseenter', () => { row.style.background = 'var(--btn-hover)'; });
+        row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+
+        const action = document.createElement('span');
+        action.style.cssText = 'flex-shrink:0; font-size:12px; width:14px; text-align:center;';
+        action.textContent = item.action || '';
+
+        const time = document.createElement('span');
+        time.style.cssText = 'color:var(--secondary); white-space:nowrap; flex-shrink:0; font-size:11px;';
+        time.textContent = item.time;
+
+        const mode = document.createElement('span');
+        mode.style.cssText = 'color:var(--accent); white-space:nowrap; flex-shrink:0; font-size:10px;';
+        mode.textContent = item.mode || '';
+
+        const preview = document.createElement('span');
+        preview.style.cssText = 'color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;';
+        preview.textContent = item.preview;
+
+        row.appendChild(action);
+        row.appendChild(time);
+        if (item.mode) row.appendChild(mode);
+        row.appendChild(preview);
+        row.addEventListener('click', () => {
+            historyDropdownVisible = false;
+            dd.style.display = 'none';
+            postAction('selectHistory', { index: i });
+        });
+        dd.appendChild(row);
+    });
+}
+
+function loadHistoryRecord(data) {
+    // Update ASR
+    document.getElementById('asr-text').textContent = data.asrText;
+    document.getElementById('asr-info').textContent = data.asrInfo || '';
+
+    // Update enhance
+    const enhEl = document.getElementById('enhance-text');
+    if (data.enhancedText) {
+        document.getElementById('enhance-section').classList.remove('hidden');
+        enhEl.textContent = data.enhancedText;
+        document.getElementById('enhance-info').textContent = data.enhanceMode || '';
+    } else {
+        enhEl.textContent = '';
+        document.getElementById('enhance-info').textContent = data.enhanceMode || 'Off';
+    }
+
+    // Update final text
+    document.getElementById('final-text').value = data.finalText;
+    userEdited = false;
+
+    // Audio buttons
+    const playBtn = document.getElementById('play-btn');
+    const saveBtn = document.getElementById('save-btn');
+    if (data.hasAudio) {
+        playBtn.classList.remove('hidden');
+        saveBtn.classList.remove('hidden');
+    } else {
+        playBtn.classList.add('hidden');
+        saveBtn.classList.add('hidden');
+    }
+
+    // Focus final text
+    const ft = document.getElementById('final-text');
+    ft.focus();
+    ft.setSelectionRange(ft.value.length, ft.value.length);
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', (e) => {
+    if (historyDropdownVisible) {
+        const wrap = document.getElementById('history-dropdown-wrap');
+        if (!wrap.contains(e.target)) {
+            historyDropdownVisible = false;
+            document.getElementById('history-dropdown').style.display = 'none';
+        }
+    }
+});
+
 // --- Start ---
 init();
 </script>
@@ -712,7 +818,8 @@ class ResultPreviewPanel:
         self._on_punc_toggle: Optional[Callable[[bool], None]] = None
         self._on_thinking_toggle: Optional[Callable[[bool], None]] = None
         self._on_google_translate: Optional[Callable[[], None]] = None
-        self._on_browse_history: Optional[Callable[[], None]] = None
+        self._on_select_history: Optional[Callable[[int], None]] = None
+        self._preview_history_items: list = []
         self._user_edited = False
         self._show_enhance = False
         self._asr_text = ""
@@ -768,7 +875,8 @@ class ResultPreviewPanel:
         thinking_enabled: bool = False,
         on_thinking_toggle: Optional[Callable[[bool], None]] = None,
         on_google_translate: Optional[Callable[[], None]] = None,
-        on_browse_history: Optional[Callable[[], None]] = None,
+        on_select_history: Optional[Callable[[int], None]] = None,
+        preview_history_items: Optional[list] = None,
         animate_from_frame: object = None,
     ) -> None:
         """Show the preview panel with ASR text."""
@@ -782,7 +890,8 @@ class ResultPreviewPanel:
         self._on_thinking_toggle = on_thinking_toggle
         self._thinking_enabled = thinking_enabled
         self._on_google_translate = on_google_translate
-        self._on_browse_history = on_browse_history
+        self._on_select_history = on_select_history
+        self._preview_history_items = preview_history_items or []
         self._user_edited = False
         self._show_enhance = show_enhance
         self._asr_text = asr_text
@@ -990,6 +1099,39 @@ class ResultPreviewPanel:
             )
             if system_prompt:
                 self._eval_js("enablePromptButton()")
+
+        AppHelper.callAfter(_update)
+
+    def load_history_record(
+        self,
+        asr_text: str,
+        enhanced_text: Optional[str],
+        final_text: str,
+        enhance_mode: str,
+        has_audio: bool,
+        asr_info: str = "",
+    ) -> None:
+        """Load a history record into the preview panel."""
+        if self._webview is None:
+            return
+
+        from PyObjCTools import AppHelper
+
+        data = {
+            "asrText": asr_text,
+            "enhancedText": enhanced_text,
+            "finalText": final_text,
+            "enhanceMode": enhance_mode,
+            "hasAudio": has_audio,
+            "asrInfo": asr_info,
+        }
+
+        def _update():
+            if self._webview is None:
+                return
+            self._asr_text = asr_text
+            self._user_edited = False
+            self._eval_js(f"loadHistoryRecord({json.dumps(data)})")
 
         AppHelper.callAfter(_update)
 
@@ -1229,9 +1371,10 @@ class ResultPreviewPanel:
                 if self._on_google_translate is not None:
                     self._on_google_translate()
 
-        elif msg_type == "browseHistory":
-            if self._on_browse_history is not None:
-                self._on_browse_history()
+        elif msg_type == "selectHistory":
+            index = body.get("index", 0)
+            if self._on_select_history is not None:
+                self._on_select_history(index)
 
         elif msg_type == "userEdit":
             self._user_edited = True
@@ -1380,7 +1523,7 @@ class ResultPreviewPanel:
             "puncEnabled": self._punc_enabled,
             "thinkingEnabled": self._thinking_enabled,
             "hasAudio": self._asr_wav_data is not None,
-            "hasHistory": self._on_browse_history is not None,
+            "previewHistory": self._preview_history_items,
         }
         html = _HTML_TEMPLATE.replace(
             "__CONFIG__", json.dumps(config_data, ensure_ascii=False)

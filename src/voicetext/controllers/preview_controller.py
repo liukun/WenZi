@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from voicetext.config import save_config
 from voicetext.enhance.enhancer import MODE_OFF
+from voicetext.enhance.preview_history import PreviewHistoryStore, PreviewRecord
 from voicetext.input import (
     copy_selection_to_clipboard,
     get_clipboard_text,
@@ -47,6 +48,205 @@ class PreviewController:
     def __init__(self, app: VoiceTextApp) -> None:
         self._app = app
         self._enhance_debounce_timer: threading.Timer | None = None
+        self._preview_history = PreviewHistoryStore(max_size=10)
+        # Track the history record currently being viewed (None = normal mode)
+        self._viewing_history_index: int | None = None
+
+    # ------------------------------------------------------------------
+    # Preview history helpers
+    # ------------------------------------------------------------------
+
+    _ACTION_SYMBOLS = {"confirm": "\u23ce", "copy": "\u2398", "cancel": "\u2715"}
+
+    def _build_history_items(self) -> list:
+        """Build the history dropdown items list for the preview panel."""
+        from datetime import datetime
+
+        items = []
+        for record in self._preview_history.get_all():
+            try:
+                dt = datetime.fromisoformat(record.created_at)
+                time_str = dt.strftime("%H:%M:%S")
+            except Exception:
+                time_str = "?"
+            symbol = self._ACTION_SYMBOLS.get(record.action, "?")
+            preview = record.final_text[:40] if record.final_text else ""
+            items.append({
+                "time": time_str,
+                "action": symbol,
+                "mode": record.enhance_mode if record.enhance_mode != "off" else "",
+                "preview": preview,
+            })
+        return items
+
+    def _save_to_preview_history(
+        self,
+        timestamp: str | None,
+        action: str,
+        result_holder: dict,
+        wav_data: bytes | None,
+        audio_duration: float,
+        source: str,
+    ) -> None:
+        """Save a preview result to the in-memory history store.
+
+        Args:
+            action: "confirm", "copy", or "cancel".
+        """
+        from datetime import datetime
+
+        app = self._app
+        asr_text = getattr(app, "_current_preview_asr_text", "")
+        # For cancel: result_holder["text"] is None, fall back to
+        # enhanced_text or asr_text so the history preview is not blank.
+        final_text = (
+            result_holder.get("text")
+            or result_holder.get("enhanced_text")
+            or asr_text
+            or ""
+        ).strip()
+        record = PreviewRecord(
+            timestamp=timestamp,
+            created_at=datetime.now().isoformat(),
+            action=action,
+            asr_text=asr_text,
+            enhanced_text=result_holder.get("enhanced_text"),
+            final_text=final_text,
+            enhance_mode=app._enhance_mode,
+            stt_model=app._current_stt_model(),
+            llm_model=app._current_llm_model(),
+            wav_data=wav_data,
+            audio_duration=audio_duration,
+            source=source,
+        )
+        self._preview_history.add(record)
+
+    def on_show_last_preview(self) -> None:
+        """Show the most recent preview history record in a new preview panel."""
+        record = self._preview_history.get(0)
+        if record is None:
+            logger.info("No preview history to show")
+            return
+
+        app = self._app
+        if app._busy:
+            logger.info("Preview history ignored: busy")
+            return
+
+        app._busy = True
+
+        def _run():
+            try:
+                self.do_transcribe_with_preview(
+                    asr_text=record.asr_text,
+                    use_enhance=bool(app._enhancer and app._enhancer.is_active),
+                    audio_duration=record.audio_duration,
+                    wav_data=record.wav_data,
+                    initial_history_index=0,
+                )
+            except Exception as e:
+                logger.error("Show last preview failed: %s", e)
+                app._busy = False
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def on_select_history(self, index: int) -> None:
+        """Handle history item selection from the preview panel dropdown."""
+        record = self._preview_history.get(index)
+        if record is None:
+            return
+
+        self._viewing_history_index = index
+        app = self._app
+
+        # Update internal state so confirm uses the correct ASR text
+        app._current_preview_asr_text = record.asr_text
+
+        # Load WAV data so Play/Save buttons work
+        app._preview_panel._asr_wav_data = record.wav_data
+
+        # Compute asr_info
+        asr_info = ""
+        if record.audio_duration > 0:
+            asr_info = f"{record.audio_duration:.1f}s"
+
+        app._preview_panel.load_history_record(
+            asr_text=record.asr_text,
+            enhanced_text=record.enhanced_text,
+            final_text=record.final_text,
+            enhance_mode=record.enhance_mode,
+            has_audio=record.wav_data is not None,
+            asr_info=asr_info,
+        )
+
+    def _handle_history_confirm(
+        self,
+        history_index: int,
+        result_holder: dict,
+        wav_data: bytes | None,
+        audio_duration: float,
+        source: str,
+    ) -> None:
+        """Handle confirm/copy from a history record view."""
+        app = self._app
+        record = self._preview_history.get(history_index)
+        if record is None:
+            return
+
+        final_text = (result_holder.get("text") or "").strip()
+        enhanced_text = result_holder.get("enhanced_text")
+        current_mode = app._enhance_mode
+        current_stt = app._current_stt_model()
+        current_llm = app._current_llm_model()
+
+        if record.timestamp is not None:
+            # Record was previously confirmed — update changed fields
+            updates = {}
+            if final_text != record.final_text:
+                updates["final_text"] = final_text
+            if enhanced_text != record.enhanced_text:
+                updates["enhanced_text"] = enhanced_text
+            if current_mode != record.enhance_mode:
+                updates["enhance_mode"] = current_mode
+            if current_stt != record.stt_model:
+                updates["stt_model"] = current_stt
+            if current_llm != record.llm_model:
+                updates["llm_model"] = current_llm
+            if updates:
+                try:
+                    app._conversation_history.update_record(
+                        record.timestamp, **updates
+                    )
+                except Exception as e:
+                    logger.error("Failed to update conversation history: %s", e)
+        else:
+            # Record was from a cancel — create a new conversation history entry
+            try:
+                ts = app._conversation_history.log(
+                    asr_text=record.asr_text,
+                    enhanced_text=enhanced_text,
+                    final_text=final_text,
+                    enhance_mode=current_mode,
+                    preview_enabled=True,
+                    stt_model=current_stt,
+                    llm_model=current_llm,
+                    user_corrected=final_text != (enhanced_text or record.asr_text),
+                    audio_duration=record.audio_duration,
+                )
+                self._preview_history.update_timestamp(history_index, ts)
+            except Exception as e:
+                logger.error("Failed to log conversation from history: %s", e)
+
+        # Sync all fields back to in-memory record
+        record.final_text = final_text
+        record.enhanced_text = enhanced_text
+        record.enhance_mode = current_mode
+        record.stt_model = current_stt
+        record.llm_model = current_llm
+        record.action = "copy" if result_holder.get("copy_to_clipboard") else "confirm"
+
+        # Move to front so it won't be evicted first
+        self._preview_history.move_to_front(history_index)
 
     # ------------------------------------------------------------------
     # Preview with transcription (hotkey → record → preview)
@@ -55,8 +255,12 @@ class PreviewController:
     def do_transcribe_with_preview(
         self, asr_text: str | None, use_enhance: bool,
         audio_duration: float, wav_data: bytes | None = None,
+        initial_history_index: int | None = None,
     ) -> None:
         """Show preview with ASR text (or run STT in background).
+
+        If *initial_history_index* is set, the panel loads that history
+        record immediately after opening (no STT / enhancement).
 
         If *asr_text* is ``None``, STT runs in a background thread
         and STT runs in the background.
@@ -219,10 +423,14 @@ class PreviewController:
                     thinking_enabled=app._enhancer.thinking if app._enhancer else False,
                     on_thinking_toggle=self.on_preview_thinking_toggle if app._enhancer else None,
                     on_google_translate=lambda: app._usage_stats.record_google_translate_open(),
-                    on_browse_history=app._on_browse_history,
+                    on_select_history=self.on_select_history,
+                    preview_history_items=self._build_history_items(),
                     animate_from_frame=indicator_frame,
                 )
-                if need_stt:
+                if initial_history_index is not None:
+                    # Load cached history record — skip STT and enhancement
+                    self.on_select_history(initial_history_index)
+                elif need_stt:
                     # Show loading state and disable STT popup during transcription
                     app._preview_panel.set_asr_loading()
                     if use_enhance:
@@ -317,6 +525,9 @@ class PreviewController:
         AppHelper.callAfter(_go_accessory)
         time.sleep(0.15)  # Brief delay for target app to regain focus
 
+        viewing_idx = self._viewing_history_index
+        self._viewing_history_index = None
+
         if result_holder["confirmed"] and result_holder["text"]:
             final_text = result_holder["text"].strip()
             copy_to_clip = bool(result_holder.get("copy_to_clipboard"))
@@ -336,23 +547,43 @@ class PreviewController:
             except Exception as e:
                 logger.error("Failed to record output method: %s", e)
 
-            try:
-                app._conversation_history.log(
-                    asr_text=app._current_preview_asr_text,
-                    enhanced_text=result_holder["enhanced_text"],
-                    final_text=final_text,
-                    enhance_mode=app._enhance_mode,
-                    preview_enabled=True,
-                    stt_model=app._current_stt_model(),
-                    llm_model=app._current_llm_model(),
-                    user_corrected=bool(result_holder.get("user_corrected")),
-                    audio_duration=getattr(app, "_preview_audio_duration", 0.0),
+            if viewing_idx is not None:
+                # Confirming from a history record
+                self._handle_history_confirm(
+                    viewing_idx, result_holder, wav_data,
+                    getattr(app, "_preview_audio_duration", 0.0), "voice",
                 )
-            except Exception as e:
-                logger.error("Failed to log conversation: %s", e)
+            else:
+                # Normal confirm — log to conversation history, then save to preview history
+                ts = None
+                try:
+                    ts = app._conversation_history.log(
+                        asr_text=app._current_preview_asr_text,
+                        enhanced_text=result_holder["enhanced_text"],
+                        final_text=final_text,
+                        enhance_mode=app._enhance_mode,
+                        preview_enabled=True,
+                        stt_model=app._current_stt_model(),
+                        llm_model=app._current_llm_model(),
+                        user_corrected=bool(result_holder.get("user_corrected")),
+                        audio_duration=getattr(app, "_preview_audio_duration", 0.0),
+                    )
+                except Exception as e:
+                    logger.error("Failed to log conversation: %s", e)
+                action = "copy" if copy_to_clip else "confirm"
+                self._save_to_preview_history(
+                    ts, action, result_holder, wav_data,
+                    getattr(app, "_preview_audio_duration", 0.0), "voice",
+                )
         else:
             app._set_status("VT")
             logger.info("Preview cancelled by user")
+            # Save cancelled preview to history (timestamp=None)
+            if viewing_idx is None:
+                self._save_to_preview_history(
+                    None, "cancel", result_holder, wav_data,
+                    getattr(app, "_preview_audio_duration", 0.0), "voice",
+                )
 
     # ------------------------------------------------------------------
     # Clipboard enhance
@@ -524,7 +755,8 @@ class PreviewController:
                 thinking_enabled=app._enhancer.thinking if app._enhancer else False,
                 on_thinking_toggle=self.on_preview_thinking_toggle if app._enhancer else None,
                 on_google_translate=lambda: app._usage_stats.record_google_translate_open(),
-                on_browse_history=app._on_browse_history,
+                on_select_history=self.on_select_history,
+                preview_history_items=self._build_history_items(),
             )
             if use_enhance:
                 app._preview_panel.enhance_request_id += 1
@@ -546,6 +778,9 @@ class PreviewController:
         AppHelper.callAfter(_activate_prev)
         AppHelper.callAfter(_go_accessory)
         time.sleep(0.15)
+
+        viewing_idx = self._viewing_history_index
+        self._viewing_history_index = None
 
         if result_holder["confirmed"] and result_holder["text"]:
             final_text = result_holder["text"].strip()
@@ -571,19 +806,29 @@ class PreviewController:
             except Exception as e:
                 logger.error("Failed to record output method: %s", e)
 
-            try:
-                app._conversation_history.log(
-                    asr_text=clipboard_text,
-                    enhanced_text=result_holder.get("enhanced_text"),
-                    final_text=final_text,
-                    enhance_mode=app._enhance_mode,
-                    preview_enabled=True,
-                    stt_model=app._current_stt_model(),
-                    llm_model=app._current_llm_model(),
-                    user_corrected=bool(result_holder.get("user_corrected")),
+            if viewing_idx is not None:
+                self._handle_history_confirm(
+                    viewing_idx, result_holder, None, 0.0, "clipboard",
                 )
-            except Exception as e:
-                logger.error("Failed to log conversation: %s", e)
+            else:
+                ts = None
+                try:
+                    ts = app._conversation_history.log(
+                        asr_text=clipboard_text,
+                        enhanced_text=result_holder.get("enhanced_text"),
+                        final_text=final_text,
+                        enhance_mode=app._enhance_mode,
+                        preview_enabled=True,
+                        stt_model=app._current_stt_model(),
+                        llm_model=app._current_llm_model(),
+                        user_corrected=bool(result_holder.get("user_corrected")),
+                    )
+                except Exception as e:
+                    logger.error("Failed to log conversation: %s", e)
+                action = "copy" if copy_to_clip else "confirm"
+                self._save_to_preview_history(
+                    ts, action, result_holder, None, 0.0, "clipboard",
+                )
         else:
             app._set_status("VT")
             try:
@@ -591,6 +836,10 @@ class PreviewController:
             except Exception as e:
                 logger.error("Failed to record clipboard cancel: %s", e)
             logger.info("Clipboard enhance cancelled by user")
+            if viewing_idx is None:
+                self._save_to_preview_history(
+                    None, "cancel", result_holder, None, 0.0, "clipboard",
+                )
 
     # ------------------------------------------------------------------
     # Preview panel callbacks

@@ -809,11 +809,11 @@ class TestBrowseHistoryAndTranslate:
         panel.show(
             asr_text="text", show_enhance=False,
             on_confirm=MagicMock(), on_cancel=MagicMock(),
-            on_browse_history=lambda: history_called.append(True),
+            on_select_history=lambda idx: history_called.append(idx),
         )
 
-        panel._handle_js_message({"type": "browseHistory"})
-        assert history_called == [True]
+        panel._handle_js_message({"type": "selectHistory", "index": 2})
+        assert history_called == [2]
 
     def test_google_translate(self):
         from voicetext.ui.result_window_web import ResultPreviewPanel

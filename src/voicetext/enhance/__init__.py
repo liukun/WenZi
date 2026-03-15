@@ -4,6 +4,7 @@ from .auto_vocab_builder import AutoVocabBuilder
 from .conversation_history import ConversationHistory
 from .enhancer import MODE_OFF, TextEnhancer, create_enhancer
 from .mode_loader import ModeDefinition, get_sorted_modes, load_modes
+from .preview_history import PreviewHistoryStore, PreviewRecord
 from .vocabulary import VocabularyEntry, VocabularyIndex, get_vocab_entry_count
 from .vocabulary_builder import BuildCallbacks, VocabularyBuilder
 
@@ -13,6 +14,8 @@ __all__ = [
     "ConversationHistory",
     "MODE_OFF",
     "ModeDefinition",
+    "PreviewHistoryStore",
+    "PreviewRecord",
     "TextEnhancer",
     "VocabularyBuilder",
     "VocabularyEntry",

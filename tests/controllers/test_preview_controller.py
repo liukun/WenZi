@@ -51,7 +51,7 @@ class TestEnhanceModeDebounce:
         assert ctrl._enhance_debounce_timer is not None
 
         # Wait for debounce to fire
-        time.sleep(0.1)
+        time.sleep(0.3)
 
         mock_app._enhance_controller.run.assert_called_once()
 
@@ -69,8 +69,8 @@ class TestEnhanceModeDebounce:
         # Cancel should have been called for each switch
         assert mock_app._enhance_controller.cancel.call_count == 3
 
-        # Wait for debounce
-        time.sleep(0.1)
+        # Wait for debounce (generous margin for slow CI machines)
+        time.sleep(0.3)
 
         # Only one call should have fired (for the last mode)
         mock_app._enhance_controller.run.assert_called_once()
@@ -98,7 +98,7 @@ class TestEnhanceModeDebounce:
         assert ctrl._enhance_debounce_timer is None
 
         # Wait to ensure cancelled timer doesn't fire
-        time.sleep(0.1)
+        time.sleep(0.3)
         mock_app._enhance_controller.run.assert_not_called()
 
     @patch("voicetext.controllers.preview_controller.save_config")
@@ -134,7 +134,7 @@ class TestEnhanceModeDebounce:
         # Simulate another component bumping the request_id
         mock_app._preview_panel.enhance_request_id = 999
 
-        time.sleep(0.1)
+        time.sleep(0.3)
 
         # Timer fired but guard prevented run()
         mock_app._enhance_controller.run.assert_not_called()
