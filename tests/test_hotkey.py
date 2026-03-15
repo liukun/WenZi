@@ -473,6 +473,78 @@ class TestMultiHotkeyCancelKey:
         assert on_restart.call_count == 1
 
 
+class TestMultiHotkeyModeNav:
+    def test_left_arrow_calls_mode_prev_when_held(self):
+        on_mode_prev = MagicMock()
+        listener = MultiHotkeyListener(
+            ["fn"], MagicMock(), MagicMock(), on_mode_prev=on_mode_prev
+        )
+
+        listener._handle_press("fn")
+        result = listener._handle_press("left")
+        on_mode_prev.assert_called_once()
+        assert result is True  # swallowed
+
+    def test_up_arrow_calls_mode_prev_when_held(self):
+        on_mode_prev = MagicMock()
+        listener = MultiHotkeyListener(
+            ["fn"], MagicMock(), MagicMock(), on_mode_prev=on_mode_prev
+        )
+
+        listener._handle_press("fn")
+        result = listener._handle_press("up")
+        on_mode_prev.assert_called_once()
+        assert result is True
+
+    def test_right_arrow_calls_mode_next_when_held(self):
+        on_mode_next = MagicMock()
+        listener = MultiHotkeyListener(
+            ["fn"], MagicMock(), MagicMock(), on_mode_next=on_mode_next
+        )
+
+        listener._handle_press("fn")
+        result = listener._handle_press("right")
+        on_mode_next.assert_called_once()
+        assert result is True
+
+    def test_down_arrow_calls_mode_next_when_held(self):
+        on_mode_next = MagicMock()
+        listener = MultiHotkeyListener(
+            ["fn"], MagicMock(), MagicMock(), on_mode_next=on_mode_next
+        )
+
+        listener._handle_press("fn")
+        result = listener._handle_press("down")
+        on_mode_next.assert_called_once()
+        assert result is True
+
+    def test_arrows_ignored_when_hotkey_not_held(self):
+        on_mode_prev = MagicMock()
+        on_mode_next = MagicMock()
+        listener = MultiHotkeyListener(
+            ["fn"], MagicMock(), MagicMock(),
+            on_mode_prev=on_mode_prev, on_mode_next=on_mode_next,
+        )
+
+        result = listener._handle_press("left")
+        assert result is False
+        on_mode_prev.assert_not_called()
+
+        result = listener._handle_press("right")
+        assert result is False
+        on_mode_next.assert_not_called()
+
+    def test_arrows_ignored_when_no_callbacks(self):
+        on_press = MagicMock()
+        listener = MultiHotkeyListener(["fn"], on_press, MagicMock())
+
+        listener._handle_press("fn")
+        result = listener._handle_press("left")
+        assert result is False
+        result = listener._handle_press("right")
+        assert result is False
+
+
 class TestMultiHotkeySetKeys:
     def test_set_restart_key(self):
         on_restart = MagicMock()
@@ -591,7 +663,7 @@ class TestMultiHotkeyThreadSafety:
         call_count = 0
         barrier = threading.Barrier(10)
 
-        def on_press():
+        def on_press(key_name):
             nonlocal call_count
             call_count += 1
 

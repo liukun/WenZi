@@ -117,6 +117,8 @@ class SettingsController:
 
         callbacks = {
             "on_hotkey_toggle": self.hotkey_toggle,
+            "on_hotkey_mode_select": self.hotkey_mode_select,
+            "on_hotkey_delete": self.hotkey_delete,
             "on_record_hotkey": lambda: app._on_record_hotkey(None),
             "on_restart_key_select": self.restart_key_select,
             "on_cancel_key_select": self.cancel_key_select,
@@ -147,6 +149,7 @@ class SettingsController:
             "on_reload_config": lambda: app._on_reload_config(None),
             "on_config_dir_browse": self.config_dir_browse,
             "on_config_dir_reset": self.config_dir_reset,
+            "_reopen": lambda: self.on_open_settings(None),
         }
 
         # Call show() directly — do NOT use callAfter, because the menu
@@ -157,7 +160,15 @@ class SettingsController:
     def hotkey_toggle(self, key_name: str, enabled: bool) -> None:
         """Handle hotkey toggle from Settings panel."""
         app = self._app
-        app._config["hotkeys"][key_name] = enabled
+        current = app._config["hotkeys"].get(key_name)
+        if enabled:
+            # Restore previous dict value (preserve mode) or set True
+            if isinstance(current, dict):
+                pass  # already a dict, keep it
+            else:
+                app._config["hotkeys"][key_name] = True
+        else:
+            app._config["hotkeys"][key_name] = False
         save_config(app._config, app._config_path)
 
         if app._hotkey_listener:
@@ -170,6 +181,44 @@ class SettingsController:
         menu_item = app._hotkey_menu_items.get(key_name)
         if menu_item:
             menu_item.state = 1 if enabled else 0
+
+    def hotkey_mode_select(self, key_name: str, mode_id: str | None) -> None:
+        """Handle per-hotkey mode selection from Settings panel.
+
+        Args:
+            key_name: The hotkey name.
+            mode_id: The mode to bind, or None for system default.
+        """
+        app = self._app
+        hotkeys = app._config.setdefault("hotkeys", {})
+        if mode_id is None:
+            # System default — store as plain True (remove dict)
+            hotkeys[key_name] = True
+        else:
+            hotkeys[key_name] = {"mode": mode_id}
+        save_config(app._config, app._config_path)
+        logger.info("Hotkey %s mode set to: %s", key_name, mode_id)
+
+    def hotkey_delete(self, key_name: str) -> None:
+        """Delete a hotkey from config (fn cannot be deleted)."""
+        from voicetext.hotkey import _is_fn_key
+
+        app = self._app
+        if _is_fn_key(key_name):
+            return
+
+        app._config.get("hotkeys", {}).pop(key_name, None)
+        save_config(app._config, app._config_path)
+
+        if app._hotkey_listener:
+            app._hotkey_listener.disable_key(key_name)
+
+        # Remove menu item if it exists
+        menu_item = app._hotkey_menu_items.pop(key_name, None)
+        if menu_item:
+            menu_item.menu().removeItem_(menu_item)
+
+        logger.info("Hotkey %s deleted (from settings)", key_name)
 
     def restart_key_select(self, key_name: str) -> None:
         """Handle restart key selection from Settings panel."""

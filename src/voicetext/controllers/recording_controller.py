@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from voicetext.app import VoiceTextApp
@@ -23,8 +23,11 @@ class RecordingController:
         self._app = app
         self._streaming_active = False
         self._live_overlay = None
+        self._prefer_mode: Optional[str] = None
+        # Saved state for restoring after a per-hotkey mode override
+        self._saved_mode: Optional[tuple] = None  # (enhance_mode, enhancer_mode, enhancer_enabled)
 
-    def on_hotkey_press(self) -> None:
+    def on_hotkey_press(self, key_name: str = "") -> None:
         """Called when hotkey is pressed down - start recording."""
         app = self._app
         if app._config_degraded:
@@ -33,6 +36,19 @@ class RecordingController:
             return
         if app._busy:
             return
+
+        # Restore previous override before applying a new one
+        self._restore_mode()
+
+        # Extract prefer_mode from hotkey config and apply override
+        self._prefer_mode = None
+        hotkey_value = app._config.get("hotkeys", {}).get(key_name)
+        if isinstance(hotkey_value, dict):
+            prefer_mode = hotkey_value.get("mode")
+            if prefer_mode is not None:
+                self._prefer_mode = prefer_mode
+                self._apply_prefer_mode(prefer_mode)
+
         logger.info("Hotkey pressed, starting recording")
         app._set_status("Recording...")
         app._sound_manager.play("start")
@@ -51,12 +67,135 @@ class RecordingController:
         # Show indicator immediately (without device name) so the user
         # gets instant visual feedback while the recorder initialises.
         self.start_recording_indicator(None)
+        self._show_mode_on_indicator()
 
         if app._sound_manager.enabled:
             threading.Thread(target=_delayed_start, daemon=True).start()
         else:
             self._start_recording_and_update_indicator()
             app._recording_started.set()
+
+    def _apply_prefer_mode(self, mode: str) -> None:
+        """Temporarily override the enhance mode for this recording session."""
+        app = self._app
+
+        # Save current state for later restore
+        self._saved_mode = (
+            app._enhance_mode,
+            app._enhancer.mode if app._enhancer else None,
+            app._enhancer._enabled if app._enhancer else None,
+        )
+
+        self._switch_active_mode(mode)
+
+        logger.info("Prefer mode applied: %s, saved: %s",
+                     mode, self._saved_mode[0])
+
+    def _restore_mode(self) -> None:
+        """Restore the original enhance mode after a per-hotkey override."""
+        if self._saved_mode is None:
+            return
+
+        app = self._app
+        orig_mode, orig_enhancer_mode, orig_enhancer_enabled = self._saved_mode
+        self._saved_mode = None
+
+        app._enhance_mode = orig_mode
+        app._enhance_controller.enhance_mode = orig_mode
+
+        if app._enhancer:
+            if orig_enhancer_mode is not None:
+                app._enhancer.mode = orig_enhancer_mode
+            if orig_enhancer_enabled is not None:
+                app._enhancer._enabled = orig_enhancer_enabled
+
+        # Sync menu checkmarks back
+        for m, item in app._enhance_menu_items.items():
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(
+                lambda i=item, s=(1 if m == orig_mode else 0): i.setState_(s)
+            )
+
+        logger.info("Mode restored to: %s", orig_mode)
+
+    def _build_mode_list(self) -> List[Tuple[str, str]]:
+        """Return ordered list of (mode_id, label) including Off."""
+        from voicetext.enhance.enhancer import MODE_OFF
+
+        app = self._app
+        modes: List[Tuple[str, str]] = [(MODE_OFF, "Off")]
+        if app._enhancer:
+            modes.extend(app._enhancer.available_modes)
+        return modes
+
+    def _switch_active_mode(self, mode: str) -> None:
+        """Set the enhance mode on app and enhancer without saving/restoring."""
+        from voicetext.enhance.enhancer import MODE_OFF
+
+        app = self._app
+        app._enhance_mode = mode
+        app._enhance_controller.enhance_mode = mode
+        if app._enhancer:
+            if mode == MODE_OFF:
+                app._enhancer._enabled = False
+            else:
+                app._enhancer._enabled = True
+                app._enhancer.mode = mode
+
+    def _update_indicator_mode(self, modes: List[Tuple[str, str]], idx: int) -> None:
+        """Update the indicator with mode label and nav arrows."""
+        from PyObjCTools import AppHelper
+
+        label = modes[idx][1]
+        can_prev = idx > 0
+        can_next = idx < len(modes) - 1
+        AppHelper.callAfter(
+            self._app._recording_indicator.update_mode, label, can_prev, can_next
+        )
+
+    def _show_mode_on_indicator(self) -> None:
+        """Show the current mode label with nav hints on the indicator."""
+        modes = self._build_mode_list()
+        if len(modes) <= 1:
+            return
+
+        current = self._app._enhance_mode
+        idx = next((i for i, (mid, _) in enumerate(modes) if mid == current), -1)
+        if idx < 0:
+            return
+
+        self._update_indicator_mode(modes, idx)
+
+    def _navigate_mode(self, delta: int) -> None:
+        """Move to the next (+1) or previous (-1) mode while recording."""
+        modes = self._build_mode_list()
+        if len(modes) <= 1:
+            return
+
+        current = self._app._enhance_mode
+        idx = next((i for i, (mid, _) in enumerate(modes) if mid == current), -1)
+        new_idx = idx + delta
+        if idx < 0 or new_idx < 0 or new_idx >= len(modes):
+            return  # at boundary or not found
+
+        new_mode = modes[new_idx][0]
+
+        # Save original mode on first arrow key change
+        if self._saved_mode is None:
+            self._apply_prefer_mode(new_mode)
+        else:
+            self._switch_active_mode(new_mode)
+
+        self._update_indicator_mode(modes, new_idx)
+        logger.info("Mode nav %s → %s", "prev" if delta < 0 else "next", new_mode)
+
+    def on_mode_prev(self) -> None:
+        """Switch to the previous mode while recording."""
+        self._navigate_mode(-1)
+
+    def on_mode_next(self) -> None:
+        """Switch to the next mode while recording."""
+        self._navigate_mode(+1)
 
     def _start_recording_and_update_indicator(self) -> None:
         """Start the recorder and update the indicator with the device name."""
@@ -108,6 +247,7 @@ class RecordingController:
             app._recording_started.set()
 
         self.start_recording_indicator(None)
+        self._show_mode_on_indicator()
 
         if app._sound_manager.enabled:
             threading.Thread(target=_delayed_start, daemon=True).start()
@@ -152,7 +292,7 @@ class RecordingController:
         app._busy = False
         app._set_status("VT")
 
-    def on_hotkey_release(self) -> None:
+    def on_hotkey_release(self, key_name: str = "") -> None:
         """Called when hotkey is released - stop recording and transcribe."""
         app = self._app
         # Wait for delayed start to finish (if sound feedback caused a delay)

@@ -14,6 +14,7 @@ _EMA_ALPHA = 0.3
 
 # Panel dimensions
 _PANEL_WIDTH = 120
+_PANEL_WIDTH_WITH_MODE = 220
 _PANEL_HEIGHT = 50
 _PANEL_HEIGHT_WITH_LABEL = 68
 
@@ -50,6 +51,18 @@ class RecordingIndicatorView:
         self._view = None
         self._device_name: Optional[str] = device_name
         self._label_attrs: Optional[dict] = None  # cached for draw loop
+        # Cached dynamic colors (created once, adapt to light/dark automatically)
+        self._bg_color = None
+        self._dot_color = None
+        self._bar_color = None
+        # Mode display fields
+        self._mode_name: Optional[str] = None
+        self._mode_nav: tuple = (False, False)  # (can_prev, can_next)
+        self._mode_attrs: Optional[dict] = None  # cached for draw loop
+        self._arrow_attrs: Optional[dict] = None  # cached for draw loop
+        self._mode_ns_str = None  # cached NSString for mode name
+        self._left_arrow_ns_str = None  # cached NSString for ◁
+        self._right_arrow_ns_str = None  # cached NSString for ▷
 
     def create_view(self, width: int, height: int) -> object:
         """Create and return the NSView instance."""
@@ -101,11 +114,12 @@ class RecordingIndicatorView:
         anim_center_y = label_height + _PANEL_HEIGHT / 2.0
 
         # Semi-transparent rounded background (adapts to light/dark mode)
-        bg_color = self._dynamic_color(
-            light_rgba=(0.95, 0.95, 0.95, 0.85),
-            dark_rgba=(0.15, 0.15, 0.15, 0.85),
-        )
-        bg_color.setFill()
+        if self._bg_color is None:
+            self._bg_color = self._dynamic_color(
+                light_rgba=(0.95, 0.95, 0.95, 0.85),
+                dark_rgba=(0.15, 0.15, 0.15, 0.85),
+            )
+        self._bg_color.setFill()
         bg_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
             rect, _BG_CORNER_RADIUS, _BG_CORNER_RADIUS
         )
@@ -119,11 +133,12 @@ class RecordingIndicatorView:
         pulse = math.sin(elapsed * _DOT_PULSE_SPEED) * _DOT_PULSE_AMPLITUDE
         dot_radius = _DOT_BASE_RADIUS + pulse
 
-        dot_color = self._dynamic_color(
-            light_rgba=(0.85, 0.15, 0.15, 1.0),
-            dark_rgba=(0.95, 0.25, 0.25, 1.0),
-        )
-        dot_color.setFill()
+        if self._dot_color is None:
+            self._dot_color = self._dynamic_color(
+                light_rgba=(0.85, 0.15, 0.15, 1.0),
+                dark_rgba=(0.95, 0.25, 0.25, 1.0),
+            )
+        self._dot_color.setFill()
         dot_rect = NSMakeRect(
             dot_x - dot_radius, dot_y - dot_radius,
             dot_radius * 2, dot_radius * 2,
@@ -135,11 +150,12 @@ class RecordingIndicatorView:
         bars_start_x = 38.0
         bar_y_base = anim_center_y - _BAR_MAX_HEIGHT / 2.0
 
-        bar_color = self._dynamic_color(
-            light_rgba=(0.2, 0.65, 0.2, 0.9),
-            dark_rgba=(0.4, 0.9, 0.4, 0.9),
-        )
-        bar_color.setFill()
+        if self._bar_color is None:
+            self._bar_color = self._dynamic_color(
+                light_rgba=(0.2, 0.65, 0.2, 0.9),
+                dark_rgba=(0.4, 0.9, 0.4, 0.9),
+            )
+        self._bar_color.setFill()
 
         level = self._level
         for i in range(_NUM_BARS):
@@ -180,6 +196,65 @@ class RecordingIndicatorView:
             self._label_ns_str.drawInRect_withAttributes_(
                 label_rect, self._label_attrs,
             )
+
+        # Mode name with navigation arrows (right of audio bars)
+        if self._mode_name:
+            if self._mode_attrs is None:
+                mode_color = self._dynamic_color(
+                    light_rgba=(0.1, 0.1, 0.1, 0.9),
+                    dark_rgba=(0.9, 0.9, 0.9, 0.9),
+                )
+                mode_para = NSMutableParagraphStyle.alloc().init()
+                mode_para.setAlignment_(1)  # NSTextAlignmentCenter
+                mode_para.setLineBreakMode_(4)  # NSLineBreakByTruncatingTail
+                self._mode_attrs = {
+                    NSFontAttributeName: NSFont.systemFontOfSize_(12),
+                    NSForegroundColorAttributeName: mode_color,
+                    NSParagraphStyleAttributeName: mode_para,
+                }
+                arrow_color = self._dynamic_color(
+                    light_rgba=(0.4, 0.4, 0.4, 0.7),
+                    dark_rgba=(0.6, 0.6, 0.6, 0.7),
+                )
+                arrow_para = NSMutableParagraphStyle.alloc().init()
+                arrow_para.setAlignment_(1)
+                self._arrow_attrs = {
+                    NSFontAttributeName: NSFont.systemFontOfSize_(11),
+                    NSForegroundColorAttributeName: arrow_color,
+                    NSParagraphStyleAttributeName: arrow_para,
+                }
+
+            can_prev, can_next = self._mode_nav
+            mode_x = bars_start_x + _NUM_BARS * (_BAR_WIDTH + _BAR_GAP) + 4
+            mode_area_w = width - mode_x - 6
+
+            # Draw left arrow
+            if can_prev:
+                if self._left_arrow_ns_str is None:
+                    self._left_arrow_ns_str = NSString.stringWithString_("\u25C1")
+                arrow_rect = NSMakeRect(mode_x, anim_center_y - 8, 14, 16)
+                self._left_arrow_ns_str.drawInRect_withAttributes_(
+                    arrow_rect, self._arrow_attrs
+                )
+
+            # Draw mode name (centered in the remaining space)
+            name_x = mode_x + (16 if can_prev else 2)
+            name_w = mode_area_w - (16 if can_prev else 2) - (16 if can_next else 2)
+            if self._mode_ns_str is None:
+                self._mode_ns_str = NSString.stringWithString_(self._mode_name)
+            name_rect = NSMakeRect(name_x, anim_center_y - 9, name_w, 18)
+            self._mode_ns_str.drawInRect_withAttributes_(name_rect, self._mode_attrs)
+
+            # Draw right arrow
+            if can_next:
+                if self._right_arrow_ns_str is None:
+                    self._right_arrow_ns_str = NSString.stringWithString_("\u25B7")
+                arrow_rect = NSMakeRect(
+                    mode_x + mode_area_w - 14, anim_center_y - 8, 14, 16
+                )
+                self._right_arrow_ns_str.drawInRect_withAttributes_(
+                    arrow_rect, self._arrow_attrs
+                )
 
 
 # PyObjC subclass for custom drawing
@@ -316,6 +391,71 @@ class RecordingIndicatorPanel:
             logger.debug("Recording indicator hidden")
         except Exception as e:
             logger.warning("Failed to hide recording indicator: %s", e)
+
+    def update_mode(self, name: str, can_prev: bool, can_next: bool) -> None:
+        """Update the mode label and nav arrow state on the indicator.
+
+        Widens the panel to _PANEL_WIDTH_WITH_MODE if not already wide.
+        """
+        if self._indicator_view is None:
+            return
+
+        view = self._indicator_view
+        nav = (can_prev, can_next)
+        if view._mode_name == name and view._mode_nav == nav:
+            return  # nothing changed
+
+        # Invalidate cached NSString when mode name changes
+        if view._mode_name != name:
+            view._mode_ns_str = None
+        view._mode_name = name
+        view._mode_nav = nav
+
+        if self._panel is not None:
+            try:
+                from AppKit import NSScreen
+
+                current_width = self._panel.frame().size.width
+                if current_width < _PANEL_WIDTH_WITH_MODE:
+                    current_height = self._panel.frame().size.height
+                    self._panel.setContentSize_(
+                        (float(_PANEL_WIDTH_WITH_MODE), float(current_height))
+                    )
+                    # Recreate content view at new width
+                    content_view = self._indicator_view.create_view(
+                        _PANEL_WIDTH_WITH_MODE, int(current_height)
+                    )
+                    self._panel.setContentView_(content_view)
+
+                    # Re-center on screen
+                    screen = NSScreen.mainScreen()
+                    if screen:
+                        sf = screen.visibleFrame()
+                        x = sf.origin.x + (sf.size.width - _PANEL_WIDTH_WITH_MODE) / 2
+                        y = sf.origin.y + (sf.size.height - current_height) / 2
+                        self._panel.setFrameOrigin_((x, y))
+
+                    # Restart refresh timer with new content view
+                    from Foundation import NSTimer
+
+                    if self._timer is not None:
+                        self._timer.invalidate()
+                    self._timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                        _REFRESH_INTERVAL,
+                        content_view,
+                        b"refresh:",
+                        None,
+                        True,
+                    )
+            except Exception:
+                logger.debug("Failed to resize panel for mode display", exc_info=True)
+
+    def clear_mode(self) -> None:
+        """Remove the mode label and shrink back to default width."""
+        if self._indicator_view is not None:
+            self._indicator_view._mode_name = None
+            self._indicator_view._mode_nav = (False, False)
+            self._indicator_view._mode_ns_str = None
 
     def update_device_name(self, device_name: str) -> None:
         """Update the device name label after the panel is already shown.

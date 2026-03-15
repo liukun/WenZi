@@ -42,6 +42,8 @@ def mock_app():
     app._live_overlay = MagicMock()
     app._usage_stats = MagicMock()
     app._conversation_history = MagicMock()
+    app._enhance_menu_items = {}
+    app._enhance_controller = MagicMock()
     app._append_newline = False
     app._output_method = "type"
     app._current_stt_model = MagicMock(return_value="FunASR")
@@ -473,3 +475,247 @@ class TestDirectModeEscCancel:
         mock_app._enhancer.cancel_stream.assert_called()
         # Should NOT type enhanced text (cancelled)
         mock_type_text.assert_not_called()
+
+
+class TestModeNav:
+    """Tests for arrow key mode navigation during recording."""
+
+    def test_build_mode_list_with_enhancer(self, ctrl, mock_app):
+        mock_app._enhancer.available_modes = [
+            ("proofread", "Proofread"),
+            ("translate_en", "Translate EN"),
+        ]
+        modes = ctrl._build_mode_list()
+        assert modes[0] == ("off", "Off")
+        assert modes[1] == ("proofread", "Proofread")
+        assert modes[2] == ("translate_en", "Translate EN")
+
+    def test_build_mode_list_without_enhancer(self, ctrl, mock_app):
+        mock_app._enhancer = None
+        modes = ctrl._build_mode_list()
+        assert modes == [("off", "Off")]
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_next_advances(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [
+            ("proofread", "Proofread"),
+            ("translate_en", "Translate EN"),
+        ]
+        mock_app._enhance_mode = "proofread"
+
+        ctrl.on_mode_next()
+
+        assert mock_app._enhance_mode == "translate_en"
+        mock_app._recording_indicator.update_mode.assert_called_once_with(
+            "Translate EN", True, False
+        )
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_prev_goes_back(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [
+            ("proofread", "Proofread"),
+            ("translate_en", "Translate EN"),
+        ]
+        mock_app._enhance_mode = "translate_en"
+
+        ctrl.on_mode_prev()
+
+        assert mock_app._enhance_mode == "proofread"
+        mock_app._recording_indicator.update_mode.assert_called_once_with(
+            "Proofread", True, True
+        )
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_next_stops_at_end(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [("proofread", "Proofread")]
+        mock_app._enhance_mode = "proofread"
+
+        ctrl.on_mode_next()
+
+        # Should not change
+        assert mock_app._enhance_mode == "proofread"
+        mock_app._recording_indicator.update_mode.assert_not_called()
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_prev_stops_at_start(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [("proofread", "Proofread")]
+        mock_app._enhance_mode = "off"
+
+        ctrl.on_mode_prev()
+
+        assert mock_app._enhance_mode == "off"
+        mock_app._recording_indicator.update_mode.assert_not_called()
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_nav_saves_original(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [
+            ("proofread", "Proofread"),
+            ("translate_en", "Translate EN"),
+        ]
+        mock_app._enhance_mode = "proofread"
+
+        ctrl.on_mode_next()
+
+        # Should have saved original mode
+        assert ctrl._saved_mode is not None
+        assert ctrl._saved_mode[0] == "proofread"
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_nav_multiple_steps(self, mock_apphelper, ctrl, mock_app):
+        """Multiple arrow presses should keep the same saved original."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [
+            ("proofread", "Proofread"),
+            ("translate_en", "Translate EN"),
+        ]
+        mock_app._enhance_mode = "off"
+
+        ctrl.on_mode_next()  # off -> proofread (saves "off" as original)
+        assert ctrl._saved_mode[0] == "off"
+
+        ctrl.on_mode_next()  # proofread -> translate_en
+        assert mock_app._enhance_mode == "translate_en"
+        # Still saved the original "off"
+        assert ctrl._saved_mode[0] == "off"
+
+    @patch("PyObjCTools.AppHelper")
+    def test_mode_nav_to_off_disables_enhancer(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [("proofread", "Proofread")]
+        mock_app._enhance_mode = "proofread"
+
+        # First step saves, second step goes to off
+        ctrl.on_mode_prev()  # proofread -> off
+        assert mock_app._enhance_mode == "off"
+        assert mock_app._enhancer._enabled is False
+
+    @patch("PyObjCTools.AppHelper")
+    def test_show_mode_on_indicator_called_on_press(self, mock_apphelper, ctrl, mock_app):
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._enhancer.available_modes = [
+            ("proofread", "Proofread"),
+            ("translate_en", "Translate EN"),
+        ]
+        mock_app._enhance_mode = "proofread"
+        mock_app._sound_manager.enabled = False
+        mock_app._config["hotkeys"] = {"fn": True}
+
+        ctrl.on_hotkey_press("fn")
+
+        mock_app._recording_indicator.update_mode.assert_called_once_with(
+            "Proofread", True, True
+        )
+
+
+class TestPreferMode:
+    """Tests for per-hotkey mode override (prefer_mode)."""
+
+    def test_no_prefer_mode_when_hotkey_is_bool(self, ctrl, mock_app):
+        """When hotkey config is True (no mode), prefer_mode should be None."""
+        mock_app._config["hotkeys"] = {"fn": True}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._prefer_mode is None
+
+    def test_prefer_mode_extracted_from_dict(self, ctrl, mock_app):
+        """When hotkey config is {"mode": "translate_en"}, prefer_mode is set."""
+        mock_app._config["hotkeys"] = {"right_cmd": {"mode": "translate_en"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("right_cmd")
+        assert ctrl._prefer_mode == "translate_en"
+
+    def test_prefer_mode_applies_to_enhancer(self, ctrl, mock_app):
+        """Prefer mode should be applied to app enhancer state."""
+        mock_app._config["hotkeys"] = {"right_cmd": {"mode": "translate_en"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("right_cmd")
+        assert mock_app._enhance_mode == "translate_en"
+        assert mock_app._enhancer.mode == "translate_en"
+        assert mock_app._enhancer._enabled is True
+
+    @patch("PyObjCTools.AppHelper")
+    def test_prefer_mode_off_disables_enhancer(self, mock_apphelper, ctrl, mock_app):
+        """Prefer mode 'off' should disable the enhancer."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._config["hotkeys"] = {"right_cmd": {"mode": "off"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("right_cmd")
+        assert mock_app._enhance_mode == "off"
+        assert mock_app._enhancer._enabled is False
+
+    def test_no_prefer_mode_when_hotkey_is_false(self, ctrl, mock_app):
+        """When hotkey config is False, pressing is blocked by busy check or just no mode."""
+        mock_app._config["hotkeys"] = {"fn": False}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._prefer_mode is None
+
+    def test_prefer_mode_none_when_dict_has_no_mode_key(self, ctrl, mock_app):
+        """When hotkey config is a dict without 'mode' key, no override."""
+        mock_app._config["hotkeys"] = {"fn": {}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._prefer_mode is None
+
+    def test_prefer_mode_not_applied_when_no_enhancer(self, ctrl, mock_app):
+        """When enhancer is None, prefer_mode still records but doesn't crash."""
+        mock_app._config["hotkeys"] = {"fn": {"mode": "translate_en"}}
+        mock_app._enhancer = None
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._prefer_mode == "translate_en"
+        assert mock_app._enhance_mode == "translate_en"
+
+    def test_prefer_mode_saves_original(self, ctrl, mock_app):
+        """Apply override should save the original mode for later restore."""
+        mock_app._config["hotkeys"] = {"right_cmd": {"mode": "translate_en"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("right_cmd")
+        assert ctrl._saved_mode is not None
+        assert ctrl._saved_mode[0] == "proofread"  # original enhance_mode
+
+    def test_next_press_restores_mode(self, ctrl, mock_app):
+        """Next hotkey press (without override) should restore original mode."""
+        mock_app._config["hotkeys"] = {
+            "right_cmd": {"mode": "translate_en"},
+            "fn": True,
+        }
+        mock_app._sound_manager.enabled = False
+
+        # First press: override to translate_en
+        ctrl.on_hotkey_press("right_cmd")
+        assert mock_app._enhance_mode == "translate_en"
+
+        # Simulate session end
+        mock_app._busy = False
+
+        # Second press: no override, should restore original
+        ctrl.on_hotkey_press("fn")
+        assert mock_app._enhance_mode == "proofread"
+        assert ctrl._saved_mode is None
+
+    @patch("PyObjCTools.AppHelper")
+    def test_next_override_restores_before_applying(self, mock_apphelper, ctrl, mock_app):
+        """Consecutive overrides should restore before applying new one."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._config["hotkeys"] = {
+            "right_cmd": {"mode": "translate_en"},
+            "ctrl": {"mode": "off"},
+        }
+        mock_app._sound_manager.enabled = False
+
+        ctrl.on_hotkey_press("right_cmd")
+        assert mock_app._enhance_mode == "translate_en"
+        # saved_mode should point to original "proofread"
+        assert ctrl._saved_mode[0] == "proofread"
+
+        mock_app._busy = False
+        ctrl.on_hotkey_press("ctrl")
+        # Should have restored to proofread, then applied "off"
+        assert mock_app._enhance_mode == "off"
+        assert ctrl._saved_mode[0] == "proofread"

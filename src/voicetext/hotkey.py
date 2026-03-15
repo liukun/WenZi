@@ -31,6 +31,7 @@ _SPECIAL_VK = {
     "f5": 96, "f6": 97, "f7": 98, "f8": 100,
     "f9": 101, "f10": 109, "f11": 103, "f12": 111,
     "fn": 63, "esc": 53, "space": 49,
+    "up": 126, "down": 125, "left": 123, "right": 124,
 }
 
 # Modifier key virtual keycodes and their CGEventFlags bitmask
@@ -470,14 +471,16 @@ class MultiHotkeyListener:
     def __init__(
         self,
         key_names: List[str],
-        on_press: Callable[[], None],
-        on_release: Callable[[], None],
+        on_press: Callable[[str], None],
+        on_release: Callable[[str], None],
         on_restart: Optional[Callable[[], None]] = None,
         restart_key: str = "cmd",
         on_cancel: Optional[Callable[[], None]] = None,
         cancel_key: str = "space",
         on_preview_history: Optional[Callable[[], None]] = None,
         preview_history_key: str = "z",
+        on_mode_prev: Optional[Callable[[], None]] = None,
+        on_mode_next: Optional[Callable[[], None]] = None,
     ) -> None:
         self._on_press = on_press
         self._on_release = on_release
@@ -488,6 +491,8 @@ class MultiHotkeyListener:
         self._cancel_requested = False
         self._on_preview_history = on_preview_history
         self._preview_history_key = preview_history_key.strip().lower()
+        self._on_mode_prev = on_mode_prev
+        self._on_mode_next = on_mode_next
         self._target_vks: Dict[int, str] = {}  # vk -> name
         self._enabled_names: set = set()
         self._held: set = set()  # set of currently held key names
@@ -516,6 +521,8 @@ class MultiHotkeyListener:
             self._on_restart is None
             and self._on_cancel is None
             and self._on_preview_history is None
+            and self._on_mode_prev is None
+            and self._on_mode_next is None
         )
         self._listener = _QuartzAllKeysListener(
             on_press=self._handle_press,
@@ -683,12 +690,24 @@ class MultiHotkeyListener:
                     and name == self._preview_history_key
                 ):
                     action = "preview_history"
+                elif (
+                    self._on_mode_prev
+                    and self._held
+                    and name in ("left", "up")
+                ):
+                    action = "mode_prev"
+                elif (
+                    self._on_mode_next
+                    and self._held
+                    and name in ("right", "down")
+                ):
+                    action = "mode_next"
                 else:
                     return False
 
             if action == "press":
                 try:
-                    self._on_press()
+                    self._on_press(name)
                 except Exception as e:
                     logger.error("on_press callback error: %s", e)
             elif action == "restart":
@@ -709,6 +728,18 @@ class MultiHotkeyListener:
                     target=self._run_preview_history, daemon=True
                 ).start()
                 return True  # swallow the key event
+            elif action == "mode_prev":
+                try:
+                    self._on_mode_prev()
+                except Exception as e:
+                    logger.error("on_mode_prev callback error: %s", e)
+                return True  # swallow the arrow key event
+            elif action == "mode_next":
+                try:
+                    self._on_mode_next()
+                except Exception as e:
+                    logger.error("on_mode_next callback error: %s", e)
+                return True  # swallow the arrow key event
         except Exception:
             logger.warning("_handle_press exception", exc_info=True)
         return False
@@ -739,7 +770,7 @@ class MultiHotkeyListener:
             if cancel:
                 return
             try:
-                self._on_release()
+                self._on_release(name)
             except Exception as e:
                 logger.error("on_release callback error: %s", e)
         except Exception:

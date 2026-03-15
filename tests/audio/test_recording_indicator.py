@@ -15,6 +15,22 @@ class TestRecordingIndicatorView:
         assert view._level == 1.0
 
 
+class TestRecordingIndicatorViewMode:
+    def test_initial_mode_fields(self):
+        view = RecordingIndicatorView()
+        assert view._mode_name is None
+        assert view._mode_nav == (False, False)
+        assert view._mode_attrs is None
+        assert view._arrow_attrs is None
+
+    def test_set_mode_fields(self):
+        view = RecordingIndicatorView()
+        view._mode_name = "Proofread"
+        view._mode_nav = (True, True)
+        assert view._mode_name == "Proofread"
+        assert view._mode_nav == (True, True)
+
+
 class TestRecordingIndicatorPanel:
     def test_initial_state(self):
         panel = RecordingIndicatorPanel()
@@ -165,6 +181,54 @@ class TestRecordingIndicatorPanel:
         panel = RecordingIndicatorPanel()
         # Should not raise
         panel.animate_out()
+
+    def test_update_mode_sets_view_fields(self):
+        panel = RecordingIndicatorPanel()
+        view = RecordingIndicatorView()
+        panel._indicator_view = view
+        panel._panel = None  # no real panel — just test view updates
+
+        panel.update_mode("Translate EN", True, False)
+
+        assert view._mode_name == "Translate EN"
+        assert view._mode_nav == (True, False)
+
+    def test_update_mode_noop_when_same_values(self):
+        panel = RecordingIndicatorPanel()
+        view = RecordingIndicatorView()
+        view._mode_name = "Proofread"
+        view._mode_nav = (True, True)
+        view._mode_ns_str = "cached"  # should not be reset
+        panel._indicator_view = view
+
+        panel.update_mode("Proofread", True, True)
+
+        # Cached NSString should be preserved (no invalidation)
+        assert view._mode_ns_str == "cached"
+
+    def test_update_mode_noop_when_no_view(self):
+        panel = RecordingIndicatorPanel()
+        panel._indicator_view = None
+        # Should not raise
+        panel.update_mode("Proofread", False, True)
+
+    def test_clear_mode_resets_fields(self):
+        panel = RecordingIndicatorPanel()
+        view = RecordingIndicatorView()
+        view._mode_name = "Proofread"
+        view._mode_nav = (True, True)
+        panel._indicator_view = view
+
+        panel.clear_mode()
+
+        assert view._mode_name is None
+        assert view._mode_nav == (False, False)
+
+    def test_clear_mode_noop_when_no_view(self):
+        panel = RecordingIndicatorPanel()
+        panel._indicator_view = None
+        # Should not raise
+        panel.clear_mode()
 
     def test_animate_out_stops_timer(self):
         panel = RecordingIndicatorPanel()

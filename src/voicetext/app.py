@@ -491,7 +491,7 @@ class VoiceTextApp(StatusBarApp):
     # ------------------------------------------------------------------
 
     def _start_hotkey_listeners(self) -> None:
-        hotkeys: Dict[str, bool] = self._config.get("hotkeys", {"fn": True})
+        hotkeys = self._config.get("hotkeys", {"fn": True})
         fb_cfg = self._config.get("feedback", {})
         restart_key = fb_cfg.get("restart_key", "cmd")
         cancel_key = fb_cfg.get("cancel_key", "space")
@@ -508,6 +508,8 @@ class VoiceTextApp(StatusBarApp):
                 cancel_key=cancel_key,
                 on_preview_history=self._recording_controller.on_preview_history,
                 preview_history_key=preview_history_key,
+                on_mode_prev=self._recording_controller.on_mode_prev,
+                on_mode_next=self._recording_controller.on_mode_next,
             )
             self._hotkey_listener.start()
 
@@ -627,6 +629,9 @@ class VoiceTextApp(StatusBarApp):
                         self._hotkey_listener.enable_key(recorded_key)
                     self._menu_builder.build_hotkey_menu()
                     logger.info("Recorded new hotkey: %s", recorded_key)
+                    # Refresh settings panel to show the new hotkey row
+                    if self._settings_panel and self._settings_panel._panel is not None:
+                        self._settings_controller.on_open_settings(None)
                 except Exception:
                     logger.exception("Failed to apply recorded hotkey %s", recorded_key)
             AppHelper.callAfter(_apply)

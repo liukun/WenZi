@@ -87,6 +87,7 @@ class SettingsPanel:
 
         # Control references for state updates
         self._hotkey_checks: Dict[str, object] = {}
+        self._hotkey_mode_popups: Dict[str, object] = {}
         self._sound_check = None
         self._visual_check = None
         self._preview_check = None
@@ -331,10 +332,18 @@ class SettingsPanel:
         doc_view.addSubview_(hotkey_label)
 
         self._hotkey_checks.clear()
-        for key_name, enabled in sorted(hotkeys.items()):
+        self._hotkey_mode_popups.clear()
+        enhance_modes = state.get("enhance_modes", [])
+        check_w = 120
+        popup_w = 150
+        for key_name, value in sorted(hotkeys.items()):
+            enabled = bool(value)
+            # Extract per-hotkey mode from config value
+            hotkey_mode = value.get("mode") if isinstance(value, dict) else None
+
             y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
             check = NSButton.alloc().initWithFrame_(
-                NSMakeRect(pad + 12, y, content_w - 24, self._CONTROL_HEIGHT)
+                NSMakeRect(pad + 12, y, check_w, self._CONTROL_HEIGHT)
             )
             check.setButtonType_(NSSwitchButton)
             check.setTitle_(key_name)
@@ -345,6 +354,47 @@ class SettingsPanel:
             self._set_meta(check, key_name=key_name)
             doc_view.addSubview_(check)
             self._hotkey_checks[key_name] = check
+
+            # Mode dropdown for this hotkey
+            from AppKit import NSMenuItem, NSPopUpButton
+            is_fn = (key_name.strip().lower() == "fn")
+
+            mode_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(pad + 12 + check_w + 4, y - 2, popup_w,
+                           self._CONTROL_HEIGHT + 4),
+                False,
+            )
+            mode_popup.setFont_(small_font)
+
+            # Build items: Default AI Mode, Off, [modes...], separator, Delete
+            mode_popup.addItemWithTitle_("Default AI Mode")
+            mode_popup.lastItem().setRepresentedObject_("_default")
+
+            mode_popup.addItemWithTitle_("Off")
+            mode_popup.lastItem().setRepresentedObject_("off")
+
+            for mode_id, mode_label, _order in enhance_modes:
+                mode_popup.addItemWithTitle_(mode_label)
+                mode_popup.lastItem().setRepresentedObject_(mode_id)
+
+            if not is_fn:
+                mode_popup.menu().addItem_(NSMenuItem.separatorItem())
+                mode_popup.addItemWithTitle_("Delete Hotkey")
+                mode_popup.lastItem().setRepresentedObject_("_delete")
+
+            # Select current value
+            selected_mode = hotkey_mode if hotkey_mode else "_default"
+            for i in range(mode_popup.numberOfItems()):
+                item = mode_popup.itemAtIndex_(i)
+                if item.representedObject() == selected_mode:
+                    mode_popup.selectItemAtIndex_(i)
+                    break
+
+            mode_popup.setTarget_(self)
+            mode_popup.setAction_(b"hotkeyModeChanged:")
+            doc_view.addSubview_(mode_popup)
+            self._set_meta(mode_popup, key_name=key_name)
+            self._hotkey_mode_popups[key_name] = mode_popup
 
         # Record Hotkey button
         y -= (28 + self._ROW_GAP)
@@ -359,12 +409,8 @@ class SettingsPanel:
         doc_view.addSubview_(record_btn)
 
         # Restart / Cancel key dropdowns
-        _key_choices = [
-            ("space", "Space"), ("cmd", "Command"), ("cmd_r", "Command (Right)"),
-            ("ctrl", "Control"), ("ctrl_r", "Control (Right)"),
-            ("alt", "Option"), ("alt_r", "Option (Right)"),
-            ("shift", "Shift"), ("shift_r", "Shift (Right)"), ("esc", "Esc"),
-        ]
+        from voicetext.config import MODIFIER_KEY_CHOICES
+        _key_choices = MODIFIER_KEY_CHOICES
         label_w = 80
         popup_w = 140
 
@@ -1093,6 +1139,33 @@ class SettingsPanel:
         if key_name:
             enabled = bool(sender.state())
             self._call("on_hotkey_toggle", key_name, enabled)
+
+    def hotkeyModeChanged_(self, sender):
+        meta = self._get_meta(sender)
+        key_name = meta.get("key_name")
+        if not key_name:
+            return
+        value = sender.selectedItem().representedObject()
+        if value is None:
+            return
+        value = str(value)
+        if value == "_delete":
+            self._call("on_hotkey_delete", key_name)
+            # Rebuild settings to remove the deleted hotkey row
+            self._call("on_tab_change", "general")
+            # Close and reopen to refresh UI
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(self._reopen_settings)
+        elif value == "_default":
+            self._call("on_hotkey_mode_select", key_name, None)
+        else:
+            self._call("on_hotkey_mode_select", key_name, value)
+
+    def _reopen_settings(self):
+        """Close and reopen settings panel to refresh UI."""
+        self.close()
+        # The panel will be rebuilt when on_open_settings is called
+        self._callbacks.get("_reopen", lambda: None)()
 
     def recordHotkeyClicked_(self, sender):
         self._call("on_record_hotkey")

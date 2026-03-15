@@ -9,6 +9,17 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# Modifier key choices for restart/cancel key config.
+# Each entry is (config_value, display_label). Used by both validate_config()
+# and the settings UI dropdown to keep them in sync.
+MODIFIER_KEY_CHOICES = [
+    ("space", "Space"), ("cmd", "Command"), ("cmd_r", "Command (Right)"),
+    ("ctrl", "Control"), ("ctrl_r", "Control (Right)"),
+    ("alt", "Option"), ("alt_r", "Option (Right)"),
+    ("shift", "Shift"), ("shift_r", "Shift (Right)"), ("esc", "Esc"),
+]
+_VALID_MODIFIER_KEYS = {k for k, _ in MODIFIER_KEY_CHOICES}
+
 DEFAULT_CONFIG_DIR = os.path.join("~", ".config", "VoiceText")
 DEFAULT_CONFIG_PATH = os.path.join(DEFAULT_CONFIG_DIR, "config.json")
 DEFAULT_ENHANCE_MODES_DIR = os.path.join(DEFAULT_CONFIG_DIR, "enhance_modes")
@@ -311,10 +322,10 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
          DEFAULT_CONFIG["ai_enhance"]["connection_timeout"]),
         ("ai_enhance.max_retries", int, lambda v: v >= 0, DEFAULT_CONFIG["ai_enhance"]["max_retries"]),
         ("feedback.restart_key", str,
-         lambda v: v in {"space", "cmd", "ctrl", "alt", "shift", "esc"},
+         lambda v: v in _VALID_MODIFIER_KEYS,
          DEFAULT_CONFIG["feedback"]["restart_key"]),
         ("feedback.cancel_key", str,
-         lambda v: v in {"space", "cmd", "ctrl", "alt", "shift", "esc"},
+         lambda v: v in _VALID_MODIFIER_KEYS,
          DEFAULT_CONFIG["feedback"]["cancel_key"]),
     ]
 

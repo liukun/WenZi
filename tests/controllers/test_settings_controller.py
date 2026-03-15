@@ -398,9 +398,75 @@ class TestOnOpenSettings:
         assert state["enhance_modes"] == [("proofread", "Proofread", 10), ("translate", "Translate", 20)]
 
         assert "on_hotkey_toggle" in callbacks
+        assert "on_hotkey_mode_select" in callbacks
+        assert "on_hotkey_delete" in callbacks
         assert "on_sound_toggle" in callbacks
         assert "on_preview_type_toggle" in callbacks
         assert "on_stt_select" in callbacks
         assert "on_llm_select" in callbacks
         assert "on_thinking_toggle" in callbacks
         assert "on_tab_change" in callbacks
+
+
+class TestHotkeyModeSelect:
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_set_mode(self, mock_save, ctrl, mock_app):
+        ctrl.hotkey_mode_select("fn", "translate_en")
+
+        assert mock_app._config["hotkeys"]["fn"] == {"mode": "translate_en"}
+        mock_save.assert_called_once()
+
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_clear_mode_to_system_default(self, mock_save, ctrl, mock_app):
+        mock_app._config["hotkeys"]["fn"] = {"mode": "translate_en"}
+        ctrl.hotkey_mode_select("fn", None)
+
+        assert mock_app._config["hotkeys"]["fn"] is True
+        mock_save.assert_called_once()
+
+
+class TestHotkeyDelete:
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_delete_hotkey(self, mock_save, ctrl, mock_app):
+        mock_app._config["hotkeys"]["ctrl"] = True
+        ctrl.hotkey_delete("ctrl")
+
+        assert "ctrl" not in mock_app._config["hotkeys"]
+        mock_save.assert_called_once()
+        mock_app._hotkey_listener.disable_key.assert_called_with("ctrl")
+
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_cannot_delete_fn(self, mock_save, ctrl, mock_app):
+        ctrl.hotkey_delete("fn")
+
+        assert "fn" in mock_app._config["hotkeys"]
+        mock_save.assert_not_called()
+
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_delete_removes_menu_item(self, mock_save, ctrl, mock_app):
+        menu = MagicMock()
+        item = MagicMock()
+        item.menu.return_value = menu
+        mock_app._hotkey_menu_items["ctrl"] = item
+
+        ctrl.hotkey_delete("ctrl")
+
+        menu.removeItem_.assert_called_with(item)
+        assert "ctrl" not in mock_app._hotkey_menu_items
+
+
+class TestHotkeyToggleWithMode:
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_enable_preserves_dict_config(self, mock_save, ctrl, mock_app):
+        """When enabling a hotkey that has dict config, preserve it."""
+        mock_app._config["hotkeys"]["ctrl"] = {"mode": "translate_en"}
+        # Simulate: user unchecked then rechecked
+        ctrl.hotkey_toggle("ctrl", False)
+        assert mock_app._config["hotkeys"]["ctrl"] is False
+
+    @patch("voicetext.controllers.settings_controller.save_config")
+    def test_enable_sets_true_for_bool(self, mock_save, ctrl, mock_app):
+        """When enabling a hotkey with bool config, set True."""
+        mock_app._config["hotkeys"]["ctrl"] = False
+        ctrl.hotkey_toggle("ctrl", True)
+        assert mock_app._config["hotkeys"]["ctrl"] is True

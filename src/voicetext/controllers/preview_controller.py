@@ -879,6 +879,15 @@ class PreviewController:
         app._config["ai_enhance"]["enabled"] = mode_id != MODE_OFF
         app._config["ai_enhance"]["mode"] = mode_id
         save_config(app._config, app._config_path)
+
+        # User explicitly chose this mode — discard any hotkey override so
+        # restore won't revert this intentional change.
+        app._recording_controller._saved_mode = None
+
+        # Sync settings panel if it's open
+        if app._settings_panel and app._settings_panel._panel is not None:
+            app._settings_panel.update_enhance_mode(mode_id)
+
         logger.info("AI enhance mode set to (from preview): %s", mode_id)
 
         # Cancel in-flight enhancement immediately
