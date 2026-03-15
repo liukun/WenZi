@@ -641,14 +641,13 @@ class TestRotation:
             history.log(f"text{i}", None, f"text{i}", "off", False)
 
         path = os.path.join(history_dir, "conversation_history.jsonl")
-        archive = os.path.join(history_dir, "conversation_history.1.jsonl")
+        archive_dir = os.path.join(history_dir, "conversation_history_archives")
         with open(path, "r", encoding="utf-8") as f:
             assert len(f.readlines()) == 10
-        assert not os.path.exists(archive)
+        assert not os.path.isdir(archive_dir)
 
     def test_rotation_triggers_at_max(self, history, history_dir):
-        """Should archive old records when exceeding _MAX_RECORDS."""
-        # Use a small limit for testing
+        """Should archive old records into monthly files when exceeding _MAX_RECORDS."""
         history._MAX_RECORDS = 5
         history._ROTATE_SIZE_THRESHOLD = 0  # disable size pre-check
 
@@ -656,7 +655,6 @@ class TestRotation:
             history.log(f"text{i}", None, f"text{i}", "off", False)
 
         path = os.path.join(history_dir, "conversation_history.jsonl")
-        archive = os.path.join(history_dir, "conversation_history.1.jsonl")
 
         with open(path, "r", encoding="utf-8") as f:
             kept = f.readlines()
@@ -665,13 +663,20 @@ class TestRotation:
         assert json.loads(kept[0])["asr_text"] == "text3"
         assert json.loads(kept[-1])["asr_text"] == "text7"
 
-        with open(archive, "r", encoding="utf-8") as f:
-            archived = f.readlines()
-        assert len(archived) == 3
-        assert json.loads(archived[0])["asr_text"] == "text0"
+        # Archived records should be in monthly files
+        archive_dir = os.path.join(history_dir, "conversation_history_archives")
+        assert os.path.isdir(archive_dir)
+        archive_files = sorted(os.listdir(archive_dir))
+        assert len(archive_files) >= 1
+        # All archived records should total 3
+        total_archived = 0
+        for af in archive_files:
+            with open(os.path.join(archive_dir, af), "r", encoding="utf-8") as f:
+                total_archived += len(f.readlines())
+        assert total_archived == 3
 
     def test_rotation_appends_to_existing_archive(self, history, history_dir):
-        """Subsequent rotations should append to the archive file."""
+        """Subsequent rotations should append to the same monthly archive file."""
         history._MAX_RECORDS = 3
         history._ROTATE_SIZE_THRESHOLD = 0
 
@@ -683,11 +688,13 @@ class TestRotation:
         for i in range(2):
             history.log(f"batch2_{i}", None, f"batch2_{i}", "off", False)
 
-        archive = os.path.join(history_dir, "conversation_history.1.jsonl")
-        with open(archive, "r", encoding="utf-8") as f:
-            archived = f.readlines()
+        archive_dir = os.path.join(history_dir, "conversation_history_archives")
+        total_archived = 0
+        for af in os.listdir(archive_dir):
+            with open(os.path.join(archive_dir, af), "r", encoding="utf-8") as f:
+                total_archived += len(f.readlines())
         # First rotation: 2 archived, second rotation: 2 more
-        assert len(archived) == 4
+        assert total_archived == 4
 
     def test_rotation_skipped_by_size_threshold(self, history, history_dir):
         """Should skip rotation when file size is below threshold."""
@@ -701,9 +708,134 @@ class TestRotation:
         path = os.path.join(history_dir, "conversation_history.jsonl")
         with open(path, "r", encoding="utf-8") as f:
             assert len(f.readlines()) == 5  # no rotation happened
-        assert not os.path.exists(
-            os.path.join(history_dir, "conversation_history.1.jsonl")
-        )
+        archive_dir = os.path.join(history_dir, "conversation_history_archives")
+        assert not os.path.isdir(archive_dir)
+
+    def test_rotation_groups_by_month(self, history, history_dir):
+        """Records with different months should go to separate archive files."""
+        history._MAX_RECORDS = 1
+        history._ROTATE_SIZE_THRESHOLD = 0
+
+        # Write records with different month timestamps directly
+        path = os.path.join(history_dir, "conversation_history.jsonl")
+        os.makedirs(history_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            for month in ["2025-01", "2025-01", "2025-02", "2025-03"]:
+                record = {
+                    "timestamp": f"{month}-15T10:00:00+00:00",
+                    "asr_text": f"text_{month}",
+                    "enhanced_text": None,
+                    "final_text": f"text_{month}",
+                    "enhance_mode": "off",
+                    "preview_enabled": False,
+                }
+                f.write(json.dumps(record) + "\n")
+
+        # Trigger rotation (keeps last 1, archives first 3)
+        history._invalidate_caches()
+        history._maybe_rotate()
+
+        archive_dir = os.path.join(history_dir, "conversation_history_archives")
+        archive_files = sorted(os.listdir(archive_dir))
+        assert archive_files == ["2025-01.jsonl", "2025-02.jsonl"]
+
+        # 2025-01 should have 2 records
+        with open(os.path.join(archive_dir, "2025-01.jsonl"), "r") as f:
+            assert len(f.readlines()) == 2
+        # 2025-02 should have 1 record
+        with open(os.path.join(archive_dir, "2025-02.jsonl"), "r") as f:
+            assert len(f.readlines()) == 1
+
+
+class TestIncludeArchived:
+    def test_get_all_without_archived(self, history, history_dir):
+        """get_all() without include_archived should only return main file records."""
+        history._MAX_RECORDS = 3
+        history._ROTATE_SIZE_THRESHOLD = 0
+
+        for i in range(5):
+            history.log(f"text{i}", None, f"text{i}", "off", False)
+
+        # Only the 3 most recent should be returned
+        results = history.get_all()
+        assert len(results) == 3
+        assert results[0]["asr_text"] == "text4"  # newest first
+
+    def test_get_all_with_archived(self, history, history_dir):
+        """get_all(include_archived=True) should return all records including archived."""
+        history._MAX_RECORDS = 3
+        history._ROTATE_SIZE_THRESHOLD = 0
+
+        for i in range(5):
+            history.log(f"text{i}", None, f"text{i}", "off", False)
+
+        results = history.get_all(include_archived=True)
+        assert len(results) == 5
+        # Newest first
+        assert results[0]["asr_text"] == "text4"
+        assert results[-1]["asr_text"] == "text0"
+
+    def test_get_all_with_archived_and_limit(self, history, history_dir):
+        """get_all(include_archived=True, limit=N) should respect the limit."""
+        history._MAX_RECORDS = 3
+        history._ROTATE_SIZE_THRESHOLD = 0
+
+        for i in range(5):
+            history.log(f"text{i}", None, f"text{i}", "off", False)
+
+        results = history.get_all(include_archived=True, limit=2)
+        assert len(results) == 2
+        assert results[0]["asr_text"] == "text4"
+
+    def test_search_without_archived(self, history, history_dir):
+        """search() without include_archived should only search main file."""
+        history._MAX_RECORDS = 3
+        history._ROTATE_SIZE_THRESHOLD = 0
+
+        for i in range(5):
+            history.log(f"text{i}", None, f"text{i}", "off", False)
+
+        results = history.search("text0")
+        assert len(results) == 0  # text0 was archived
+
+        results = history.search("text4")
+        assert len(results) == 1
+
+    def test_search_with_archived(self, history, history_dir):
+        """search(include_archived=True) should search all records."""
+        history._MAX_RECORDS = 3
+        history._ROTATE_SIZE_THRESHOLD = 0
+
+        for i in range(5):
+            history.log(f"text{i}", None, f"text{i}", "off", False)
+
+        results = history.search("text0", include_archived=True)
+        assert len(results) == 1
+        assert results[0]["asr_text"] == "text0"
+
+    def test_no_archives_returns_main_only(self, history):
+        """include_archived=True with no archive files should still work."""
+        for i in range(3):
+            history.log(f"text{i}", None, f"text{i}", "off", False)
+
+        results = history.get_all(include_archived=True)
+        assert len(results) == 3
+
+    def test_list_archive_files_empty(self, history):
+        """_list_archive_files returns empty list when no archive dir exists."""
+        assert history._list_archive_files() == []
+
+    def test_list_archive_files_sorted(self, history, history_dir):
+        """_list_archive_files returns files in chronological order."""
+        archive_dir = os.path.join(history_dir, "conversation_history_archives")
+        os.makedirs(archive_dir)
+        for name in ["2025-03.jsonl", "2025-01.jsonl", "2025-02.jsonl"]:
+            with open(os.path.join(archive_dir, name), "w") as f:
+                f.write("")
+
+        files = history._list_archive_files()
+        basenames = [os.path.basename(f) for f in files]
+        assert basenames == ["2025-01.jsonl", "2025-02.jsonl", "2025-03.jsonl"]
 
 
 class TestCorrectionCount:

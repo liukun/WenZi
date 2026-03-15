@@ -81,6 +81,12 @@ body {
     font-size: 12px; outline: none; cursor: pointer;
 }
 .time-select:focus { border-color: var(--accent); }
+.archive-toggle {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 12px; color: var(--secondary); cursor: pointer;
+    white-space: nowrap; user-select: none;
+}
+.archive-toggle input { margin: 0; cursor: pointer; }
 .btn {
     height: 28px; padding: 0 14px; border: none; border-radius: 6px;
     font-size: 12px; font-weight: 500; cursor: pointer;
@@ -272,6 +278,9 @@ body {
         <option value="7d" selected>Last 7 Days</option>
         <option value="30d">Last 30 Days</option>
     </select>
+    <label class="archive-toggle" title="Include archived history">
+        <input type="checkbox" id="archive-cb"> Archived
+    </label>
     <button class="btn" id="clear-btn">Clear</button>
 </div>
 
@@ -346,6 +355,7 @@ const pagerEl = document.getElementById('pager');
 const pagerPrev = document.getElementById('pager-prev');
 const pagerNext = document.getElementById('pager-next');
 const pagerInfo = document.getElementById('pager-info');
+const archiveCb = document.getElementById('archive-cb');
 
 let selectedIndex = -1;
 let currentRecords = [];
@@ -386,11 +396,13 @@ let searchTimer = null;
 function triggerSearch() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-        post({type:'search', text: searchEl.value, timeRange: timeRange.value});
+        post({type:'search', text: searchEl.value, timeRange: timeRange.value,
+              includeArchived: archiveCb.checked});
     }, 300);
 }
 searchEl.addEventListener('input', triggerSearch);
 timeRange.addEventListener('change', triggerSearch);
+archiveCb.addEventListener('change', triggerSearch);
 clearBtn.addEventListener('click', () => {
     searchEl.value = '';
     timeRange.value = '7d';
@@ -620,6 +632,7 @@ function resetFilters() {
     searchEl.value = '';
     timeRange.value = '7d';
     activeTags.clear();
+    archiveCb.checked = false;
 }
 
 /* --- Helpers --- */
@@ -842,6 +855,7 @@ class HistoryBrowserPanel:
         self._on_save: Optional[Callable[[str, str], None]] = None
         self._search_text: str = ""
         self._time_range: str = "7d"
+        self._include_archived: bool = False
         self._active_tags: Set[str] = set()
         self._page: int = 0
         self._page_size: int = 100
@@ -899,9 +913,13 @@ class HistoryBrowserPanel:
         if self._conversation_history is None:
             return
         if self._search_text:
-            self._all_records = self._conversation_history.search(self._search_text)
+            self._all_records = self._conversation_history.search(
+                self._search_text, include_archived=self._include_archived
+            )
         else:
-            self._all_records = self._conversation_history.get_all()
+            self._all_records = self._conversation_history.get_all(
+                include_archived=self._include_archived
+            )
 
         self._apply_filters()
         self._page = 0
@@ -1015,6 +1033,7 @@ class HistoryBrowserPanel:
         if msg_type == "search":
             self._search_text = body.get("text", "")
             self._time_range = body.get("timeRange", "7d")
+            self._include_archived = bool(body.get("includeArchived", False))
             self._reload_data()
 
         elif msg_type == "toggleTags":
@@ -1034,6 +1053,7 @@ class HistoryBrowserPanel:
         elif msg_type == "clearFilters":
             self._search_text = ""
             self._time_range = "7d"
+            self._include_archived = False
             self._active_tags = set()
             self._eval_js("resetFilters()")
             self._reload_data()

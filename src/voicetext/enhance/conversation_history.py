@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -28,6 +29,9 @@ class ConversationHistory:
       Staleness is detected via file mtime; callers (e.g. History Browser)
       should call ``release_full_cache()`` when they no longer need it so
       that memory is freed promptly.
+
+    Archived records are stored in monthly JSONL files under
+    ``conversation_history_archives/YYYY-MM.jsonl``.
     """
 
     _MAX_RECORDS = 20000
@@ -37,7 +41,7 @@ class ConversationHistory:
     def __init__(self, config_dir: str = DEFAULT_CONFIG_DIR) -> None:
         self._config_dir = os.path.expanduser(config_dir)
         self._history_path = os.path.join(self._config_dir, "conversation_history.jsonl")
-        self._archive_path = os.path.join(self._config_dir, "conversation_history.1.jsonl")
+        self._archive_dir = os.path.join(self._config_dir, "conversation_history_archives")
 
         # Hot-path cache: most recent _CACHE_SIZE raw records (oldest first)
         self._cache: Optional[List[Dict[str, Any]]] = None
@@ -214,7 +218,11 @@ class ConversationHistory:
         return ts
 
     def _maybe_rotate(self) -> None:
-        """Archive old records when the history file exceeds _MAX_RECORDS."""
+        """Archive old records when the history file exceeds _MAX_RECORDS.
+
+        Old records are grouped by month (from their timestamp) and appended
+        to ``conversation_history_archives/YYYY-MM.jsonl``.
+        """
         try:
             size = os.path.getsize(self._history_path)
         except OSError:
@@ -234,9 +242,17 @@ class ConversationHistory:
         old_lines = lines[: len(lines) - self._MAX_RECORDS]
         keep_lines = lines[len(lines) - self._MAX_RECORDS :]
 
-        # Append old records to archive
-        with open(self._archive_path, "a", encoding="utf-8") as f:
-            f.writelines(old_lines)
+        # Group old lines by month and append to per-month archive files
+        os.makedirs(self._archive_dir, exist_ok=True)
+        monthly_groups: Dict[str, List[str]] = {}
+        for line in old_lines:
+            month_key = self._extract_month(line)
+            monthly_groups.setdefault(month_key, []).append(line)
+
+        for month_key, group_lines in sorted(monthly_groups.items()):
+            archive_path = os.path.join(self._archive_dir, f"{month_key}.jsonl")
+            with open(archive_path, "a", encoding="utf-8") as f:
+                f.writelines(group_lines)
 
         # Rewrite main file with recent records only
         tmp_path = self._history_path + ".tmp"
@@ -246,10 +262,50 @@ class ConversationHistory:
 
         self._invalidate_caches()
 
+        archived_count = len(old_lines)
         logger.info(
-            "Rotated conversation history: archived %d records, kept %d",
-            len(old_lines), len(keep_lines),
+            "Rotated conversation history: archived %d records across %d months, kept %d",
+            archived_count, len(monthly_groups), len(keep_lines),
         )
+
+    @staticmethod
+    def _extract_month(line: str) -> str:
+        """Extract YYYY-MM from a JSONL line's timestamp, fallback to 'unknown'."""
+        try:
+            record = json.loads(line.strip())
+            ts = record.get("timestamp", "")
+            if len(ts) >= 7:
+                return ts[:7]  # "YYYY-MM"
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        return "unknown"
+
+    def _list_archive_files(self) -> List[str]:
+        """Return sorted list of archive file paths (oldest first)."""
+        if not os.path.isdir(self._archive_dir):
+            return []
+        pattern = os.path.join(self._archive_dir, "*.jsonl")
+        files = glob.glob(pattern)
+        files.sort()  # Lexicographic sort on YYYY-MM gives chronological order
+        return files
+
+    def _load_archive_records(self) -> List[Dict[str, Any]]:
+        """Load all records from archive files (oldest first)."""
+        records: List[Dict[str, Any]] = []
+        for path in self._list_archive_files():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            records.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+            except Exception as e:
+                logger.warning("Failed to read archive %s: %s", path, e)
+        return records
 
     # ------------------------------------------------------------------
     # Read operations (low-frequency, no cache)
@@ -381,7 +437,9 @@ class ConversationHistory:
     # Read operations (full cache, for UI)
     # ------------------------------------------------------------------
 
-    def get_all(self, limit: int = 0) -> List[Dict[str, Any]]:
+    def get_all(
+        self, limit: int = 0, include_archived: bool = False
+    ) -> List[Dict[str, Any]]:
         """Return all records (no filtering), newest first.
 
         Uses the full in-memory cache; call ``release_full_cache()`` when
@@ -389,25 +447,35 @@ class ConversationHistory:
 
         Args:
             limit: Maximum number of records to return.  0 means no limit.
+            include_archived: If True, also include records from archive files.
 
         Returns:
             List of record dicts, newest first.
         """
         cache = self._ensure_full_cache()
-        if not cache:
+
+        if include_archived:
+            archived = self._load_archive_records()
+            combined = archived + (cache or [])
+        else:
+            combined = cache or []
+
+        if not combined:
             return []
 
         if limit <= 0:
-            return list(reversed(cache))
+            return list(reversed(combined))
 
         results: List[Dict[str, Any]] = []
-        for record in reversed(cache):
+        for record in reversed(combined):
             results.append(record)
             if len(results) >= limit:
                 break
         return results
 
-    def search(self, query: str, limit: int = 0) -> List[Dict[str, Any]]:
+    def search(
+        self, query: str, limit: int = 0, include_archived: bool = False
+    ) -> List[Dict[str, Any]]:
         """Search records by case-insensitive substring match on text fields.
 
         Uses the full in-memory cache; call ``release_full_cache()`` when
@@ -416,17 +484,25 @@ class ConversationHistory:
         Args:
             query: Search string (case-insensitive).
             limit: Maximum number of results.  0 means no limit.
+            include_archived: If True, also search records from archive files.
 
         Returns:
             Matching records, newest first.
         """
         cache = self._ensure_full_cache()
-        if not cache:
+
+        if include_archived:
+            archived = self._load_archive_records()
+            combined = archived + (cache or [])
+        else:
+            combined = cache or []
+
+        if not combined:
             return []
 
         query_lower = query.lower()
         results: List[Dict[str, Any]] = []
-        for record in reversed(cache):
+        for record in reversed(combined):
             searchable = " ".join(
                 str(record.get(k, ""))
                 for k in ("asr_text", "enhanced_text", "final_text")

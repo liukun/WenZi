@@ -292,7 +292,7 @@ class TestJsMessages:
 
         assert panel._search_text == "hello"
         assert panel._time_range == "30d"
-        history.search.assert_called_once_with("hello")
+        history.search.assert_called_once_with("hello", include_archived=False)
 
     def test_toggle_tags(self):
         from voicetext.ui.history_browser_window_web import HistoryBrowserPanel
