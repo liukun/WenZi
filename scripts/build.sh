@@ -6,14 +6,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DIST_DIR="$PROJECT_DIR/dist"
 APP_PATH="$DIST_DIR/VoiceText.app"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:-VoiceText Dev}"
-
-# Check if the signing identity exists in the keychain
-if security find-identity -v -p codesigning | grep -q "$SIGN_IDENTITY"; then
+# Resolve signing identity: env var > auto-detect fingerprint > ad-hoc
+if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+    SIGN_IDENTITY="$CODESIGN_IDENTITY"
     SIGN_MODE="identity"
 else
-    echo "WARNING: Signing identity '$SIGN_IDENTITY' not found in keychain, falling back to ad-hoc signing."
-    SIGN_MODE="adhoc"
+    SIGN_IDENTITY=$(security find-identity -p codesigning \
+        | grep -m1 ')' | awk '{print $2}')
+    if [ -n "$SIGN_IDENTITY" ]; then
+        SIGN_MODE="identity"
+    else
+        echo "WARNING: No codesigning identity found in keychain, falling back to ad-hoc signing."
+        SIGN_MODE="adhoc"
+    fi
 fi
 
 cd "$PROJECT_DIR"
