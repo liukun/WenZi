@@ -2,8 +2,8 @@
 
 A macOS menubar speech-to-text application. Hold a hotkey to record, release to transcribe and automatically type the result into the active application.
 
-- **Offline-first**: Uses Apple On-Device speech recognition by default — no model download, no cloud dependency
-- **Multi-backend**: Supports Apple Speech (macOS built-in, default), [FunASR](https://github.com/modelscope/FunASR) (Chinese-optimized ONNX), [MLX-Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) (99 languages, Apple Silicon GPU), and remote Whisper API (OpenAI-compatible, e.g. Groq)
+- **Offline-first**: Uses [FunASR](https://github.com/modelscope/FunASR) Chinese-optimized ONNX by default — fully offline, no cloud dependency
+- **Multi-backend**: Supports FunASR (Chinese-optimized ONNX, default), Apple Speech (macOS built-in), [MLX-Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) (99 languages, Apple Silicon GPU), and remote Whisper API (OpenAI-compatible, e.g. Groq)
 - **Live Transcription**: Real-time streaming overlay shows partial transcription results while you are still recording
 - **AI Enhancement**: Optional LLM-powered text proofreading, formatting, completion, and translation via OpenAI-compatible APIs — with session-level caching to avoid redundant API calls
 - **Chain Modes**: Multi-step enhancement pipelines (e.g., proofread then translate) defined via simple Markdown files
@@ -63,7 +63,7 @@ uv run python -m voicetext path/to/config.json
 - Option 1: no additional requirements
 - Options 2 & 3: Python 3.13+ and [uv](https://github.com/astral-sh/uv)
 
-The default backend (Apple Speech) requires no model download. If you switch to FunASR or MLX-Whisper, models will be downloaded automatically on first use (FunASR ~500 MB cached in `~/.cache/modelscope/`, MLX-Whisper models cached in `~/.cache/huggingface/`). The menubar icon shows download progress (`DL X%`) — please wait for the download to complete before trying to transcribe.
+The default backend (FunASR) downloads models automatically on first use (~500 MB cached in `~/.cache/modelscope/`). The menubar icon shows download progress (`DL X%`) — please wait for the download to complete before trying to transcribe. If you switch to Apple Speech, no download is needed. MLX-Whisper models are cached in `~/.cache/huggingface/`.
 
 ### Permissions
 
@@ -71,11 +71,11 @@ On first launch the app will prompt for:
 
 - **Microphone** — for audio recording
 - **Accessibility** — for typing text into other applications
-- **Speech Recognition** — required for the default Apple Speech backend
+- **Speech Recognition** — required only when using the Apple Speech backend
 
 ## Usage
 
-1. The app starts with a **microphone icon** (🎙) in the menubar. With the default Apple Speech backend, the app is ready immediately — no model download needed.
+1. The app starts with a **microphone icon** (🎙) in the menubar. On first launch, the default FunASR backend downloads models automatically (~500 MB). The menubar icon shows progress — subsequent launches are instant.
 2. Hold the hotkey (default: `fn`) to record — a floating indicator with audio level bars shows recording status. If the ASR backend supports streaming, a live transcription overlay shows partial results in real time.
 3. Release to transcribe — the recognized text is typed into the active window.
 

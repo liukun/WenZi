@@ -119,7 +119,7 @@ class TestLoadConfig:
         assert config_file.exists()
         written = json.loads(config_file.read_text())
         assert written["hotkeys"] == {"fn": True}
-        assert written["asr"]["backend"] == "apple"
+        assert written["asr"]["backend"] == "funasr"
 
     def test_default_config_creates_parent_dirs(self, tmp_path):
         config_file = tmp_path / "sub" / "dir" / "config.json"
@@ -362,7 +362,7 @@ class TestValidateConfig:
     def test_invalid_asr_backend(self):
         config = self._make_config({"asr.backend": "unknown"})
         validate_config(config)
-        assert config["asr"]["backend"] == "apple"
+        assert config["asr"]["backend"] == "funasr"
 
     def test_valid_asr_backends(self):
         for backend in ("funasr", "mlx-whisper", "mlx_whisper", "whisper-api", "apple", "sherpa-onnx"):

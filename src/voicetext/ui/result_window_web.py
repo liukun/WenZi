@@ -608,7 +608,8 @@ function buildHistoryDropdown(items) {
         action.textContent = item.action || '';
 
         const time = document.createElement('span');
-        time.style.cssText = 'color:var(--secondary); white-space:nowrap; flex-shrink:0; font-size:11px;';
+        time.style.cssText = 'color:var(--secondary); white-space:nowrap; flex-shrink:0;'
+            + ' font-size:11px; font-family:"SF Mono",Menlo,monospace;';
         time.textContent = item.time;
 
         const mode = document.createElement('span');

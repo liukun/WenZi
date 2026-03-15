@@ -76,11 +76,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "silence_rms": 20,
     },
     "asr": {
-        "backend": "apple",
+        "backend": "funasr",
         "use_vad": True,
         "use_punc": True,
         "language": "zh",
-        "model": "on-device",
+        "model": None,
         "preset": None,
         "temperature": 0.0,
         "default_provider": None,
