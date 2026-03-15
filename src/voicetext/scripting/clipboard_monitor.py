@@ -378,7 +378,24 @@ class ClipboardMonitor:
             logger.debug("Skipping concealed/transient clipboard entry")
             return
 
-        # Try text first (skip entries larger than 10 KB)
+        # Detection order: PNG → text → TIFF.
+        #
+        # PNG is almost exclusively set when the user copies a real image
+        # (browsers, image editors).  Checking it first ensures images are
+        # not swallowed by the text branch (browsers also put the image URL
+        # as text on the clipboard).
+        #
+        # TIFF is checked last because macOS commonly places a TIFF
+        # *rendering* of rich text on the clipboard — treating it as an
+        # image would create bogus image entries for every text copy.
+        # TIFF-only (no PNG, no text) is the rare case where an app
+        # provides only a TIFF image (e.g. Preview).
+        png_data = pb.dataForType_(NSPasteboardTypePNG)
+        if png_data is not None:
+            source_app = self._get_frontmost_app()
+            self._add_image_entry(bytes(png_data), "png", source_app)
+            return
+
         text = pb.stringForType_(NSPasteboardTypeString)
         if text and str(text).strip():
             text_str = str(text).strip()
@@ -392,15 +409,10 @@ class ClipboardMonitor:
             self._add_entry(text_str, source_app)
             return
 
-        # Try image (PNG first, then TIFF)
-        image_data = pb.dataForType_(NSPasteboardTypePNG)
-        image_type = "png"
-        if image_data is None:
-            image_data = pb.dataForType_(NSPasteboardTypeTIFF)
-            image_type = "tiff"
-        if image_data is not None:
+        tiff_data = pb.dataForType_(NSPasteboardTypeTIFF)
+        if tiff_data is not None:
             source_app = self._get_frontmost_app()
-            self._add_image_entry(bytes(image_data), image_type, source_app)
+            self._add_image_entry(bytes(tiff_data), "tiff", source_app)
 
     @staticmethod
     def _is_concealed(pb) -> bool:
