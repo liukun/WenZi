@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from voicetext.app import VoiceTextApp
@@ -41,17 +41,17 @@ class RecordingController:
             import time
             time.sleep(0.35)
             if not app._busy:
-                app._recorder.start()
+                dev_name = app._recorder.start()
                 self._start_streaming_if_supported()
-                self.start_recording_indicator()
+                self.start_recording_indicator(dev_name)
             app._recording_started.set()
 
         if app._sound_manager.enabled:
             threading.Thread(target=_delayed_start, daemon=True).start()
         else:
-            app._recorder.start()
+            dev_name = app._recorder.start()
             self._start_streaming_if_supported()
-            self.start_recording_indicator()
+            self.start_recording_indicator(dev_name)
             app._recording_started.set()
 
     def on_restart_recording(self) -> None:
@@ -90,17 +90,17 @@ class RecordingController:
             import time
             time.sleep(0.35)
             if not app._busy:
-                app._recorder.start()
+                dev_name = app._recorder.start()
                 self._start_streaming_if_supported()
-                self.start_recording_indicator()
+                self.start_recording_indicator(dev_name)
             app._recording_started.set()
 
         if app._sound_manager.enabled:
             threading.Thread(target=_delayed_start, daemon=True).start()
         else:
-            app._recorder.start()
+            dev_name = app._recorder.start()
             self._start_streaming_if_supported()
-            self.start_recording_indicator()
+            self.start_recording_indicator(dev_name)
             app._recording_started.set()
 
     def on_preview_history(self) -> None:
@@ -357,12 +357,12 @@ class RecordingController:
 
         AppHelper.callAfter(_close)
 
-    def start_recording_indicator(self) -> None:
+    def start_recording_indicator(self, device_name: Optional[str] = None) -> None:
         """Show visual indicator and start polling audio level."""
         from PyObjCTools import AppHelper
 
         app = self._app
-        AppHelper.callAfter(app._recording_indicator.show)
+        AppHelper.callAfter(app._recording_indicator.show, device_name)
 
         # Stop any existing poll thread
         if app._level_poll_stop is not None:

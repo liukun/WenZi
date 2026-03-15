@@ -50,6 +50,7 @@ class Recorder:
         self._total_bytes = 0
         self._current_rms: float = 0.0
         self._on_audio_chunk: Optional[callable] = None
+        self._last_device_name: Optional[str] = None  # track last used device name
 
     @property
     def is_recording(self) -> bool:
@@ -64,14 +65,37 @@ class Recorder:
         """
         return min(1.0, self._current_rms / self._LEVEL_REFERENCE_RMS)
 
-    def start(self) -> None:
-        """Start recording."""
+    def start(self) -> Optional[str]:
+        """Start recording. Returns the input device name, or None."""
         with self._lock:
             if self._recording:
-                return
+                return self._last_device_name
 
             self._flush()
             self._total_bytes = 0
+
+            device = self.device
+            current_name = self._query_device_name(device)
+
+            # Re-initialize PortAudio only when the device has changed
+            # (e.g. user plugged in a different mic) to avoid the cost
+            # of terminate/initialize on every recording.
+            if current_name != self._last_device_name:
+                try:
+                    sd._terminate()
+                    sd._initialize()
+                except Exception:
+                    logger.debug("PortAudio re-init failed, continuing", exc_info=True)
+                current_name = self._query_device_name(device)
+
+            if current_name != self._last_device_name:
+                logger.info(
+                    "Input device changed: %s -> %s",
+                    self._last_device_name or "(none)",
+                    current_name or "unknown",
+                )
+            else:
+                logger.debug("Reusing input device: %s", current_name)
 
             try:
                 self._stream = sd.RawInputStream(
@@ -80,7 +104,7 @@ class Recorder:
                     dtype="int16",
                     channels=1,
                     callback=self._callback,
-                    device=self.device,
+                    device=device,
                 )
                 self._stream.start()
             except Exception:
@@ -95,7 +119,9 @@ class Recorder:
                 self._stream.start()
 
             self._recording = True
+            self._last_device_name = current_name
             logger.info("Recording started (sr=%d)", self.sample_rate)
+            return current_name
 
     def stop(self) -> Optional[bytes]:
         """Stop recording and return WAV data as bytes, or None if nothing recorded."""
@@ -193,6 +219,15 @@ class Recorder:
                 cb(copied)
             except Exception:
                 logger.debug("Audio chunk callback error", exc_info=True)
+
+    @staticmethod
+    def _query_device_name(device: Optional[str]) -> Optional[str]:
+        """Return the name of the given input device, or None on failure."""
+        try:
+            info = sd.query_devices(device=device, kind="input")
+            return info.get("name")
+        except Exception:
+            return None
 
     def _flush(self) -> None:
         while not self._queue.empty():

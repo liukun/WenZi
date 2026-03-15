@@ -15,6 +15,7 @@ _EMA_ALPHA = 0.3
 # Panel dimensions
 _PANEL_WIDTH = 120
 _PANEL_HEIGHT = 50
+_PANEL_HEIGHT_WITH_LABEL = 68
 
 # Animation refresh interval in seconds (~20Hz)
 _REFRESH_INTERVAL = 0.05
@@ -43,10 +44,12 @@ class RecordingIndicatorView:
 
     _view: object = None
 
-    def __init__(self) -> None:
+    def __init__(self, device_name: Optional[str] = None) -> None:
         self._level: float = 0.0
         self._start_time: float = 0.0
         self._view = None
+        self._device_name: Optional[str] = device_name
+        self._label_attrs: Optional[dict] = None  # cached for draw loop
 
     def create_view(self, width: int, height: int) -> object:
         """Create and return the NSView instance."""
@@ -80,10 +83,22 @@ class RecordingIndicatorView:
 
     def draw(self, rect: object) -> None:
         """Draw the indicator contents."""
-        from AppKit import NSBezierPath
-        from Foundation import NSMakeRect
+        from AppKit import (
+            NSBezierPath,
+            NSFont,
+            NSFontAttributeName,
+            NSForegroundColorAttributeName,
+            NSParagraphStyleAttributeName,
+            NSMutableParagraphStyle,
+        )
+        from Foundation import NSMakeRect, NSString
 
-        height = rect.size.height
+        width = rect.size.width
+
+        # When a device label is shown, the animation area is the top
+        # portion and the label sits at the bottom.
+        label_height = (_PANEL_HEIGHT_WITH_LABEL - _PANEL_HEIGHT) if self._device_name else 0
+        anim_center_y = label_height + _PANEL_HEIGHT / 2.0
 
         # Semi-transparent rounded background (adapts to light/dark mode)
         bg_color = self._dynamic_color(
@@ -100,7 +115,7 @@ class RecordingIndicatorView:
 
         # Pulsing red dot on the left
         dot_x = 18.0
-        dot_y = height / 2.0
+        dot_y = anim_center_y
         pulse = math.sin(elapsed * _DOT_PULSE_SPEED) * _DOT_PULSE_AMPLITUDE
         dot_radius = _DOT_BASE_RADIUS + pulse
 
@@ -118,7 +133,7 @@ class RecordingIndicatorView:
 
         # Audio level bars on the right
         bars_start_x = 38.0
-        bar_y_base = (height - _BAR_MAX_HEIGHT) / 2.0
+        bar_y_base = anim_center_y - _BAR_MAX_HEIGHT / 2.0
 
         bar_color = self._dynamic_color(
             light_rgba=(0.2, 0.65, 0.2, 0.9),
@@ -144,6 +159,27 @@ class RecordingIndicatorView:
                 bar_rect, _BAR_CORNER_RADIUS, _BAR_CORNER_RADIUS
             )
             bar_path.fill()
+
+        # Device name label at the bottom (single line, truncate tail)
+        if self._device_name:
+            if self._label_attrs is None:
+                label_color = self._dynamic_color(
+                    light_rgba=(0.3, 0.3, 0.3, 0.8),
+                    dark_rgba=(0.7, 0.7, 0.7, 0.8),
+                )
+                para = NSMutableParagraphStyle.alloc().init()
+                para.setAlignment_(1)  # NSTextAlignmentCenter
+                para.setLineBreakMode_(4)  # NSLineBreakByTruncatingTail
+                self._label_attrs = {
+                    NSFontAttributeName: NSFont.systemFontOfSize_(9),
+                    NSForegroundColorAttributeName: label_color,
+                    NSParagraphStyleAttributeName: para,
+                }
+                self._label_ns_str = NSString.stringWithString_(self._device_name)
+            label_rect = NSMakeRect(4, 4, width - 8, label_height)
+            self._label_ns_str.drawInRect_withAttributes_(
+                label_rect, self._label_attrs,
+            )
 
 
 # PyObjC subclass for custom drawing
@@ -189,7 +225,7 @@ class RecordingIndicatorPanel:
         if not value:
             self.hide()
 
-    def show(self) -> None:
+    def show(self, device_name: Optional[str] = None) -> None:
         """Create and show the floating indicator panel."""
         if not self._enabled:
             return
@@ -207,11 +243,13 @@ class RecordingIndicatorPanel:
                 self.hide()
 
             self._smoothed_level = 0.0
-            self._indicator_view = RecordingIndicatorView()
+            self._indicator_view = RecordingIndicatorView(device_name=device_name)
+
+            panel_height = _PANEL_HEIGHT_WITH_LABEL if device_name else _PANEL_HEIGHT
 
             # Create borderless panel
             panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, _PANEL_WIDTH, _PANEL_HEIGHT),
+                NSMakeRect(0, 0, _PANEL_WIDTH, panel_height),
                 0,  # NSBorderlessWindowMask
                 2,  # NSBackingStoreBuffered
                 False,
@@ -230,11 +268,11 @@ class RecordingIndicatorPanel:
             if screen:
                 screen_frame = screen.visibleFrame()
                 x = screen_frame.origin.x + (screen_frame.size.width - _PANEL_WIDTH) / 2
-                y = screen_frame.origin.y + (screen_frame.size.height - _PANEL_HEIGHT) / 2
+                y = screen_frame.origin.y + (screen_frame.size.height - panel_height) / 2
                 panel.setFrameOrigin_((x, y))
 
             # Set content view
-            content_view = self._indicator_view.create_view(_PANEL_WIDTH, _PANEL_HEIGHT)
+            content_view = self._indicator_view.create_view(_PANEL_WIDTH, panel_height)
             panel.setContentView_(content_view)
 
             panel.orderFront_(None)
