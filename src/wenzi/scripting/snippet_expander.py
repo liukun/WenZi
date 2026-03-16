@@ -208,6 +208,7 @@ class SnippetExpander:
                 continue
             if buf.endswith(keyword):
                 content = s.get("content", "")
+                raw = s.get("raw", False)
                 logger.info(
                     "Snippet keyword matched: %r -> %r",
                     keyword, content[:50],
@@ -218,21 +219,23 @@ class SnippetExpander:
                 # Run expansion in a separate thread to avoid blocking the tap
                 threading.Thread(
                     target=self._expand,
-                    args=(keyword, content),
+                    args=(keyword, content, raw),
                     daemon=True,
                 ).start()
                 return
 
-    def _expand(self, keyword: str, content: str) -> None:
+    def _expand(self, keyword: str, content: str, raw: bool = False) -> None:
         """Delete the keyword text and paste the snippet content."""
         self._expanding = True
         try:
-            # Expand placeholders
-            from wenzi.scripting.sources.snippet_source import (
-                _expand_placeholders,
-            )
+            if raw:
+                expanded = content
+            else:
+                from wenzi.scripting.sources.snippet_source import (
+                    _expand_placeholders,
+                )
 
-            expanded = _expand_placeholders(content)
+                expanded = _expand_placeholders(content)
 
             # Send backspace keys to delete the keyword
             self._send_backspaces(len(keyword))

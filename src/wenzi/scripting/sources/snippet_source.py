@@ -260,12 +260,14 @@ class SnippetStore:
                         kw = entry.get("keyword", "")
                         ct = entry.get("content", "")
                         nm = entry.get("name", "") or kw or base_name
+                        raw = bool(entry.get("raw", False))
                         self._snippets.append({
                             "name": nm,
                             "keyword": kw,
                             "content": ct,
                             "category": category,
                             "file_path": file_path,
+                            "raw": raw,
                         })
 
                 # Single-snippet: keyword in frontmatter, body is content
@@ -276,6 +278,7 @@ class SnippetStore:
                         "content": body,
                         "category": category,
                         "file_path": file_path,
+                        "raw": bool(meta.get("raw", False)),
                     })
 
         logger.info(
@@ -508,16 +511,21 @@ class SnippetSource:
             else:
                 item_id = f"sn:{name}"
 
+            raw = s.get("raw", False)
+
+            def _resolve(c, r):
+                return c if r else _expand_placeholders(c)
+
             items.append(
                 ChooserItem(
                     title=title,
                     subtitle=display_content,
                     item_id=item_id,
-                    action=lambda c=content: _paste_text(
-                        _expand_placeholders(c)
+                    action=lambda c=content, r=raw: _paste_text(
+                        _resolve(c, r)
                     ),
-                    secondary_action=lambda c=content: _copy_to_clipboard(
-                        _expand_placeholders(c)
+                    secondary_action=lambda c=content, r=raw: _copy_to_clipboard(
+                        _resolve(c, r)
                     ),
                     reveal_path=file_path,
                     preview={"type": "text", "content": content},

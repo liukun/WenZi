@@ -508,6 +508,50 @@ class TestSnippetStore:
         assert len(store.snippets) == 1
         assert store.snippets[0]["category"] == "work"
 
+    def test_raw_flag_single_snippet(self):
+        def setup(d):
+            path = os.path.join(d, "tpl.md")
+            with open(path, "w") as f:
+                f.write(
+                    '---\n'
+                    'keyword: ";;tpl"\n'
+                    'raw: true\n'
+                    '---\n'
+                    'Today is {date}\n'
+                )
+
+        store, _, _ = self._make_store(setup)
+        assert len(store.snippets) == 1
+        assert store.snippets[0]["raw"] is True
+
+    def test_raw_flag_multi_snippet(self):
+        def setup(d):
+            path = os.path.join(d, "multi.md")
+            with open(path, "w") as f:
+                f.write(
+                    '---\n'
+                    'snippets:\n'
+                    '  - keyword: ";;date"\n'
+                    '    content: "{date}"\n'
+                    '  - keyword: ";;tpl"\n'
+                    '    content: "Today is {date}"\n'
+                    '    raw: true\n'
+                    '---\n'
+                )
+
+        store, _, _ = self._make_store(setup)
+        assert len(store.snippets) == 2
+        by_kw = {s["keyword"]: s for s in store.snippets}
+        assert by_kw[";;date"]["raw"] is False
+        assert by_kw[";;tpl"]["raw"] is True
+
+    def test_raw_flag_defaults_to_false(self):
+        def setup(d):
+            _write_snippet(d, "email", "@@email", "user@example.com")
+
+        store, _, _ = self._make_store(setup)
+        assert store.snippets[0]["raw"] is False
+
     def test_mtime_cache_invalidated_on_new_file(self):
         """Adding a new snippet file should trigger rescan."""
         import time
