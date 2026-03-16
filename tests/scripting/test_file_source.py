@@ -1,6 +1,6 @@
 """Tests for the file search data source."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from wenzi.scripting.sources.file_source import (
     FileSource,
@@ -29,36 +29,30 @@ class TestFileTypeLabel:
 
 class TestMdfind:
     def test_returns_paths(self):
-        mock_result = MagicMock()
-        mock_result.stdout = "/Users/test/readme.md\n/Users/test/README.txt\n"
-        with patch("subprocess.run", return_value=mock_result):
+        paths = ["/Users/test/readme.md", "/Users/test/README.txt"]
+        with patch(
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=paths,
+        ):
             result = _mdfind("readme")
             assert len(result) == 2
             assert result[0] == "/Users/test/readme.md"
 
     def test_empty_result(self):
-        mock_result = MagicMock()
-        mock_result.stdout = ""
-        with patch("subprocess.run", return_value=mock_result):
+        with patch(
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=[],
+        ):
             result = _mdfind("nonexistent")
             assert result == []
 
-    def test_timeout_returns_empty(self):
-        import subprocess
-
+    def test_max_results_passed_through(self):
         with patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired("mdfind", 3)
-        ):
-            result = _mdfind("slow")
-            assert result == []
-
-    def test_max_results_limit(self):
-        lines = "\n".join(f"/path/file{i}.txt" for i in range(100))
-        mock_result = MagicMock()
-        mock_result.stdout = lines
-        with patch("subprocess.run", return_value=mock_result):
-            result = _mdfind("file", max_results=5)
-            assert len(result) == 5
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=[],
+        ) as mock_search:
+            _mdfind("file", max_results=5)
+            mock_search.assert_called_once_with("file", 5)
 
 
 class TestFileSource:
@@ -68,10 +62,10 @@ class TestFileSource:
         assert source.search("   ") == []
 
     def test_search_returns_items(self):
-        mock_result = MagicMock()
-        mock_result.stdout = "/Users/test/readme.md\n"
-        with patch("subprocess.run", return_value=mock_result), \
-             patch("os.path.exists", return_value=True):
+        with patch(
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=["/Users/test/readme.md"],
+        ), patch("os.path.exists", return_value=True):
             source = FileSource()
             items = source.search("readme")
             assert len(items) == 1
@@ -80,14 +74,13 @@ class TestFileSource:
             assert items[0].action is not None
 
     def test_nonexistent_paths_filtered(self):
-        mock_result = MagicMock()
-        mock_result.stdout = "/gone/file.txt\n/exists/file.txt\n"
-
         def exists_side_effect(path):
             return path == "/exists/file.txt"
 
-        with patch("subprocess.run", return_value=mock_result), \
-             patch("os.path.exists", side_effect=exists_side_effect):
+        with patch(
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=["/gone/file.txt", "/exists/file.txt"],
+        ), patch("os.path.exists", side_effect=exists_side_effect):
             source = FileSource()
             items = source.search("file")
             assert len(items) == 1
@@ -95,11 +88,12 @@ class TestFileSource:
 
     def test_home_dir_shortened(self):
         import os
+
         home = os.path.expanduser("~")
-        mock_result = MagicMock()
-        mock_result.stdout = f"{home}/Documents/test.txt\n"
-        with patch("subprocess.run", return_value=mock_result), \
-             patch("os.path.exists", return_value=True):
+        with patch(
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=[f"{home}/Documents/test.txt"],
+        ), patch("os.path.exists", return_value=True):
             source = FileSource()
             items = source.search("test")
             assert "~/Documents" in items[0].subtitle
@@ -113,10 +107,10 @@ class TestFileSource:
         assert cs.search is not None
 
     def test_preview_is_path_type(self):
-        mock_result = MagicMock()
-        mock_result.stdout = "/Users/test/file.txt\n"
-        with patch("subprocess.run", return_value=mock_result), \
-             patch("os.path.exists", return_value=True):
+        with patch(
+            "wenzi.scripting.sources.file_source.mdquery_search",
+            return_value=["/Users/test/file.txt"],
+        ), patch("os.path.exists", return_value=True):
             source = FileSource()
             items = source.search("file")
             assert items[0].preview["type"] == "path"

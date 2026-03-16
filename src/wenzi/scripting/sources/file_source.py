@@ -12,30 +12,16 @@ import subprocess
 from typing import List, Optional
 
 from wenzi.scripting.sources import ChooserItem, ChooserSource
+from wenzi.scripting.sources._mdquery import mdquery_search
 
 logger = logging.getLogger(__name__)
 
 _MAX_RESULTS = 30
-_MDFIND_TIMEOUT = 3  # seconds
 
 
 def _mdfind(query: str, max_results: int = _MAX_RESULTS) -> list[str]:
-    """Run mdfind and return a list of file paths."""
-    try:
-        result = subprocess.run(
-            ["mdfind", "-name", query],
-            capture_output=True,
-            text=True,
-            timeout=_MDFIND_TIMEOUT,
-        )
-        lines = result.stdout.strip().splitlines()
-        return lines[:max_results]
-    except subprocess.TimeoutExpired:
-        logger.debug("mdfind timed out for query: %s", query)
-        return []
-    except Exception:
-        logger.debug("mdfind failed for query: %s", query, exc_info=True)
-        return []
+    """Search files by name using MDQuery (Spotlight C API)."""
+    return mdquery_search(query, max_results)
 
 
 def _open_file(path: str) -> None:

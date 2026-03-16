@@ -389,10 +389,20 @@ function updateSelection(newIndex) {
     renderItems();
 }
 
-// --- Input handling ---
+// --- Input handling (with debounce for longer queries) ---
+var _debounceTimer = null;
 searchInput.addEventListener('input', function() {
     var query = searchInput.value;
-    post('search', { query: query });
+    if (_debounceTimer) { clearTimeout(_debounceTimer); _debounceTimer = null; }
+    // Short queries (<=3 chars): search immediately (prefix activation like "f ")
+    if (query.length <= 3) {
+        post('search', { query: query });
+    } else {
+        _debounceTimer = setTimeout(function() {
+            _debounceTimer = null;
+            post('search', { query: query });
+        }, 150);
+    }
 });
 
 // --- Keyboard navigation ---
