@@ -1,4 +1,4 @@
-"""vt namespace — the public API for user scripts."""
+"""wz namespace — the public API for user scripts."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ from .timer import TimerAPI
 logger = logging.getLogger(__name__)
 
 
-class _VTNamespace:
-    """The 'vt' namespace object exposed to user scripts.
+class _WZNamespace:
+    """The 'wz' namespace object exposed to user scripts.
 
     Aggregates all API modules into a single convenient namespace.
     """
@@ -67,9 +67,9 @@ class _VTNamespace:
 
         Example::
 
-            vt.leader("cmd_r", [
+            wz.leader("cmd_r", [
                 {"key": "w", "app": "WeChat"},
-                {"key": "d", "desc": "date", "func": lambda: vt.notify("hi")},
+                {"key": "d", "desc": "date", "func": lambda: wz.notify("hi")},
                 {"key": "i", "exec": "/usr/local/bin/code ~/work"},
             ])
         """
@@ -96,13 +96,13 @@ class _VTNamespace:
 
         Can be used as a decorator::
 
-            @vt.on("transcription_done")
+            @wz.on("transcription_done")
             def on_transcribe(data):
                 print(data["asr_text"])
 
         Or called directly::
 
-            vt.on("recording_start", my_handler)
+            wz.on("recording_start", my_handler)
         """
         if callback is not None:
             self._registry.register_event(event_name, callback)
@@ -169,4 +169,4 @@ class _VTNamespace:
 
 
 # Module-level singleton — created and set by ScriptEngine
-vt: Optional[_VTNamespace] = None
+wz: Optional[_WZNamespace] = None

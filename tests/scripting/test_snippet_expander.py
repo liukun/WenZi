@@ -193,7 +193,7 @@ class TestEngineIntegration:
     def test_engine_creates_expander_when_snippets_enabled(self):
         with (
             patch("wenzi.scripting.engine.ScriptingRegistry"),
-            patch("wenzi.scripting.api._VTNamespace") as mock_vt_cls,
+            patch("wenzi.scripting.api._WZNamespace") as mock_vt_cls,
         ):
             mock_vt = MagicMock()
             mock_vt_cls.return_value = mock_vt
@@ -225,7 +225,7 @@ class TestEngineIntegration:
     def test_engine_stops_expander(self):
         with (
             patch("wenzi.scripting.engine.ScriptingRegistry"),
-            patch("wenzi.scripting.api._VTNamespace") as mock_vt_cls,
+            patch("wenzi.scripting.api._WZNamespace") as mock_vt_cls,
         ):
             mock_vt = MagicMock()
             mock_vt_cls.return_value = mock_vt

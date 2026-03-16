@@ -1,4 +1,4 @@
-"""vt.snippets — snippet management API for user scripts."""
+"""wz.snippets — snippet management API for user scripts."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class SnippetsAPI:
-    """CRUD operations on the snippet store, exposed as vt.snippets."""
+    """CRUD operations on the snippet store, exposed as wz.snippets."""
 
     def __init__(self) -> None:
         self._store = None

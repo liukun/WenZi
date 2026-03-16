@@ -12,6 +12,7 @@ A macOS menubar speech-to-text application. Hold a hotkey to record, release to 
 - **Vocabulary Retrieval**: Personal vocabulary index with embedding-based retrieval to improve correction of proper nouns and domain terms, with automatic background building
 - **Conversation History**: Injects recent confirmed outputs into the AI prompt for topic continuity and consistent entity resolution
 - **Scripting**: Python-based scripting system with leader keys, global hotkeys, alerts, timers, and pasteboard access for custom automation
+- **Launcher**: Built-in keyboard-driven search panel (Alfred/Raycast-style) for apps, files, clipboard history, bookmarks, and snippets — with custom source support via scripting API
 - **Dark Mode**: Full dark mode support across all UI panels, adapting automatically to macOS appearance
 - **Lightweight**: Runs as a menubar-only app (hidden from Dock)
 
@@ -255,13 +256,14 @@ Statistics are stored with both cumulative totals and per-day breakdowns.
 
 闻字 includes a Python-based scripting system for custom automation. Enable it in Settings → General → **Scripting**, then create scripts at `~/.config/WenZi/scripts/init.py`.
 
-The scripting API (`vt` namespace) provides:
+The scripting API (`wz` namespace) provides:
 
 - **Leader keys** — hold a trigger key (e.g., right Command) to see a floating panel of mappings, then press a second key to launch apps or run commands
 - **Global hotkeys** — bind arbitrary key combinations to Python callbacks
 - **Alerts and notifications** — show floating alerts or macOS notifications
 - **Timers** — schedule one-shot or repeating callbacks
 - **Pasteboard** — read and write the system clipboard
+- **Launcher** — keyboard-driven search panel with built-in sources (apps, files, clipboard, bookmarks, snippets) and custom source registration
 - **Execute** — run shell commands
 
 See [docs/scripting.md](docs/scripting.md) for the full API reference and examples.
@@ -333,7 +335,9 @@ src/wenzi/
 └── scripting/                   # Python-based scripting/plugin system
     ├── engine.py                # Script loading and lifecycle
     ├── registry.py              # Plugin registry
-    └── api/                     # Scripting API (hotkey, alert, timer, pasteboard, ...)
+    ├── api/                     # Scripting API (hotkey, alert, timer, pasteboard, chooser, ...)
+    ├── sources/                 # Launcher data sources (apps, files, clipboard, snippets, bookmarks)
+    └── ui/                      # Launcher UI panel (WKWebView-based)
 ```
 
 ## Documentation

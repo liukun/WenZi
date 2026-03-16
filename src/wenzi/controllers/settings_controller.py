@@ -1027,7 +1027,7 @@ class SettingsController:
             try:
                 engine = app._script_engine
                 # Find the app source and trigger rescan
-                panel = engine.vt.chooser._get_panel()
+                panel = engine.wz.chooser._get_panel()
                 for src in panel._sources.values():
                     if src.name == "apps" and hasattr(src, "search"):
                         # The search function is bound to AppSource
@@ -1061,11 +1061,11 @@ class SettingsController:
             prefixes = chooser_cfg.get("prefixes", {})
             prefix = prefixes.get(source_key, "")
             if prefix and hasattr(app, "_script_engine"):
-                app._script_engine.vt.hotkey.bind(
+                app._script_engine.wz.hotkey.bind(
                     recorded_key,
-                    lambda p=prefix: app._script_engine.vt.chooser.show_source(p),
+                    lambda p=prefix: app._script_engine.wz.chooser.show_source(p),
                 )
-                app._script_engine.vt.hotkey.start()
+                app._script_engine.wz.hotkey.start()
 
             app._settings_panel.update_source_hotkey(source_key, recorded_key)
             logger.info(
@@ -1085,7 +1085,7 @@ class SettingsController:
 
         # Unbind the old hotkey
         if old_hotkey and hasattr(app, "_script_engine"):
-            app._script_engine.vt.hotkey.unbind(old_hotkey)
+            app._script_engine.wz.hotkey.unbind(old_hotkey)
 
         app._settings_panel.update_source_hotkey(source_key, "")
         logger.info("Source hotkey cleared: %s", source_key)

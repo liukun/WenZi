@@ -18,9 +18,9 @@ def _make_controller():
 class TestFireScriptingEvent:
     def test_fire_event_calls_registry(self):
         ctrl, app = _make_controller()
-        app._script_engine.vt._registry.fire_event = MagicMock()
+        app._script_engine.wz._registry.fire_event = MagicMock()
         ctrl._fire_scripting_event("test_event", key="value")
-        app._script_engine.vt._registry.fire_event.assert_called_once_with(
+        app._script_engine.wz._registry.fire_event.assert_called_once_with(
             "test_event", key="value"
         )
 
@@ -33,7 +33,7 @@ class TestFireScriptingEvent:
 
     def test_fire_event_exception_handled(self):
         ctrl, app = _make_controller()
-        app._script_engine.vt._registry.fire_event.side_effect = RuntimeError(
+        app._script_engine.wz._registry.fire_event.side_effect = RuntimeError(
             "boom"
         )
         # Should not raise
@@ -44,7 +44,7 @@ class TestRecordingStartEvent:
     def test_recording_start_fired_on_hotkey_press(self):
         ctrl, app = _make_controller()
         fire_event = MagicMock()
-        app._script_engine.vt._registry.fire_event = fire_event
+        app._script_engine.wz._registry.fire_event = fire_event
         app._sound_manager.enabled = False
         app._recorder.start.return_value = "mic"
         app._recorder.is_recording = True
@@ -61,7 +61,7 @@ class TestRecordingStopEvent:
     def test_recording_stop_fired_on_hotkey_release(self, mock_threading):
         ctrl, app = _make_controller()
         fire_event = MagicMock()
-        app._script_engine.vt._registry.fire_event = fire_event
+        app._script_engine.wz._registry.fire_event = fire_event
         app._recording_started.wait.return_value = True
         app._recorder.is_recording = True
         app._recorder.stop.return_value = b"wav_data"
@@ -78,7 +78,7 @@ class TestTranscriptionDoneEvent:
     def test_transcription_done_fired(self):
         ctrl, app = _make_controller()
         fire_event = MagicMock()
-        app._script_engine.vt._registry.fire_event = fire_event
+        app._script_engine.wz._registry.fire_event = fire_event
         app._enhance_mode = "off"
         app._enhancer = None
         app._append_newline = False
@@ -96,7 +96,7 @@ class TestOutputTextEvent:
     def test_output_text_fired_before_type(self):
         ctrl, app = _make_controller()
         fire_event = MagicMock()
-        app._script_engine.vt._registry.fire_event = fire_event
+        app._script_engine.wz._registry.fire_event = fire_event
         app._enhance_mode = "off"
         app._enhancer = None
         app._append_newline = False

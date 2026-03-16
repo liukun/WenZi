@@ -35,7 +35,7 @@ class RecordingController:
         if engine is None:
             return
         try:
-            engine.vt._registry.fire_event(event_name, **kwargs)
+            engine.wz._registry.fire_event(event_name, **kwargs)
         except Exception:
             logger.debug("Failed to fire scripting event %s", event_name)
 

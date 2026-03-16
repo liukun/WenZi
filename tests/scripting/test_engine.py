@@ -6,10 +6,10 @@ from wenzi.scripting.engine import ScriptEngine
 
 
 class TestScriptEngine:
-    def test_init_creates_vt(self):
-        engine = ScriptEngine(script_dir="/tmp/vt_test_scripts")
-        assert engine.vt is not None
-        assert engine.vt._reload_callback is not None
+    def test_init_creates_wz(self):
+        engine = ScriptEngine(script_dir="/tmp/wz_test_scripts")
+        assert engine.wz is not None
+        assert engine.wz._reload_callback is not None
 
     @patch("wenzi.scripting.api.hotkey.HotkeyAPI.start")
     @patch("wenzi.scripting.api.hotkey.HotkeyAPI.stop")
@@ -25,7 +25,7 @@ class TestScriptEngine:
         script_dir.mkdir()
         init_py = script_dir / "init.py"
         init_py.write_text(
-            'vt.leader("cmd_r", [{"key": "w", "app": "WeChat"}])\n'
+            'wz.leader("cmd_r", [{"key": "w", "app": "WeChat"}])\n'
         )
 
         engine = ScriptEngine(script_dir=str(script_dir))
@@ -58,7 +58,7 @@ class TestScriptEngine:
         script_dir.mkdir()
         init_py = script_dir / "init.py"
         init_py.write_text(
-            'vt.leader("cmd_r", [{"key": "w", "app": "WeChat"}])\n'
+            'wz.leader("cmd_r", [{"key": "w", "app": "WeChat"}])\n'
         )
 
         engine = ScriptEngine(script_dir=str(script_dir))
@@ -67,7 +67,7 @@ class TestScriptEngine:
 
         # Modify script
         init_py.write_text(
-            'vt.leader("alt_r", [{"key": "s", "app": "Slack"}])\n'
+            'wz.leader("alt_r", [{"key": "s", "app": "Slack"}])\n'
         )
         engine.reload()
         assert "alt_r" in engine._registry.leaders
@@ -94,7 +94,7 @@ class TestScriptEngine:
         engine.start()
 
         # No sources should be registered on the chooser panel
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert len(panel._sources) == 0
 
         # Clipboard monitor should not be started
@@ -125,7 +125,7 @@ class TestScriptEngine:
         engine.start()
 
         # App source should be registered
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert len(panel._sources) > 0
 
         engine.stop()
@@ -153,7 +153,7 @@ class TestScriptEngine:
 
         # Clipboard should not be running
         assert engine._clipboard_monitor is None
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert "clipboard" not in panel._sources
 
         # Enable at runtime
@@ -189,7 +189,7 @@ class TestScriptEngine:
 
         # Clipboard should be running
         assert engine._clipboard_monitor is not None
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert "clipboard" in panel._sources
 
         # Disable at runtime
@@ -224,7 +224,7 @@ class TestScriptEngine:
         )
         engine.start()
 
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert len(panel._sources) > 0
 
         engine.disable_chooser()
@@ -257,7 +257,7 @@ class TestScriptEngine:
         )
         engine.start()
 
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         engine.disable_chooser()
         assert len(panel._sources) == 0
 
@@ -290,7 +290,7 @@ class TestScriptEngine:
         )
         engine.start()
 
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert "apps" not in panel._sources
 
         engine.enable_source("app_search")
@@ -349,7 +349,7 @@ class TestScriptEngine:
         )
         engine.start()
 
-        panel = engine.vt.chooser._get_panel()
+        panel = engine.wz.chooser._get_panel()
         assert panel._usage_tracker is None
 
         engine.set_usage_learning(True)
@@ -360,8 +360,8 @@ class TestScriptEngine:
 
         engine.stop()
 
-    def test_vt_module_singleton(self):
-        engine = ScriptEngine(script_dir="/tmp/vt_test_scripts")
+    def test_wz_module_singleton(self):
+        engine = ScriptEngine(script_dir="/tmp/wz_test_scripts")
         import wenzi.scripting.api as api_mod
 
-        assert api_mod.vt is engine.vt
+        assert api_mod.wz is engine.wz

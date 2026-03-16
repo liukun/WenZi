@@ -29,18 +29,18 @@ class ScriptEngine:
         self._snippet_store = None
         self._snippet_expander = None
 
-        # Create vt namespace and install as module singleton
-        from wenzi.scripting.api import _VTNamespace
+        # Create wz namespace and install as module singleton
+        from wenzi.scripting.api import _WZNamespace
         import wenzi.scripting.api as api_mod
 
-        self._vt = _VTNamespace(self._registry)
-        self._vt._reload_callback = self.reload
-        api_mod.vt = self._vt
+        self._wz = _WZNamespace(self._registry)
+        self._wz._reload_callback = self.reload
+        api_mod.wz = self._wz
 
     @property
-    def vt(self):
-        """The vt namespace object."""
-        return self._vt
+    def wz(self):
+        """The wz namespace object."""
+        return self._wz
 
     def start(self) -> None:
         """Load scripts, register built-in sources, and start all listeners."""
@@ -49,21 +49,21 @@ class ScriptEngine:
         self._bind_chooser_hotkey()
         self._bind_source_hotkeys()
         # Start hotkey/leader listeners after scripts register their bindings
-        self._vt.hotkey.start()
+        self._wz.hotkey.start()
         logger.info("Script engine started (script_dir=%s)", self._script_dir)
 
     def stop(self) -> None:
         """Stop all listeners and clean up."""
-        self._vt.hotkey.stop()
+        self._wz.hotkey.stop()
         if self._clipboard_monitor is not None:
             self._clipboard_monitor.stop()
             self._clipboard_monitor = None
         if self._snippet_expander is not None:
             self._snippet_expander.stop()
             self._snippet_expander = None
-        self._vt.pasteboard._set_monitor(None)
-        self._vt.snippets._set_store(None)
-        self._vt.store.flush_sync()
+        self._wz.pasteboard._set_monitor(None)
+        self._wz.snippets._set_store(None)
+        self._wz.store.flush_sync()
         self._registry.clear()
         logger.info("Script engine stopped")
 
@@ -72,13 +72,13 @@ class ScriptEngine:
         logger.info("Reloading scripts...")
         self.stop()
         # Reset APIs so they create fresh instances
-        self._vt._hotkey_api = None
-        self._vt._chooser_api = None
+        self._wz._hotkey_api = None
+        self._wz._chooser_api = None
         self._register_builtin_sources()
         self._load_scripts()
         self._bind_chooser_hotkey()
         self._bind_source_hotkeys()
-        self._vt.hotkey.start()
+        self._wz.hotkey.start()
         logger.info("Scripts reloaded")
 
     # ── Runtime chooser on/off ─────────────────────────────────────
@@ -88,7 +88,7 @@ class ScriptEngine:
         self._register_builtin_sources()
         self._bind_chooser_hotkey()
         self._bind_source_hotkeys()
-        self._vt.hotkey.start()
+        self._wz.hotkey.start()
         logger.info("Chooser enabled at runtime")
 
     def disable_chooser(self) -> None:
@@ -98,13 +98,13 @@ class ScriptEngine:
         # Unbind chooser hotkey
         hotkey_str = chooser_config.get("hotkey")
         if hotkey_str:
-            self._vt.hotkey.unbind(hotkey_str)
+            self._wz.hotkey.unbind(hotkey_str)
 
         # Unbind source hotkeys
         source_hotkeys = chooser_config.get("source_hotkeys", {})
         for hotkey_str in source_hotkeys.values():
             if hotkey_str:
-                self._vt.hotkey.unbind(hotkey_str)
+                self._wz.hotkey.unbind(hotkey_str)
 
         # Stop clipboard monitor
         if self._clipboard_monitor is not None:
@@ -118,11 +118,11 @@ class ScriptEngine:
 
         self._snippet_store = None
         self._usage_tracker = None
-        self._vt.pasteboard._set_monitor(None)
-        self._vt.snippets._set_store(None)
+        self._wz.pasteboard._set_monitor(None)
+        self._wz.snippets._set_store(None)
 
         # Clear all registered sources
-        panel = self._vt.chooser._get_panel()
+        panel = self._wz.chooser._get_panel()
         panel._sources.clear()
         panel._usage_tracker = None
 
@@ -150,10 +150,10 @@ class ScriptEngine:
                 persist_path=persist_path,
             )
             self._clipboard_monitor.start()
-            self._vt.pasteboard._set_monitor(self._clipboard_monitor)
+            self._wz.pasteboard._set_monitor(self._clipboard_monitor)
 
             cb_source = ClipboardSource(self._clipboard_monitor)
-            self._vt.chooser.register_source(
+            self._wz.chooser.register_source(
                 cb_source.as_chooser_source(
                     prefix=prefixes.get("clipboard", "cb"),
                 )
@@ -167,8 +167,8 @@ class ScriptEngine:
         if self._clipboard_monitor is not None:
             self._clipboard_monitor.stop()
             self._clipboard_monitor = None
-        self._vt.pasteboard._set_monitor(None)
-        self._vt.chooser.unregister_source("clipboard")
+        self._wz.pasteboard._set_monitor(None)
+        self._wz.chooser.unregister_source("clipboard")
         logger.info("Clipboard monitor disabled at runtime")
 
     def enable_source(self, config_key: str) -> None:
@@ -208,10 +208,10 @@ class ScriptEngine:
                 self._snippet_expander.stop()
                 self._snippet_expander = None
             self._snippet_store = None
-            self._vt.snippets._set_store(None)
-            self._vt.chooser.unregister_source(source_name)
+            self._wz.snippets._set_store(None)
+            self._wz.chooser.unregister_source(source_name)
         else:
-            self._vt.chooser.unregister_source(source_name)
+            self._wz.chooser.unregister_source(source_name)
         logger.info("Source %s disabled at runtime", config_key)
 
     def _enable_app_source(self, _prefix: str) -> None:
@@ -219,7 +219,7 @@ class ScriptEngine:
             from wenzi.scripting.sources.app_source import AppSource
 
             app_source = AppSource()
-            self._vt.chooser.register_source(app_source.as_chooser_source())
+            self._wz.chooser.register_source(app_source.as_chooser_source())
             logger.info("App source enabled at runtime")
         except Exception:
             logger.exception("Failed to enable app source")
@@ -229,7 +229,7 @@ class ScriptEngine:
             from wenzi.scripting.sources.file_source import FileSource
 
             file_source = FileSource()
-            self._vt.chooser.register_source(
+            self._wz.chooser.register_source(
                 file_source.as_chooser_source(prefix=prefix)
             )
             logger.info("File source enabled at runtime")
@@ -244,9 +244,9 @@ class ScriptEngine:
             )
 
             self._snippet_store = SnippetStore()
-            self._vt.snippets._set_store(self._snippet_store)
+            self._wz.snippets._set_store(self._snippet_store)
             snippet_source = SnippetSource(self._snippet_store)
-            self._vt.chooser.register_source(
+            self._wz.chooser.register_source(
                 snippet_source.as_chooser_source(prefix=prefix)
             )
             # Also start expander if configured
@@ -265,7 +265,7 @@ class ScriptEngine:
             from wenzi.scripting.sources.bookmark_source import BookmarkSource
 
             bookmark_source = BookmarkSource()
-            self._vt.chooser.register_source(
+            self._wz.chooser.register_source(
                 bookmark_source.as_chooser_source(prefix=prefix)
             )
             logger.info("Bookmark source enabled at runtime")
@@ -275,15 +275,15 @@ class ScriptEngine:
     def rebind_chooser_hotkey(self, old_hotkey: str, new_hotkey: str) -> None:
         """Unbind old chooser hotkey and bind the new one at runtime."""
         if old_hotkey:
-            self._vt.hotkey.unbind(old_hotkey)
+            self._wz.hotkey.unbind(old_hotkey)
         if new_hotkey:
-            self._vt.hotkey.bind(new_hotkey, lambda: self._vt.chooser.toggle())
-            self._vt.hotkey.start()
+            self._wz.hotkey.bind(new_hotkey, lambda: self._wz.chooser.toggle())
+            self._wz.hotkey.start()
         logger.info("Chooser hotkey rebound: %s -> %s", old_hotkey, new_hotkey)
 
     def set_usage_learning(self, enabled: bool) -> None:
         """Enable or disable the usage learning tracker at runtime."""
-        panel = self._vt.chooser._get_panel()
+        panel = self._wz.chooser._get_panel()
         if enabled:
             if self._usage_tracker is None:
                 try:
@@ -314,7 +314,7 @@ class ScriptEngine:
 
                 self._usage_tracker = UsageTracker()
                 # Inject tracker into the chooser panel
-                panel = self._vt.chooser._get_panel()
+                panel = self._wz.chooser._get_panel()
                 panel._usage_tracker = self._usage_tracker
                 logger.info("Usage learning tracker enabled")
             except Exception:
@@ -328,7 +328,7 @@ class ScriptEngine:
                 from wenzi.scripting.sources.app_source import AppSource
 
                 app_source = AppSource()
-                self._vt.chooser.register_source(app_source.as_chooser_source())
+                self._wz.chooser.register_source(app_source.as_chooser_source())
                 logger.info("Built-in app search source registered")
             except Exception:
                 logger.exception("Failed to register app search source")
@@ -351,10 +351,10 @@ class ScriptEngine:
                     persist_path=persist_path,
                 )
                 self._clipboard_monitor.start()
-                self._vt.pasteboard._set_monitor(self._clipboard_monitor)
+                self._wz.pasteboard._set_monitor(self._clipboard_monitor)
 
                 cb_source = ClipboardSource(self._clipboard_monitor)
-                self._vt.chooser.register_source(
+                self._wz.chooser.register_source(
                     cb_source.as_chooser_source(
                         prefix=prefixes.get("clipboard", "cb"),
                     )
@@ -369,7 +369,7 @@ class ScriptEngine:
                 from wenzi.scripting.sources.file_source import FileSource
 
                 file_source = FileSource()
-                self._vt.chooser.register_source(
+                self._wz.chooser.register_source(
                     file_source.as_chooser_source(
                         prefix=prefixes.get("files", "f"),
                     )
@@ -387,9 +387,9 @@ class ScriptEngine:
                 )
 
                 self._snippet_store = SnippetStore()
-                self._vt.snippets._set_store(self._snippet_store)
+                self._wz.snippets._set_store(self._snippet_store)
                 snippet_source = SnippetSource(self._snippet_store)
-                self._vt.chooser.register_source(
+                self._wz.chooser.register_source(
                     snippet_source.as_chooser_source(
                         prefix=prefixes.get("snippets", "sn"),
                     )
@@ -417,7 +417,7 @@ class ScriptEngine:
                 )
 
                 bookmark_source = BookmarkSource()
-                self._vt.chooser.register_source(
+                self._wz.chooser.register_source(
                     bookmark_source.as_chooser_source(
                         prefix=prefixes.get("bookmarks", "bm"),
                     )
@@ -433,7 +433,7 @@ class ScriptEngine:
             return
         hotkey_str = chooser_config.get("hotkey")
         if hotkey_str:
-            self._vt.hotkey.bind(hotkey_str, lambda: self._vt.chooser.toggle())
+            self._wz.hotkey.bind(hotkey_str, lambda: self._wz.chooser.toggle())
             logger.info("Chooser hotkey bound: %s", hotkey_str)
 
     def _bind_source_hotkeys(self) -> None:
@@ -448,9 +448,9 @@ class ScriptEngine:
                 prefix = prefixes.get(source_key, "")
                 if not prefix:
                     continue
-                self._vt.hotkey.bind(
+                self._wz.hotkey.bind(
                     hotkey_str,
-                    lambda p=prefix: self._vt.chooser.show_source(p),
+                    lambda p=prefix: self._wz.chooser.show_source(p),
                 )
                 logger.info(
                     "Source hotkey bound: %s -> %s", hotkey_str, source_key,
@@ -466,10 +466,10 @@ class ScriptEngine:
 
         logger.info("Loading script: %s", init_path)
         script_globals = {
-            "vt": self._vt,
+            "wz": self._wz,
             "__builtins__": __builtins__,
             "__file__": init_path,
-            "__name__": "__vt_script__",
+            "__name__": "__wz_script__",
         }
 
         try:

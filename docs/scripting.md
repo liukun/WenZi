@@ -17,7 +17,7 @@
 2. **Create your script** at `~/.config/WenZi/scripts/init.py`:
 
    ```python
-   vt.leader("cmd_r", [
+   wz.leader("cmd_r", [
        {"key": "w", "app": "WeChat"},
        {"key": "s", "app": "Slack"},
        {"key": "t", "app": "iTerm"},
@@ -31,16 +31,16 @@
 Leader keys let you hold a trigger key (like right Command) and then press a second key to perform an action. A floating panel shows available mappings while the trigger key is held.
 
 ```python
-vt.leader("cmd_r", [
+wz.leader("cmd_r", [
     {"key": "w", "app": "WeChat"},
     {"key": "f", "app": "Safari"},
     {"key": "g", "app": "/Users/me/Applications/Google Chrome.app"},
     {"key": "i", "exec": "/usr/local/bin/code ~/work/projects", "desc": "projects"},
     {"key": "d", "desc": "date", "func": lambda: (
-        vt.pasteboard.set(vt.date("%Y-%m-%d")),
-        vt.notify("Date copied", vt.date("%Y-%m-%d")),
+        wz.pasteboard.set(wz.date("%Y-%m-%d")),
+        wz.notify("Date copied", wz.date("%Y-%m-%d")),
     )},
-    {"key": "r", "desc": "reload", "func": lambda: vt.reload()},
+    {"key": "r", "desc": "reload", "func": lambda: wz.reload()},
 ])
 ```
 
@@ -62,8 +62,8 @@ Any modifier key can be a trigger. Available names:
 You can register multiple leaders with different trigger keys:
 
 ```python
-vt.leader("cmd_r", [...])   # Right Command for apps
-vt.leader("alt_r", [...])   # Right Alt for utilities
+wz.leader("cmd_r", [...])   # Right Command for apps
+wz.leader("alt_r", [...])   # Right Alt for utilities
 ```
 
 ### Mapping Actions
@@ -80,128 +80,252 @@ Each mapping dict requires `"key"` and one action:
 
 If `desc` is omitted, the panel displays the app name or command.
 
+## Launcher
+
+The Launcher is a keyboard-driven search panel (similar to Alfred or Raycast) that lets you quickly find and open apps, files, bookmarks, clipboard history, and code snippets. It is built into the scripting system and activated via a configurable hotkey.
+
+### Activation
+
+- **Default hotkey:** `Cmd+Space` (configurable via `scripting.chooser.hotkey` in config)
+- **Per-source hotkey:** Each source can have its own direct hotkey (see Configuration below)
+- **Scripting API:** `wz.chooser.show()` / `wz.chooser.toggle()`
+
+### Search Modes
+
+The Launcher supports two search modes:
+
+- **Global search:** Type normally to search across all non-prefix sources (e.g. apps). Results are ranked by priority and fuzzy match score.
+- **Prefix search:** Type a prefix followed by a space to activate a specific source. For example, `f readme` searches files for "readme".
+
+### Built-in Data Sources
+
+| Source | Prefix | Description |
+|--------|--------|-------------|
+| **Apps** | *(none)* | Search installed applications. Always active in global search. |
+| **Files** | `f` | Search files by name via macOS Spotlight. |
+| **Clipboard** | `cb` | Browse clipboard history (text and images). |
+| **Snippets** | `sn` | Search text snippets with keyword expansion. |
+| **Bookmarks** | `bm` | Search browser bookmarks (Chrome, Safari, Arc, Edge, Brave, Firefox). |
+
+Prefixes are configurable via `scripting.chooser.prefixes` in config.
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `↑` `↓` | Navigate results |
+| `Enter` | Open / execute selected item |
+| `⌘+Enter` | Reveal in Finder (for file-based items) |
+| `⌘1` – `⌘9` | Quick select by position |
+| `Esc` | Close the Launcher |
+| `Alt` / `Ctrl` / `Shift` (hold) | Show alternative action for selected item |
+
+### Custom Sources
+
+You can register your own data sources via the `@wz.chooser.source` decorator:
+
+```python
+@wz.chooser.source("todos", prefix="td", priority=5)
+def search_todos(query):
+    return [
+        {"title": "Fix bug #123", "subtitle": "backend", "action": lambda: ...},
+        {"title": "Write docs", "subtitle": "frontend", "action": lambda: ...},
+    ]
+```
+
+### Usage Learning
+
+When enabled (default), the Launcher tracks which items you select for each query and boosts frequently used items in future results. Data is stored locally at `~/.config/WenZi/chooser_usage.json`.
+
 ## API Reference
 
-### `vt.leader(trigger_key, mappings)`
+### `wz.leader(trigger_key, mappings)`
 
 Register a leader-key configuration.
 
 ```python
-vt.leader("cmd_r", [
+wz.leader("cmd_r", [
     {"key": "w", "app": "WeChat"},
 ])
 ```
 
-### `vt.app.launch(name)`
+### `wz.app.launch(name)`
 
 Launch or focus an application. Accepts app name or full path.
 
 ```python
-vt.app.launch("Safari")
-vt.app.launch("/Applications/Visual Studio Code.app")
+wz.app.launch("Safari")
+wz.app.launch("/Applications/Visual Studio Code.app")
 ```
 
-### `vt.app.frontmost()`
+### `wz.app.frontmost()`
 
 Return the localized name of the frontmost application.
 
 ```python
-name = vt.app.frontmost()  # e.g. "Finder"
+name = wz.app.frontmost()  # e.g. "Finder"
 ```
 
-### `vt.alert(text, duration=2.0)`
+### `wz.alert(text, duration=2.0)`
 
 Show a brief floating message on screen. Auto-dismisses after `duration` seconds.
 
 ```python
-vt.alert("Hello!", duration=3.0)
+wz.alert("Hello!", duration=3.0)
 ```
 
-### `vt.notify(title, message="")`
+### `wz.notify(title, message="")`
 
 Send a macOS notification.
 
 ```python
-vt.notify("Build complete", "All tests passed")
+wz.notify("Build complete", "All tests passed")
 ```
 
-### `vt.pasteboard.get()`
+### `wz.pasteboard.get()`
 
 Return the current clipboard text, or `None`.
 
 ```python
-text = vt.pasteboard.get()
+text = wz.pasteboard.get()
 ```
 
-### `vt.pasteboard.set(text)`
+### `wz.pasteboard.set(text)`
 
 Set the clipboard text.
 
 ```python
-vt.pasteboard.set("Hello, world!")
+wz.pasteboard.set("Hello, world!")
 ```
 
-### `vt.keystroke(key, modifiers=None)`
+### `wz.keystroke(key, modifiers=None)`
 
 Synthesize a keystroke via Quartz CGEvent.
 
 ```python
-vt.keystroke("c", modifiers=["cmd"])       # Cmd+C
-vt.keystroke("v", modifiers=["cmd"])       # Cmd+V
-vt.keystroke("space")                       # Space
-vt.keystroke("a", modifiers=["cmd", "shift"])  # Cmd+Shift+A
+wz.keystroke("c", modifiers=["cmd"])       # Cmd+C
+wz.keystroke("v", modifiers=["cmd"])       # Cmd+V
+wz.keystroke("space")                       # Space
+wz.keystroke("a", modifiers=["cmd", "shift"])  # Cmd+Shift+A
 ```
 
-### `vt.execute(command, background=True)`
+### `wz.execute(command, background=True)`
 
 Execute a shell command.
 
 ```python
-vt.execute("open ~/Downloads")             # Background (returns None)
-output = vt.execute("date", background=False)  # Foreground (returns stdout)
+wz.execute("open ~/Downloads")             # Background (returns None)
+output = wz.execute("date", background=False)  # Foreground (returns stdout)
 ```
 
-### `vt.timer.after(seconds, callback)`
+### `wz.timer.after(seconds, callback)`
 
 Execute a function once after a delay. Returns a `timer_id`.
 
 ```python
-tid = vt.timer.after(5.0, lambda: vt.alert("5 seconds passed"))
+tid = wz.timer.after(5.0, lambda: wz.alert("5 seconds passed"))
 ```
 
-### `vt.timer.every(seconds, callback)`
+### `wz.timer.every(seconds, callback)`
 
 Execute a function repeatedly at an interval. Returns a `timer_id`.
 
 ```python
-tid = vt.timer.every(60.0, lambda: vt.notify("Reminder", "Take a break"))
+tid = wz.timer.every(60.0, lambda: wz.notify("Reminder", "Take a break"))
 ```
 
-### `vt.timer.cancel(timer_id)`
+### `wz.timer.cancel(timer_id)`
 
 Cancel a timer.
 
 ```python
-tid = vt.timer.every(10.0, my_func)
-vt.timer.cancel(tid)
+tid = wz.timer.every(10.0, my_func)
+wz.timer.cancel(tid)
 ```
 
-### `vt.date(format="%Y-%m-%d")`
+### `wz.date(format="%Y-%m-%d")`
 
 Return the current date/time as a formatted string.
 
 ```python
-vt.date()              # "2025-03-15"
-vt.date("%H:%M:%S")   # "14:30:00"
-vt.date("%Y-%m-%d %H:%M")  # "2025-03-15 14:30"
+wz.date()              # "2025-03-15"
+wz.date("%H:%M:%S")   # "14:30:00"
+wz.date("%Y-%m-%d %H:%M")  # "2025-03-15 14:30"
 ```
 
-### `vt.reload()`
+### `wz.reload()`
 
 Reload all scripts. Stops current listeners, re-reads `init.py`, and restarts.
 
 ```python
-vt.reload()
+wz.reload()
+```
+
+### `wz.chooser.show(initial_query=None)`
+
+Show the Launcher panel. Optionally pre-fill the search input.
+
+```python
+wz.chooser.show()
+wz.chooser.show(initial_query="f readme")
+```
+
+### `wz.chooser.close()`
+
+Close the Launcher panel.
+
+### `wz.chooser.toggle()`
+
+Toggle the Launcher panel visibility.
+
+### `wz.chooser.show_source(prefix)`
+
+Show the Launcher with a specific source activated.
+
+```python
+wz.chooser.show_source("cb")  # Opens with clipboard history
+```
+
+### `wz.chooser.register_source(source)`
+
+Register a `ChooserSource` object as a data source.
+
+### `wz.chooser.unregister_source(name)`
+
+Remove a registered data source by name.
+
+### `wz.chooser.pick(items, callback, placeholder="Choose...")`
+
+Use the Launcher as a generic selection UI. Shows a fixed list of items; calls `callback(item_dict)` when the user picks one, or `callback(None)` if dismissed.
+
+```python
+wz.chooser.pick(
+    [{"title": "Option A"}, {"title": "Option B"}],
+    callback=lambda item: print(item),
+    placeholder="Pick one...",
+)
+```
+
+### `@wz.chooser.on(event)`
+
+Decorator to register a Launcher event handler.
+
+Supported events: `open`, `close`, `select`, `delete`.
+
+```python
+@wz.chooser.on("select")
+def on_select(item_info):
+    print(f"Selected: {item_info['title']}")
+```
+
+### `@wz.chooser.source(name, prefix=None, priority=0)`
+
+Decorator to register a search function as a Launcher data source.
+
+```python
+@wz.chooser.source("notes", prefix="n", priority=5)
+def search_notes(query):
+    return [{"title": "...", "action": lambda: ...}]
 ```
 
 ## Examples
@@ -209,7 +333,7 @@ vt.reload()
 ### App Launcher
 
 ```python
-vt.leader("cmd_r", [
+wz.leader("cmd_r", [
     {"key": "1", "app": "1Password"},
     {"key": "b", "app": "Obsidian"},
     {"key": "c", "app": "Calendar"},
@@ -227,16 +351,16 @@ vt.leader("cmd_r", [
 ### Utility Keys
 
 ```python
-vt.leader("alt_r", [
+wz.leader("alt_r", [
     {"key": "d", "desc": "date → clipboard", "func": lambda: (
-        vt.pasteboard.set(vt.date("%Y-%m-%d")),
-        vt.notify("Date copied", vt.date("%Y-%m-%d")),
+        wz.pasteboard.set(wz.date("%Y-%m-%d")),
+        wz.notify("Date copied", wz.date("%Y-%m-%d")),
     )},
     {"key": "t", "desc": "timestamp", "func": lambda: (
-        vt.pasteboard.set(vt.date("%Y-%m-%d %H:%M:%S")),
-        vt.alert("Timestamp copied"),
+        wz.pasteboard.set(wz.date("%Y-%m-%d %H:%M:%S")),
+        wz.alert("Timestamp copied"),
     )},
-    {"key": "r", "desc": "reload scripts", "func": lambda: vt.reload()},
+    {"key": "r", "desc": "reload scripts", "func": lambda: wz.reload()},
 ])
 ```
 
@@ -244,22 +368,68 @@ vt.leader("alt_r", [
 
 ```python
 # Remind to take a break every 30 minutes
-vt.timer.every(1800, lambda: vt.notify("Break", "Stand up and stretch!"))
+wz.timer.every(1800, lambda: wz.notify("Break", "Stand up and stretch!"))
 ```
 
 ### Quick Actions with Hotkeys
 
 ```python
 # Ctrl+Cmd+N to open a new note
-vt.hotkey.bind("ctrl+cmd+n", lambda: vt.execute("open -a Notes"))
+wz.hotkey.bind("ctrl+cmd+n", lambda: wz.execute("open -a Notes"))
 ```
+
+## Launcher Configuration
+
+The Launcher is configured under `scripting.chooser` in `config.json`:
+
+```json
+{
+  "scripting": {
+    "chooser": {
+      "enabled": true,
+      "hotkey": "cmd+space",
+      "app_search": true,
+      "file_search": true,
+      "clipboard_history": false,
+      "snippets": false,
+      "bookmarks": true,
+      "usage_learning": true,
+      "prefixes": {
+        "clipboard": "cb",
+        "files": "f",
+        "snippets": "sn",
+        "bookmarks": "bm"
+      },
+      "source_hotkeys": {
+        "clipboard": "",
+        "files": "",
+        "snippets": "",
+        "bookmarks": ""
+      }
+    }
+  }
+}
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | `false` | Master switch for the Launcher |
+| `hotkey` | `"cmd+space"` | Global hotkey to toggle the Launcher |
+| `app_search` | `true` | Enable application search |
+| `file_search` | `true` | Enable Spotlight file search |
+| `clipboard_history` | `false` | Enable clipboard history tracking |
+| `snippets` | `false` | Enable snippet search and expansion |
+| `bookmarks` | `true` | Enable browser bookmark search |
+| `usage_learning` | `true` | Track selection frequency for smarter ranking |
+| `prefixes` | *(see above)* | Prefix strings to activate each source |
+| `source_hotkeys` | *(empty)* | Direct hotkeys to open Launcher with a source pre-selected |
 
 ## Script Environment
 
 - Scripts run as standard Python with full access to `import`
-- The `vt` object is available as a global variable — no import needed
+- The `wz` object is available as a global variable — no import needed
 - Errors in scripts are caught and displayed as alerts
-- Scripts are loaded once at startup; use `vt.reload()` to re-read changes
+- Scripts are loaded once at startup; use `wz.reload()` to re-read changes
 - Script path: `~/.config/WenZi/scripts/init.py`
 - Custom script directory can be set via `"scripting": {"script_dir": "/path/to/scripts"}` in config
 

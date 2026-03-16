@@ -1,4 +1,4 @@
-"""vt.chooser — Chooser panel API for user scripts."""
+"""wz.chooser — Chooser panel API for user scripts."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _dict_to_chooser_item(item: dict) -> ChooserItem:
 
 
 class ChooserAPI:
-    """API for the Chooser panel, exposed as vt.chooser."""
+    """API for the Chooser panel, exposed as wz.chooser."""
 
     def __init__(self) -> None:
         self._panel = ChooserPanel()
@@ -225,7 +225,7 @@ class ChooserAPI:
 
         Usage::
 
-            @vt.chooser.on("select")
+            @wz.chooser.on("select")
             def on_select(item):
                 print(f"Selected: {item['title']}")
         """
@@ -259,7 +259,7 @@ class ChooserAPI:
         The decorated function receives a query string and returns a list of
         item dicts.  All :class:`ChooserItem` fields are supported::
 
-            @vt.chooser.source("todos", prefix="td", priority=5)
+            @wz.chooser.source("todos", prefix="td", priority=5)
             def search_todos(query):
                 return [{
                     "title": "Fix bug #123",

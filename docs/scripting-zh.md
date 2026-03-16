@@ -17,7 +17,7 @@
 2. **创建脚本文件** `~/.config/WenZi/scripts/init.py`：
 
    ```python
-   vt.leader("cmd_r", [
+   wz.leader("cmd_r", [
        {"key": "w", "app": "WeChat"},
        {"key": "s", "app": "Slack"},
        {"key": "t", "app": "iTerm"},
@@ -31,16 +31,16 @@
 Leader 键的使用方式：按住一个触发键（如右 Command），屏幕上会浮现可用映射列表，然后按第二个键执行对应操作。松开触发键后面板自动消失。
 
 ```python
-vt.leader("cmd_r", [
+wz.leader("cmd_r", [
     {"key": "w", "app": "WeChat"},
     {"key": "f", "app": "Safari"},
     {"key": "g", "app": "/Users/me/Applications/Google Chrome.app"},
     {"key": "i", "exec": "/usr/local/bin/code ~/work/projects", "desc": "projects"},
     {"key": "d", "desc": "日期", "func": lambda: (
-        vt.pasteboard.set(vt.date("%Y-%m-%d")),
-        vt.notify("日期已复制", vt.date("%Y-%m-%d")),
+        wz.pasteboard.set(wz.date("%Y-%m-%d")),
+        wz.notify("日期已复制", wz.date("%Y-%m-%d")),
     )},
-    {"key": "r", "desc": "重载脚本", "func": lambda: vt.reload()},
+    {"key": "r", "desc": "重载脚本", "func": lambda: wz.reload()},
 ])
 ```
 
@@ -62,8 +62,8 @@ vt.leader("cmd_r", [
 可以用不同的触发键注册多组 Leader：
 
 ```python
-vt.leader("cmd_r", [...])   # 右 Command 启动应用
-vt.leader("alt_r", [...])   # 右 Alt 执行工具操作
+wz.leader("cmd_r", [...])   # 右 Command 启动应用
+wz.leader("alt_r", [...])   # 右 Alt 执行工具操作
 ```
 
 ### 映射动作
@@ -80,128 +80,252 @@ vt.leader("alt_r", [...])   # 右 Alt 执行工具操作
 
 如果省略 `desc`，面板会显示应用名称或命令。
 
+## 启动器
+
+启动器是一个键盘驱动的搜索面板（类似 Alfred 或 Raycast），可以快速查找并打开应用、文件、书签、剪贴板历史和代码片段。它内置于脚本系统中，通过可配置的快捷键激活。
+
+### 激活方式
+
+- **默认快捷键：** `Cmd+Space`（可通过配置 `scripting.chooser.hotkey` 修改）
+- **数据源专用快捷键：** 每个数据源可以绑定独立的快捷键（见下方配置）
+- **脚本 API：** `wz.chooser.show()` / `wz.chooser.toggle()`
+
+### 搜索模式
+
+启动器支持两种搜索模式：
+
+- **全局搜索：** 直接输入关键词，搜索所有无前缀数据源（如应用）。结果按优先级和模糊匹配得分排序。
+- **前缀搜索：** 输入前缀加空格激活特定数据源。例如 `f readme` 搜索文件名包含 "readme" 的文件。
+
+### 内置数据源
+
+| 数据源 | 前缀 | 说明 |
+|--------|------|------|
+| **应用** | *（无）* | 搜索已安装的应用。全局搜索时始终参与。 |
+| **文件** | `f` | 通过 macOS Spotlight 按文件名搜索。 |
+| **剪贴板** | `cb` | 浏览剪贴板历史（文本和图片）。 |
+| **代码片段** | `sn` | 搜索文本片段，支持关键词自动展开。 |
+| **书签** | `bm` | 搜索浏览器书签（Chrome、Safari、Arc、Edge、Brave、Firefox）。 |
+
+前缀可通过配置 `scripting.chooser.prefixes` 修改。
+
+### 键盘快捷键
+
+| 快捷键 | 操作 |
+|--------|------|
+| `↑` `↓` | 上下导航 |
+| `Enter` | 打开/执行选中项 |
+| `⌘+Enter` | 在 Finder 中显示（适用于文件类项目） |
+| `⌘1` – `⌘9` | 按位置快速选择 |
+| `Esc` | 关闭启动器 |
+| `Alt` / `Ctrl` / `Shift`（按住） | 显示选中项的替代操作 |
+
+### 自定义数据源
+
+可以通过 `@wz.chooser.source` 装饰器注册自定义数据源：
+
+```python
+@wz.chooser.source("todos", prefix="td", priority=5)
+def search_todos(query):
+    return [
+        {"title": "修复 bug #123", "subtitle": "后端", "action": lambda: ...},
+        {"title": "写文档", "subtitle": "前端", "action": lambda: ...},
+    ]
+```
+
+### 使用学习
+
+启用后（默认开启），启动器会跟踪你对每个查询选择了哪些项目，并在后续搜索中提升常用项目的排名。数据存储在 `~/.config/WenZi/chooser_usage.json`。
+
 ## API 参考
 
-### `vt.leader(trigger_key, mappings)`
+### `wz.leader(trigger_key, mappings)`
 
 注册一组 Leader 键配置。
 
 ```python
-vt.leader("cmd_r", [
+wz.leader("cmd_r", [
     {"key": "w", "app": "WeChat"},
 ])
 ```
 
-### `vt.app.launch(name)`
+### `wz.app.launch(name)`
 
 启动或聚焦应用。支持应用名称或完整路径。
 
 ```python
-vt.app.launch("Safari")
-vt.app.launch("/Applications/Visual Studio Code.app")
+wz.app.launch("Safari")
+wz.app.launch("/Applications/Visual Studio Code.app")
 ```
 
-### `vt.app.frontmost()`
+### `wz.app.frontmost()`
 
 返回当前前台应用的名称。
 
 ```python
-name = vt.app.frontmost()  # 例如 "Finder"
+name = wz.app.frontmost()  # 例如 "Finder"
 ```
 
-### `vt.alert(text, duration=2.0)`
+### `wz.alert(text, duration=2.0)`
 
 在屏幕上显示一个浮动提示，`duration` 秒后自动消失。
 
 ```python
-vt.alert("你好！", duration=3.0)
+wz.alert("你好！", duration=3.0)
 ```
 
-### `vt.notify(title, message="")`
+### `wz.notify(title, message="")`
 
 发送 macOS 系统通知。
 
 ```python
-vt.notify("构建完成", "所有测试已通过")
+wz.notify("构建完成", "所有测试已通过")
 ```
 
-### `vt.pasteboard.get()`
+### `wz.pasteboard.get()`
 
 获取当前剪贴板文本，没有内容则返回 `None`。
 
 ```python
-text = vt.pasteboard.get()
+text = wz.pasteboard.get()
 ```
 
-### `vt.pasteboard.set(text)`
+### `wz.pasteboard.set(text)`
 
 设置剪贴板文本。
 
 ```python
-vt.pasteboard.set("Hello, world!")
+wz.pasteboard.set("Hello, world!")
 ```
 
-### `vt.keystroke(key, modifiers=None)`
+### `wz.keystroke(key, modifiers=None)`
 
 通过 Quartz CGEvent 模拟按键。
 
 ```python
-vt.keystroke("c", modifiers=["cmd"])       # Cmd+C
-vt.keystroke("v", modifiers=["cmd"])       # Cmd+V
-vt.keystroke("space")                       # 空格
-vt.keystroke("a", modifiers=["cmd", "shift"])  # Cmd+Shift+A
+wz.keystroke("c", modifiers=["cmd"])       # Cmd+C
+wz.keystroke("v", modifiers=["cmd"])       # Cmd+V
+wz.keystroke("space")                       # 空格
+wz.keystroke("a", modifiers=["cmd", "shift"])  # Cmd+Shift+A
 ```
 
-### `vt.execute(command, background=True)`
+### `wz.execute(command, background=True)`
 
 执行 Shell 命令。
 
 ```python
-vt.execute("open ~/Downloads")             # 后台执行（返回 None）
-output = vt.execute("date", background=False)  # 前台执行（返回 stdout）
+wz.execute("open ~/Downloads")             # 后台执行（返回 None）
+output = wz.execute("date", background=False)  # 前台执行（返回 stdout）
 ```
 
-### `vt.timer.after(seconds, callback)`
+### `wz.timer.after(seconds, callback)`
 
 延迟执行一次。返回 `timer_id`。
 
 ```python
-tid = vt.timer.after(5.0, lambda: vt.alert("5 秒到了"))
+tid = wz.timer.after(5.0, lambda: wz.alert("5 秒到了"))
 ```
 
-### `vt.timer.every(seconds, callback)`
+### `wz.timer.every(seconds, callback)`
 
 按间隔重复执行。返回 `timer_id`。
 
 ```python
-tid = vt.timer.every(60.0, lambda: vt.notify("提醒", "该休息了"))
+tid = wz.timer.every(60.0, lambda: wz.notify("提醒", "该休息了"))
 ```
 
-### `vt.timer.cancel(timer_id)`
+### `wz.timer.cancel(timer_id)`
 
 取消定时器。
 
 ```python
-tid = vt.timer.every(10.0, my_func)
-vt.timer.cancel(tid)
+tid = wz.timer.every(10.0, my_func)
+wz.timer.cancel(tid)
 ```
 
-### `vt.date(format="%Y-%m-%d")`
+### `wz.date(format="%Y-%m-%d")`
 
 返回格式化的当前日期/时间字符串。
 
 ```python
-vt.date()              # "2025-03-15"
-vt.date("%H:%M:%S")   # "14:30:00"
-vt.date("%Y-%m-%d %H:%M")  # "2025-03-15 14:30"
+wz.date()              # "2025-03-15"
+wz.date("%H:%M:%S")   # "14:30:00"
+wz.date("%Y-%m-%d %H:%M")  # "2025-03-15 14:30"
 ```
 
-### `vt.reload()`
+### `wz.reload()`
 
 重新加载所有脚本。停止当前监听器，重新读取 `init.py`，然后重启。
 
 ```python
-vt.reload()
+wz.reload()
+```
+
+### `wz.chooser.show(initial_query=None)`
+
+显示启动器面板。可选预填搜索输入。
+
+```python
+wz.chooser.show()
+wz.chooser.show(initial_query="f readme")
+```
+
+### `wz.chooser.close()`
+
+关闭启动器面板。
+
+### `wz.chooser.toggle()`
+
+切换启动器面板的显示/隐藏。
+
+### `wz.chooser.show_source(prefix)`
+
+以指定数据源激活状态显示启动器。
+
+```python
+wz.chooser.show_source("cb")  # 打开并显示剪贴板历史
+```
+
+### `wz.chooser.register_source(source)`
+
+注册一个 `ChooserSource` 对象作为数据源。
+
+### `wz.chooser.unregister_source(name)`
+
+按名称移除已注册的数据源。
+
+### `wz.chooser.pick(items, callback, placeholder="Choose...")`
+
+将启动器用作通用选择 UI。显示一组固定选项；用户选择后调用 `callback(item_dict)`，如果关闭则调用 `callback(None)`。
+
+```python
+wz.chooser.pick(
+    [{"title": "选项 A"}, {"title": "选项 B"}],
+    callback=lambda item: print(item),
+    placeholder="请选择...",
+)
+```
+
+### `@wz.chooser.on(event)`
+
+装饰器，注册启动器事件处理函数。
+
+支持的事件：`open`、`close`、`select`、`delete`。
+
+```python
+@wz.chooser.on("select")
+def on_select(item_info):
+    print(f"选中了: {item_info['title']}")
+```
+
+### `@wz.chooser.source(name, prefix=None, priority=0)`
+
+装饰器，将搜索函数注册为启动器数据源。
+
+```python
+@wz.chooser.source("notes", prefix="n", priority=5)
+def search_notes(query):
+    return [{"title": "...", "action": lambda: ...}]
 ```
 
 ## 使用示例
@@ -209,7 +333,7 @@ vt.reload()
 ### 应用启动器
 
 ```python
-vt.leader("cmd_r", [
+wz.leader("cmd_r", [
     {"key": "1", "app": "1Password"},
     {"key": "b", "app": "Obsidian"},
     {"key": "c", "app": "Calendar"},
@@ -227,16 +351,16 @@ vt.leader("cmd_r", [
 ### 工具快捷键
 
 ```python
-vt.leader("alt_r", [
+wz.leader("alt_r", [
     {"key": "d", "desc": "日期 → 剪贴板", "func": lambda: (
-        vt.pasteboard.set(vt.date("%Y-%m-%d")),
-        vt.notify("日期已复制", vt.date("%Y-%m-%d")),
+        wz.pasteboard.set(wz.date("%Y-%m-%d")),
+        wz.notify("日期已复制", wz.date("%Y-%m-%d")),
     )},
     {"key": "t", "desc": "时间戳", "func": lambda: (
-        vt.pasteboard.set(vt.date("%Y-%m-%d %H:%M:%S")),
-        vt.alert("时间戳已复制"),
+        wz.pasteboard.set(wz.date("%Y-%m-%d %H:%M:%S")),
+        wz.alert("时间戳已复制"),
     )},
-    {"key": "r", "desc": "重载脚本", "func": lambda: vt.reload()},
+    {"key": "r", "desc": "重载脚本", "func": lambda: wz.reload()},
 ])
 ```
 
@@ -244,22 +368,68 @@ vt.leader("alt_r", [
 
 ```python
 # 每 30 分钟提醒休息
-vt.timer.every(1800, lambda: vt.notify("休息", "站起来活动一下！"))
+wz.timer.every(1800, lambda: wz.notify("休息", "站起来活动一下！"))
 ```
 
 ### 全局快捷键
 
 ```python
 # Ctrl+Cmd+N 打开备忘录
-vt.hotkey.bind("ctrl+cmd+n", lambda: vt.execute("open -a Notes"))
+wz.hotkey.bind("ctrl+cmd+n", lambda: wz.execute("open -a Notes"))
 ```
+
+## 启动器配置
+
+启动器的配置位于 `config.json` 的 `scripting.chooser` 下：
+
+```json
+{
+  "scripting": {
+    "chooser": {
+      "enabled": true,
+      "hotkey": "cmd+space",
+      "app_search": true,
+      "file_search": true,
+      "clipboard_history": false,
+      "snippets": false,
+      "bookmarks": true,
+      "usage_learning": true,
+      "prefixes": {
+        "clipboard": "cb",
+        "files": "f",
+        "snippets": "sn",
+        "bookmarks": "bm"
+      },
+      "source_hotkeys": {
+        "clipboard": "",
+        "files": "",
+        "snippets": "",
+        "bookmarks": ""
+      }
+    }
+  }
+}
+```
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `enabled` | `false` | 启动器总开关 |
+| `hotkey` | `"cmd+space"` | 切换启动器的全局快捷键 |
+| `app_search` | `true` | 启用应用搜索 |
+| `file_search` | `true` | 启用 Spotlight 文件搜索 |
+| `clipboard_history` | `false` | 启用剪贴板历史跟踪 |
+| `snippets` | `false` | 启用代码片段搜索和自动展开 |
+| `bookmarks` | `true` | 启用浏览器书签搜索 |
+| `usage_learning` | `true` | 跟踪选择频率以优化排序 |
+| `prefixes` | *（见上方）* | 各数据源的前缀字符串 |
+| `source_hotkeys` | *（空）* | 直接打开启动器并预选数据源的快捷键 |
 
 ## 脚本运行环境
 
 - 脚本作为标准 Python 代码运行，可以使用 `import` 导入任何模块
-- `vt` 对象作为全局变量直接可用，无需导入
+- `wz` 对象作为全局变量直接可用，无需导入
 - 脚本中的错误会被捕获并以浮窗提示显示
-- 脚本在启动时加载一次，修改后需调用 `vt.reload()` 重新加载
+- 脚本在启动时加载一次，修改后需调用 `wz.reload()` 重新加载
 - 脚本路径：`~/.config/WenZi/scripts/init.py`
 - 可通过 `"scripting": {"script_dir": "/path/to/scripts"}` 自定义脚本目录
 

@@ -14,7 +14,8 @@ A progressive guide from first launch to advanced usage. Follow the levels in or
 - [Level 8: Custom Enhancement Modes](#level-8-custom-enhancement-modes) — Create your own modes and chain pipelines
 - [Level 9: Multi-Provider Setup](#level-9-multi-provider-setup) — Configure multiple ASR and LLM providers
 - [Level 10: Vocabulary & Conversation History](#level-10-vocabulary--conversation-history) — Teach 闻字 your personal terms and keep topic context
-- [Level 11: Fine-Tuning & Troubleshooting](#level-11-fine-tuning--troubleshooting) — Advanced config, logging, and common issues
+- [Level 11: Launcher](#level-11-launcher) — Use the built-in Launcher for quick access to apps, files, and more
+- [Level 12: Fine-Tuning & Troubleshooting](#level-12-fine-tuning--troubleshooting) — Advanced config, logging, and common issues
 
 ---
 
@@ -366,7 +367,7 @@ Edit `~/.config/WenZi/config.json`:
 }
 ```
 
-The hotkey format is `modifier+modifier+key`. See [Level 11](#hotkey-configuration) for format details and examples.
+The hotkey format is `modifier+modifier+key`. See [Level 12](#hotkey-configuration) for format details and examples.
 
 ---
 
@@ -520,7 +521,65 @@ See [Vocabulary Embedding Retrieval](vocabulary-embedding-retrieval.md) and [Con
 
 ---
 
-## Level 11: Fine-Tuning & Troubleshooting
+## Level 11: Launcher
+
+**Goal:** Use the built-in Launcher for quick access to apps, files, clipboard, bookmarks, and snippets.
+
+The Launcher is a keyboard-driven search panel built into 闻字's scripting system. It works like Alfred or Raycast — press a hotkey, type to search, and press Enter to act.
+
+### Enable the Launcher
+
+1. Enable scripting: **Settings...** → General tab → **Scripting** toggle
+2. Edit `~/.config/WenZi/config.json` and set:
+
+```json
+{
+  "scripting": {
+    "chooser": {
+      "enabled": true,
+      "hotkey": "cmd+space"
+    }
+  }
+}
+```
+
+3. Restart 闻字.
+
+### Basic Usage
+
+1. Press `Cmd+Space` (or your configured hotkey) to open the Launcher.
+2. Start typing to search apps — results appear instantly.
+3. Press `Enter` to open the selected app, or `⌘+Enter` to reveal it in Finder.
+4. Press `Esc` to close.
+
+### Prefix Search
+
+Use a prefix followed by a space to search a specific source:
+
+| Type this | To search |
+|-----------|-----------|
+| `f readme` | Files named "readme" |
+| `cb hello` | Clipboard entries containing "hello" |
+| `bm github` | Bookmarks matching "github" |
+| `sn email` | Snippets matching "email" |
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `↑` `↓` | Navigate results |
+| `Enter` | Open / execute |
+| `⌘+Enter` | Reveal in Finder |
+| `⌘1` – `⌘9` | Quick select by position |
+| `Esc` | Close |
+
+### Extending with Scripts
+
+You can add custom data sources to the Launcher via scripts. See [Scripting Documentation](scripting.md) for the `wz.chooser.source` API.
+
+---
+
+## Level 12: Fine-Tuning & Troubleshooting
 
 **Goal:** Optimize your setup and solve common problems.
 
@@ -543,7 +602,7 @@ In the General tab, you can set a **custom config directory** to store 闻字 co
 
 #### Scripting Toggle
 
-The General tab includes a **Scripting** toggle to enable or disable the scripting/plugin system. When enabled, 闻字 loads and executes Lua scripts from the configured script directory. See the [Scripting Documentation](scripting.md) for details on writing plugins.
+The General tab includes a **Scripting** toggle to enable or disable the scripting/plugin system. When enabled, 闻字 loads and executes Python scripts from the configured script directory. See the [Scripting Documentation](scripting.md) for details on writing plugins.
 
 ### Hotkey Configuration
 
@@ -649,6 +708,7 @@ Menubar → **Usage Stats** opens an interactive statistics dashboard with:
 | `fn` + `Space` | During recording | Cancel recording (discard audio, return to idle) |
 | `fn` + `Z` | During recording | Cancel recording and show last preview history |
 | `Ctrl+Cmd+V` | Global | Clipboard enhancement |
+| `Cmd+Space` | Global | Open/close Launcher (if enabled) |
 | `Enter` | Preview panel | Confirm and type text |
 | `⌘+Enter` | Preview panel | Copy to clipboard |
 | `Esc` | Preview panel / Streaming overlay | Cancel |
@@ -668,7 +728,7 @@ You now know everything 闻字 offers. Here are some ideas to get the most out o
 - **Build chain modes** — proofread → translate, or summarize → format
 - **Accumulate vocabulary** — the more you correct, the smarter it gets
 - **Try different models** — compare Groq's speed vs local Ollama's privacy vs OpenAI's accuracy
-- **Write scripts** — extend 闻字 with Lua plugins for custom hotkey actions (see [Scripting Documentation](scripting.md))
+- **Write scripts** — extend 闻字 with Python scripts for custom hotkey actions (see [Scripting Documentation](scripting.md))
 - **Browse [Enhancement Mode Examples](enhance-mode-examples.md)** for inspiration
 
 For technical details on any feature, see the [documentation index](../README.md#documentation).
