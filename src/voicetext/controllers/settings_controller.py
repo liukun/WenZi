@@ -275,6 +275,7 @@ class SettingsController:
         """Handle show device name toggle from Settings panel."""
         app = self._app
         app._recording_indicator.show_device_name = enabled
+        app._recorder._query_device_name_enabled = enabled
 
         fb_cfg = app._config.setdefault("feedback", {})
         fb_cfg["show_device_name"] = enabled

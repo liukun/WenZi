@@ -51,6 +51,7 @@ class Recorder:
         self._current_rms: float = 0.0
         self._on_audio_chunk: Optional[callable] = None
         self._last_device_name: Optional[str] = None  # track last used device name
+        self._query_device_name_enabled: bool = True
 
     @property
     def is_recording(self) -> bool:
@@ -75,27 +76,30 @@ class Recorder:
             self._total_bytes = 0
 
             device = self.device
-            current_name = self._query_device_name(device)
+            current_name: Optional[str] = None
 
-            # Re-initialize PortAudio only when the device has changed
-            # (e.g. user plugged in a different mic) to avoid the cost
-            # of terminate/initialize on every recording.
-            if current_name != self._last_device_name:
-                try:
-                    sd._terminate()
-                    sd._initialize()
-                except Exception:
-                    logger.debug("PortAudio re-init failed, continuing", exc_info=True)
+            if self._query_device_name_enabled:
                 current_name = self._query_device_name(device)
 
-            if current_name != self._last_device_name:
-                logger.info(
-                    "Input device changed: %s -> %s",
-                    self._last_device_name or "(none)",
-                    current_name or "unknown",
-                )
-            else:
-                logger.debug("Reusing input device: %s", current_name)
+                # Re-initialize PortAudio only when the device has changed
+                # (e.g. user plugged in a different mic) to avoid the cost
+                # of terminate/initialize on every recording.
+                if current_name != self._last_device_name:
+                    try:
+                        sd._terminate()
+                        sd._initialize()
+                    except Exception:
+                        logger.debug("PortAudio re-init failed, continuing", exc_info=True)
+                    current_name = self._query_device_name(device)
+
+                if current_name != self._last_device_name:
+                    logger.info(
+                        "Input device changed: %s -> %s",
+                        self._last_device_name or "(none)",
+                        current_name or "unknown",
+                    )
+                else:
+                    logger.debug("Reusing input device: %s", current_name)
 
             try:
                 self._stream = sd.RawInputStream(

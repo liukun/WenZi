@@ -135,6 +135,38 @@ class TestRecorder:
         assert r._queue.qsize() == 1
 
     @patch("voicetext.audio.recorder.sd.RawInputStream")
+    def test_start_skips_device_query_when_disabled(self, mock_stream_cls):
+        """start() should skip _query_device_name when disabled."""
+        mock_stream = MagicMock()
+        mock_stream_cls.return_value = mock_stream
+
+        r = Recorder(sample_rate=16000, block_ms=20)
+        r._query_device_name_enabled = False
+
+        with patch.object(r, "_query_device_name") as mock_query:
+            r.start()
+            mock_query.assert_not_called()
+
+        assert r.is_recording is True
+        assert r._last_device_name is None
+        r.stop()
+
+    @patch("voicetext.audio.recorder.sd.RawInputStream")
+    def test_start_queries_device_name_when_enabled(self, mock_stream_cls):
+        """start() should call _query_device_name when enabled (default)."""
+        mock_stream = MagicMock()
+        mock_stream_cls.return_value = mock_stream
+
+        r = Recorder(sample_rate=16000, block_ms=20)
+        assert r._query_device_name_enabled is True
+
+        with patch.object(r, "_query_device_name", return_value="TestMic") as mock_query:
+            name = r.start()
+            assert mock_query.called
+            assert name == "TestMic"
+        r.stop()
+
+    @patch("voicetext.audio.recorder.sd.RawInputStream")
     def test_stop_returns_data_when_stream_close_hangs(self, mock_stream_cls):
         """stop() should return audio data even if stream.stop() hangs."""
         mock_stream = MagicMock()
