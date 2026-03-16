@@ -483,6 +483,54 @@ class TestUsageTrackerIntegration:
         assert tracker.score("saf", "app:Safari") == 1
 
 
+class TestCloseReactivation:
+    def test_close_reactivates_previous_app(self):
+        """close() should reactivate the saved previous app without raising all windows."""
+        panel = _make_panel()
+        mock_app = MagicMock()
+        panel._previous_app = mock_app
+
+        call_order = []
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn: (call_order.append(fn), fn())):
+            with patch("wenzi.scripting.ui.chooser_panel.reactivate_app") as mock_reactivate, \
+                 patch("wenzi.scripting.ui.chooser_panel.restore_accessory") as mock_restore:
+                panel.close()
+                mock_reactivate.assert_called_once_with(mock_app)
+                mock_restore.assert_called_once()
+                # reactivate must be called before restore_accessory
+                reactivate_idx = next(
+                    i for i, fn in enumerate(call_order)
+                    if hasattr(fn, '__code__') and 'reactivate' in (fn.__code__.co_names if hasattr(fn.__code__, 'co_names') else ())
+                    or 'activate' in getattr(fn, '__name__', '')
+                )
+                restore_idx = next(
+                    i for i, fn in enumerate(call_order)
+                    if hasattr(fn, '__code__') and 'restore' in (fn.__code__.co_names if hasattr(fn.__code__, 'co_names') else ())
+                    or 'accessory' in getattr(fn, '__name__', '')
+                )
+                assert reactivate_idx < restore_idx
+
+    def test_close_clears_previous_app(self):
+        """close() should clear _previous_app after use."""
+        panel = _make_panel()
+        panel._previous_app = MagicMock()
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn: fn()), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"), \
+             patch("wenzi.scripting.ui.chooser_panel.restore_accessory"):
+            panel.close()
+        assert panel._previous_app is None
+
+    def test_close_without_previous_app(self):
+        """close() should not crash when _previous_app is None."""
+        panel = _make_panel()
+        panel._previous_app = None
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn: fn()), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app") as mock_reactivate, \
+             patch("wenzi.scripting.ui.chooser_panel.restore_accessory"):
+            panel.close()
+        mock_reactivate.assert_called_once_with(None)
+
+
 class TestInitialQuery:
     def test_show_with_initial_query_queues_js(self):
         """show(initial_query=...) should store the pending query."""

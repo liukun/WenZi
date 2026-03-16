@@ -328,7 +328,7 @@ class ResultPreviewPanel:
             storage.appendAttributedString_(attr_str)
             # Update label with thinking token count
             if thinking_tokens > 0 and self._enhance_label is not None:
-                suffix = f"\u25b6 Thinking: {thinking_tokens:,}"
+                suffix = f"\u25b6 Thinking: {thinking_tokens:,} chars"
                 self._enhance_label.setStringValue_(self._enhance_label_text(suffix))
 
         AppHelper.callAfter(_update)
@@ -390,7 +390,7 @@ class ResultPreviewPanel:
             storage.appendAttributedString_(attr_str)
             # Update label with streaming token count
             if completion_tokens > 0 and self._enhance_label is not None:
-                suffix = f"\u25b6 Tokens: \u2193{completion_tokens:,}"
+                suffix = f"\u25b6 Chars: \u2193{completion_tokens:,}"
                 self._enhance_label.setStringValue_(self._enhance_label_text(suffix))
 
         AppHelper.callAfter(_update)

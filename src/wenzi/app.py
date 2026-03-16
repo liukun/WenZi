@@ -423,8 +423,12 @@ class WenZiApp(StatusBarApp):
             "Usage Stats", callback=self._on_show_usage_stats
         )
 
-        # About item
+        # Restart / About / Help items
+        self._restart_item = StatusMenuItem("Restart", callback=self._on_restart)
         self._about_item = StatusMenuItem("About WenZi", callback=self._on_about)
+        self._help_item = StatusMenuItem(
+            "Help", callback=self._menu_builder.on_help_click
+        )
 
         # History browser (lazy-created)
         self._history_browser = None
@@ -455,6 +459,9 @@ class WenZiApp(StatusBarApp):
                 self._view_logs_item,
                 self._usage_stats_item,
                 self._about_item,
+                self._help_item,
+                None,
+                self._restart_item,
             ]
         self.quit_button.set_callback(self._on_quit_click)
 
@@ -885,6 +892,10 @@ class WenZiApp(StatusBarApp):
 
     def _on_about(self, _) -> None:
         self._config_controller.on_about(_)
+
+    def _on_restart(self, _) -> None:
+        from wenzi.statusbar import restart_application
+        restart_application()
 
     # ── Settings panel ────────────────────────────────────────────────
 

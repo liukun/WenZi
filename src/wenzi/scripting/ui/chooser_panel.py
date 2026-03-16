@@ -11,6 +11,7 @@ import logging
 from typing import Callable, Dict, List, Optional
 
 from wenzi.scripting.sources import ChooserItem, ChooserSource
+from wenzi.ui_helpers import get_frontmost_app, reactivate_app, restore_accessory
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,7 @@ class ChooserPanel:
         self._pending_initial_query: Optional[str] = None
         self._pending_placeholder: Optional[str] = None
         self._event_callback: Optional[Callable] = None  # (event, *args)
+        self._previous_app = None  # NSRunningApplication saved on show()
 
     # ------------------------------------------------------------------
     # Source management
@@ -235,6 +237,8 @@ class ChooserPanel:
             NSApp.activateIgnoringOtherApps_(True)
             return
 
+        self._previous_app = get_frontmost_app()
+
         self._build_panel()
         self._panel.makeKeyAndOrderFront_(None)
 
@@ -278,8 +282,22 @@ class ChooserPanel:
         self._current_items = []
         self._closing = False
 
-        from AppKit import NSApp
-        NSApp.setActivationPolicy_(1)  # Accessory (statusbar-only)
+        # Reactivate the previous app's focused window, then restore accessory mode.
+        # Order matters: activate first (without AllWindows) so macOS doesn't
+        # trigger its own all-windows activation when we drop to accessory.
+        from PyObjCTools import AppHelper
+
+        previous_app = self._previous_app
+        self._previous_app = None
+
+        def _activate_prev():
+            reactivate_app(previous_app)
+
+        def _go_accessory():
+            restore_accessory()
+
+        AppHelper.callAfter(_activate_prev)
+        AppHelper.callAfter(_go_accessory)
 
         self._fire_event("close")
 

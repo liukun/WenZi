@@ -82,11 +82,21 @@ def _parse_frontmatter(text: str) -> Tuple[dict, str]:
     return meta, body
 
 
-def _format_snippet_file(keyword: str, content: str) -> str:
+def _format_snippet_file(
+    keyword: str, content: str, auto_expand: bool = True,
+) -> str:
     """Serialize a snippet back to the file format."""
+    has_frontmatter = bool(keyword) or not auto_expand
+    if not has_frontmatter:
+        return content
+
+    lines = []
     if keyword:
-        return f'---\nkeyword: "{keyword}"\n---\n{content}'
-    return content
+        lines.append(f'keyword: "{keyword}"')
+    if not auto_expand:
+        lines.append("auto_expand: false")
+    header = "\n".join(lines)
+    return f"---\n{header}\n---\n{content}"
 
 
 def _sanitize_filename(name: str) -> str:
@@ -136,11 +146,22 @@ def _expand_placeholders(content: str) -> str:
       {time}      — current time (HH:MM:SS)
       {datetime}  — current date and time
       {clipboard} — current clipboard text
+
+    Use doubled braces to output a literal brace/placeholder:
+      ``{{date}}`` → ``{date}`` (not expanded)
+      ``{{``       → ``{``
+      ``}}``       → ``}``
     """
     import datetime
 
+    # Protect escaped braces with sentinels before expanding placeholders
+    _LBRACE = "\x00LBRACE\x00"
+    _RBRACE = "\x00RBRACE\x00"
+    result = content.replace("{{", _LBRACE)
+    result = result.replace("}}", _RBRACE)
+
     now = datetime.datetime.now()
-    result = content.replace("{date}", now.strftime("%Y-%m-%d"))
+    result = result.replace("{date}", now.strftime("%Y-%m-%d"))
     result = result.replace("{time}", now.strftime("%H:%M:%S"))
     result = result.replace("{datetime}", now.strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -153,6 +174,10 @@ def _expand_placeholders(content: str) -> str:
             result = result.replace("{clipboard}", text or "")
         except Exception:
             result = result.replace("{clipboard}", "")
+
+    # Restore escaped braces
+    result = result.replace(_LBRACE, "{")
+    result = result.replace(_RBRACE, "}")
 
     return result
 
@@ -250,6 +275,7 @@ class SnippetStore:
 
                 meta, body = _parse_frontmatter(text)
                 base_name = os.path.splitext(fname)[0]
+                auto_expand = str(meta.get("auto_expand", True)).lower() != "false"
 
                 # Multi-snippet: frontmatter contains a "snippets" list
                 snippets_list = meta.get("snippets")
@@ -258,9 +284,14 @@ class SnippetStore:
                         if not isinstance(entry, dict):
                             continue
                         kw = entry.get("keyword", "")
-                        ct = entry.get("content", "")
+                        ct = entry.get("content", "").rstrip("\n")
                         nm = entry.get("name", "") or kw or base_name
                         raw = bool(entry.get("raw", False))
+                        entry_ae = entry.get("auto_expand")
+                        if entry_ae is not None:
+                            entry_auto = str(entry_ae).lower() != "false"
+                        else:
+                            entry_auto = auto_expand
                         self._snippets.append({
                             "name": nm,
                             "keyword": kw,
@@ -268,6 +299,7 @@ class SnippetStore:
                             "category": category,
                             "file_path": file_path,
                             "raw": raw,
+                            "auto_expand": entry_auto,
                         })
 
                 # Single-snippet: keyword in frontmatter, body is content
@@ -275,10 +307,11 @@ class SnippetStore:
                     self._snippets.append({
                         "name": base_name,
                         "keyword": meta.get("keyword", ""),
-                        "content": body,
+                        "content": body.rstrip("\n"),
                         "category": category,
                         "file_path": file_path,
                         "raw": bool(meta.get("raw", False)),
+                        "auto_expand": auto_expand,
                     })
 
         logger.info(
@@ -333,7 +366,12 @@ class SnippetStore:
     # -- CRUD ----------------------------------------------------------------
 
     def add(
-        self, name: str, keyword: str, content: str, category: str = "",
+        self,
+        name: str,
+        keyword: str,
+        content: str,
+        category: str = "",
+        auto_expand: bool = True,
     ) -> bool:
         """Add a new snippet. Returns False if keyword already exists."""
         self._ensure_loaded()
@@ -346,7 +384,7 @@ class SnippetStore:
         os.makedirs(cat_dir, exist_ok=True)
         file_path = os.path.join(cat_dir, f"{safe_name}.md")
 
-        text = _format_snippet_file(keyword, content)
+        text = _format_snippet_file(keyword, content, auto_expand=auto_expand)
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -360,6 +398,7 @@ class SnippetStore:
             "content": content,
             "category": category,
             "file_path": file_path,
+            "auto_expand": auto_expand,
         })
         return True
 
@@ -386,6 +425,7 @@ class SnippetStore:
         new_keyword: Optional[str] = None,
         content: Optional[str] = None,
         new_category: Optional[str] = None,
+        new_auto_expand: Optional[bool] = None,
     ) -> bool:
         """Update an existing snippet. Supports rename and category move."""
         self._ensure_loaded()
@@ -395,6 +435,7 @@ class SnippetStore:
                 ct = content if content is not None else s["content"]
                 nm = _sanitize_filename(new_name) if new_name is not None else s["name"]
                 cat = new_category if new_category is not None else s.get("category", "")
+                ae = new_auto_expand if new_auto_expand is not None else s.get("auto_expand", True)
 
                 # Determine new file path
                 cat_dir = os.path.join(self._dir, cat) if cat else self._dir
@@ -402,7 +443,7 @@ class SnippetStore:
                 new_path = os.path.join(cat_dir, f"{nm}{ext}")
 
                 os.makedirs(cat_dir, exist_ok=True)
-                text = _format_snippet_file(kw, ct)
+                text = _format_snippet_file(kw, ct, auto_expand=ae)
                 try:
                     with open(new_path, "w", encoding="utf-8") as f:
                         f.write(text)
@@ -423,6 +464,7 @@ class SnippetStore:
                 s["content"] = ct
                 s["category"] = cat
                 s["file_path"] = new_path
+                s["auto_expand"] = ae
                 return True
         return False
 

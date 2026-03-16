@@ -71,6 +71,18 @@ class TestParseFrontmatter:
         assert meta["keyword"] == "@@x"
         assert meta["author"] == "me"
 
+    def test_auto_expand_false(self):
+        text = '---\nkeyword: "@@email"\nauto_expand: false\n---\ncontent'
+        meta, body = _parse_frontmatter(text)
+        assert meta["auto_expand"] is False
+        assert meta["keyword"] == "@@email"
+        assert body == "content"
+
+    def test_auto_expand_true(self):
+        text = '---\nkeyword: "@@email"\nauto_expand: true\n---\ncontent'
+        meta, body = _parse_frontmatter(text)
+        assert meta["auto_expand"] is True
+
 
 class TestFormatSnippetFile:
     def test_with_keyword(self):
@@ -88,6 +100,32 @@ class TestFormatSnippetFile:
         meta, body = _parse_frontmatter(text)
         assert meta["keyword"] == original_kw
         assert body == original_content
+
+    def test_auto_expand_false(self):
+        result = _format_snippet_file("@@email", "content", auto_expand=False)
+        assert "auto_expand: false" in result
+        assert 'keyword: "@@email"' in result
+
+    def test_auto_expand_true_omitted(self):
+        result = _format_snippet_file("@@email", "content", auto_expand=True)
+        assert "auto_expand" not in result
+
+    def test_auto_expand_false_no_keyword(self):
+        result = _format_snippet_file("", "content", auto_expand=False)
+        assert result.startswith("---")
+        assert "auto_expand: false" in result
+        assert "keyword" not in result
+
+    def test_no_keyword_no_auto_expand_no_frontmatter(self):
+        result = _format_snippet_file("", "content", auto_expand=True)
+        assert result == "content"
+
+    def test_roundtrip_auto_expand_false(self):
+        text = _format_snippet_file("@@e", "body", auto_expand=False)
+        meta, body = _parse_frontmatter(text)
+        assert meta["keyword"] == "@@e"
+        assert meta["auto_expand"] is False
+        assert body == "body"
 
 
 class TestSanitizeFilename:
@@ -194,6 +232,21 @@ class TestSnippetStore:
         s = store.snippets[0]
         assert s["keyword"] == ""
         assert s["content"] == "Just plain text, no frontmatter."
+
+    def test_trailing_newlines_stripped(self):
+        def setup(d):
+            # Simulate editors that append trailing newlines on save
+            path = os.path.join(d, "trail.md")
+            with open(path, "w") as f:
+                f.write("---\nkeyword: @@t\n---\nhello\n\n")
+            path2 = os.path.join(d, "plain.txt")
+            with open(path2, "w") as f:
+                f.write("world\n")
+
+        store, _, _ = self._make_store(setup)
+        by_name = {s["name"]: s for s in store.snippets}
+        assert by_name["trail"]["content"] == "hello"
+        assert by_name["plain"]["content"] == "world"
 
     def test_hidden_files_skipped(self):
         def setup(d):
@@ -323,6 +376,56 @@ class TestSnippetStore:
     def test_update_nonexistent(self):
         store, _, _ = self._make_store()
         assert store.update("nope", content="x") is False
+
+    def test_add_with_auto_expand_false(self):
+        store, sdir, _ = self._make_store()
+        assert store.add("email", "@@e", "e@x.com", auto_expand=False) is True
+        s = store.snippets[0]
+        assert s["auto_expand"] is False
+        # Verify file on disk contains auto_expand: false
+        with open(s["file_path"], "r") as f:
+            text = f.read()
+        assert "auto_expand: false" in text
+
+    def test_add_default_auto_expand_true(self):
+        store, _, _ = self._make_store()
+        assert store.add("email", "@@e", "e@x.com") is True
+        assert store.snippets[0]["auto_expand"] is True
+
+    def test_load_auto_expand_false_from_disk(self):
+        def setup(d):
+            path = os.path.join(d, "email.md")
+            with open(path, "w") as f:
+                f.write('---\nkeyword: "@@e"\nauto_expand: false\n---\ne@x.com')
+
+        store, _, _ = self._make_store(setup)
+        assert store.snippets[0]["auto_expand"] is False
+
+    def test_load_auto_expand_default_true(self):
+        def setup(d):
+            _write_snippet(d, "email", "@@e", "e@x.com")
+
+        store, _, _ = self._make_store(setup)
+        assert store.snippets[0]["auto_expand"] is True
+
+    def test_update_auto_expand(self):
+        def setup(d):
+            _write_snippet(d, "email", "@@e", "e@x.com")
+
+        store, _, _ = self._make_store(setup)
+        assert store.snippets[0]["auto_expand"] is True
+        assert store.update("email", new_auto_expand=False) is True
+        assert store.snippets[0]["auto_expand"] is False
+        # Verify file on disk
+        with open(store.snippets[0]["file_path"], "r") as f:
+            text = f.read()
+        assert "auto_expand: false" in text
+
+    def test_update_preserves_auto_expand(self):
+        store, _, _ = self._make_store()
+        store.add("email", "@@e", "e@x.com", auto_expand=False)
+        assert store.update("email", content="new@x.com") is True
+        assert store.snippets[0]["auto_expand"] is False
 
     def test_find_by_keyword(self):
         def setup(d):
@@ -678,6 +781,37 @@ class TestExpandPlaceholders:
     def test_no_placeholders(self):
         result = _expand_placeholders("plain text")
         assert result == "plain text"
+
+    def test_escaped_date(self):
+        result = _expand_placeholders("Use {{date}} for dates")
+        assert result == "Use {date} for dates"
+
+    def test_escaped_time(self):
+        result = _expand_placeholders("{{time}}")
+        assert result == "{time}"
+
+    def test_escaped_datetime(self):
+        result = _expand_placeholders("{{datetime}}")
+        assert result == "{datetime}"
+
+    def test_escaped_clipboard(self):
+        result = _expand_placeholders("{{clipboard}}")
+        assert result == "{clipboard}"
+
+    def test_mixed_escaped_and_real(self):
+        import datetime
+
+        result = _expand_placeholders("today={date} literal={{date}}")
+        expected_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        assert result == f"today={expected_date} literal={{date}}"
+
+    def test_lone_double_braces(self):
+        result = _expand_placeholders("{{ and }}")
+        assert result == "{ and }"
+
+    def test_escaped_unknown_placeholder(self):
+        result = _expand_placeholders("{{unknown}}")
+        assert result == "{unknown}"
 
 
 # ---------------------------------------------------------------------------

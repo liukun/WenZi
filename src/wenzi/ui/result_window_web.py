@@ -1046,7 +1046,7 @@ class ResultPreviewPanel:
             self._stop_loading_timer()
             self._eval_js(f"appendThinkingText({json.dumps(chunk)})")
             if thinking_tokens > 0:
-                suffix = f"\u25b6 Thinking: {thinking_tokens:,}"
+                suffix = f"\u25b6 Thinking: {thinking_tokens:,} chars"
                 self._eval_js(f"setEnhanceInfo({json.dumps(self._enhance_label_text(suffix))})")
 
         AppHelper.callAfter(_update)
@@ -1085,7 +1085,7 @@ class ResultPreviewPanel:
             self._stop_loading_timer()
             self._eval_js(f"appendEnhanceText({json.dumps(chunk)})")
             if completion_tokens > 0:
-                suffix = f"\u25b6 Tokens: \u2193{completion_tokens:,}"
+                suffix = f"\u25b6 Chars: \u2193{completion_tokens:,}"
                 self._eval_js(f"setEnhanceInfo({json.dumps(self._enhance_label_text(suffix))})")
 
         AppHelper.callAfter(_update)
