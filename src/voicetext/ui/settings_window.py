@@ -458,7 +458,7 @@ class SettingsPanel:
             b"soundCheckChanged:", doc_view,
         )
         y = self._add_hint(
-            "Play sound effects when recording starts and stops",
+            "Adds ~350ms delay before recording to avoid capturing the sound",
             pad + 12, y, content_w - 24, doc_view,
         )
 
