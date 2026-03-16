@@ -78,6 +78,45 @@ class ScriptEngine:
         self._vt.hotkey.start()
         logger.info("Scripts reloaded")
 
+    def enable_clipboard(self) -> None:
+        """Start the clipboard monitor and register its chooser source."""
+        if self._clipboard_monitor is not None:
+            return  # already running
+        try:
+            from voicetext.scripting.clipboard_monitor import ClipboardMonitor
+            from voicetext.scripting.sources.clipboard_source import ClipboardSource
+
+            chooser_config = self._config.get("chooser", {})
+            max_days = chooser_config.get("clipboard_max_days", 7)
+            persist_path = os.path.expanduser(
+                "~/.config/VoiceText/clipboard_history.json"
+            )
+            prefixes = chooser_config.get("prefixes", {})
+
+            self._clipboard_monitor = ClipboardMonitor(
+                max_days=max_days,
+                persist_path=persist_path,
+            )
+            self._clipboard_monitor.start()
+
+            cb_source = ClipboardSource(self._clipboard_monitor)
+            self._vt.chooser.register_source(
+                cb_source.as_chooser_source(
+                    prefix=prefixes.get("clipboard", "cb"),
+                )
+            )
+            logger.info("Clipboard monitor enabled at runtime")
+        except Exception:
+            logger.exception("Failed to enable clipboard monitor")
+
+    def disable_clipboard(self) -> None:
+        """Stop the clipboard monitor and unregister its chooser source."""
+        if self._clipboard_monitor is not None:
+            self._clipboard_monitor.stop()
+            self._clipboard_monitor = None
+        self._vt.chooser.unregister_source("clipboard")
+        logger.info("Clipboard monitor disabled at runtime")
+
     def _register_builtin_sources(self) -> None:
         """Register built-in chooser sources."""
         chooser_config = self._config.get("chooser", {})

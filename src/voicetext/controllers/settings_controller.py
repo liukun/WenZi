@@ -904,10 +904,16 @@ class SettingsController:
         )
         chooser_cfg[config_key] = enabled
         save_config(app._config, app._config_path)
-        logger.info(
-            "Launcher source %s set to: %s (requires restart)",
-            config_key, enabled,
-        )
+
+        # Apply clipboard toggle immediately without restart
+        engine = getattr(app, "_script_engine", None)
+        if config_key == "clipboard_history" and engine is not None:
+            if enabled:
+                engine.enable_clipboard()
+            else:
+                engine.disable_clipboard()
+
+        logger.info("Launcher source %s set to: %s", config_key, enabled)
 
     def launcher_prefix_change(self, prefix_key: str, value: str) -> None:
         """Handle launcher prefix change from Settings panel."""

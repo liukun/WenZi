@@ -130,6 +130,78 @@ class TestScriptEngine:
 
         engine.stop()
 
+    @patch("voicetext.scripting.api.hotkey.HotkeyAPI.start")
+    @patch("voicetext.scripting.api.hotkey.HotkeyAPI.stop")
+    def test_enable_clipboard_at_runtime(self, mock_stop, mock_start):
+        """enable_clipboard() starts monitor and registers source."""
+        config = {
+            "chooser": {
+                "enabled": True,
+                "clipboard_history": False,
+                "app_search": False,
+                "file_search": False,
+                "snippets": False,
+                "bookmarks": False,
+                "usage_learning": False,
+            },
+        }
+        engine = ScriptEngine(
+            script_dir="/tmp/nonexistent_vt_scripts",
+            config=config,
+        )
+        engine.start()
+
+        # Clipboard should not be running
+        assert engine._clipboard_monitor is None
+        panel = engine.vt.chooser._get_panel()
+        assert "clipboard" not in panel._sources
+
+        # Enable at runtime
+        engine.enable_clipboard()
+        assert engine._clipboard_monitor is not None
+        assert "clipboard" in panel._sources
+
+        # Calling again should be a no-op (not raise)
+        engine.enable_clipboard()
+
+        engine.stop()
+
+    @patch("voicetext.scripting.api.hotkey.HotkeyAPI.start")
+    @patch("voicetext.scripting.api.hotkey.HotkeyAPI.stop")
+    def test_disable_clipboard_at_runtime(self, mock_stop, mock_start):
+        """disable_clipboard() stops monitor and unregisters source."""
+        config = {
+            "chooser": {
+                "enabled": True,
+                "clipboard_history": True,
+                "app_search": False,
+                "file_search": False,
+                "snippets": False,
+                "bookmarks": False,
+                "usage_learning": False,
+            },
+        }
+        engine = ScriptEngine(
+            script_dir="/tmp/nonexistent_vt_scripts",
+            config=config,
+        )
+        engine.start()
+
+        # Clipboard should be running
+        assert engine._clipboard_monitor is not None
+        panel = engine.vt.chooser._get_panel()
+        assert "clipboard" in panel._sources
+
+        # Disable at runtime
+        engine.disable_clipboard()
+        assert engine._clipboard_monitor is None
+        assert "clipboard" not in panel._sources
+
+        # Calling again should be a no-op (not raise)
+        engine.disable_clipboard()
+
+        engine.stop()
+
     def test_vt_module_singleton(self):
         engine = ScriptEngine(script_dir="/tmp/vt_test_scripts")
         import voicetext.scripting.api as api_mod

@@ -30,6 +30,10 @@ class ChooserAPI:
         """Register a data source."""
         self._panel.register_source(source)
 
+    def unregister_source(self, name: str) -> None:
+        """Remove a data source by name."""
+        self._panel.unregister_source(name)
+
     def show(self, initial_query: Optional[str] = None) -> None:
         """Show the chooser panel.
 
