@@ -31,6 +31,7 @@ _APP_DIRS = [
     "/Applications",
     "/System/Applications",
     "/System/Applications/Utilities",
+    "/System/Library/CoreServices",
     "/System/Library/CoreServices/Applications",
     os.path.expanduser("~/Applications"),
 ]

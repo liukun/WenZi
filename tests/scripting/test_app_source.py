@@ -6,10 +6,21 @@ from unittest.mock import patch
 
 from voicetext.scripting.sources.app_source import (
     AppSource,
+    _APP_DIRS,
     _cache_key,
     _png_to_data_uri,
     _scan_apps,
 )
+
+
+class TestAppDirs:
+    def test_core_services_in_app_dirs(self):
+        """CoreServices root should be scanned to find Finder.app etc."""
+        assert "/System/Library/CoreServices" in _APP_DIRS
+
+    def test_core_services_applications_in_app_dirs(self):
+        """CoreServices/Applications should still be scanned."""
+        assert "/System/Library/CoreServices/Applications" in _APP_DIRS
 
 
 class TestScanApps:
