@@ -83,6 +83,7 @@ class TestShowModelLoadErrorAlert:
         self, mock_alert, mock_restore
     ):
         app = self._make_app("mlx-whisper-large-v3-turbo")
+        app._clear_cache_and_reinitialize = MagicMock()
         app._show_model_load_error_alert(RuntimeError("download incomplete"))
 
         mock_alert.assert_called_once()
