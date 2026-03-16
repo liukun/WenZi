@@ -252,6 +252,7 @@ class EnhanceController:
             "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
         }
         cancelled = False
+        all_display_parts: list[str] = []
 
         try:
             for step_idx, step_id in enumerate(chain_steps, 1):
@@ -270,6 +271,7 @@ class EnhanceController:
                 # Append separator before non-first steps
                 if step_idx > 1:
                     separator = f"\n\n--- {step_label} ---\n\n"
+                    all_display_parts.append(separator)
                     self._preview_panel.append_enhance_text(
                         separator, request_id=request_id, completion_tokens=0,
                     )
@@ -318,6 +320,7 @@ class EnhanceController:
                                 if had_thinking:
                                     had_thinking = False
                                 collected.append(chunk)
+                                all_display_parts.append(chunk)
                                 completion_tokens += len(chunk)
                                 self._preview_panel.append_enhance_text(
                                     chunk, request_id=request_id,
@@ -372,10 +375,7 @@ class EnhanceController:
                 system_prompt=system_prompt,
                 final_text=enhanced,
             )
-            display_text = (
-                str(self._preview_panel._enhance_text_view.string())
-                if self._preview_panel._enhance_text_view else ""
-            )
+            display_text = "".join(all_display_parts)
             cache_key = (
                 original_mode_id,
                 self._enhancer.provider_name,
