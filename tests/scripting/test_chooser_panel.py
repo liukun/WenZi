@@ -117,16 +117,27 @@ class TestSearchLogic:
         assert len(panel._current_items) == 1
         assert panel._current_items[0].title == "hello world"
 
-    def test_bare_prefix_activates_source(self):
-        """Typing just the prefix (without trailing space) should activate source."""
+    def test_bare_prefix_does_not_activate_source(self):
+        """Typing just the prefix (without trailing space) should NOT activate source."""
         panel = _make_panel()
         items = [ChooserItem(title="item1"), ChooserItem(title="item2")]
         panel.register_source(
             _make_source("clipboard", prefix="cb", items=items)
         )
         panel._do_search("cb")
-        # Bare prefix activates source with empty query
-        # The mock search returns items matching "" which matches all
+        # Bare prefix without space falls through to general search,
+        # which skips prefix sources — no results
+        assert panel._current_items == []
+
+    def test_prefix_with_space_only_activates_source(self):
+        """Typing prefix + space should activate source with empty query."""
+        panel = _make_panel()
+        items = [ChooserItem(title="item1"), ChooserItem(title="item2")]
+        panel.register_source(
+            _make_source("clipboard", prefix="cb", items=items)
+        )
+        panel._do_search("cb ")
+        # prefix + space activates source, empty query matches all
         assert len(panel._current_items) == 2
 
     def test_prefix_with_space_strips_prefix(self):

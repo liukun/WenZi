@@ -279,11 +279,6 @@ class ChooserPanel:
                     source = src
                     query = query[len(trigger):]
                     break
-                # Also match bare prefix without trailing text
-                if query == src.prefix:
-                    source = src
-                    query = ""
-                    break
 
         # When searching across all non-prefix sources (no specific source),
         # empty query returns nothing. When a specific source is active
