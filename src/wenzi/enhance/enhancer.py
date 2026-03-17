@@ -380,6 +380,29 @@ class TextEnhancer:
         logger.info("Conversation history changed to: %s", value)
 
     @property
+    def history_max_entries(self) -> int:
+        return self._history_max_entries
+
+    @history_max_entries.setter
+    def history_max_entries(self, value: int) -> None:
+        self._history_max_entries = max(1, value)
+        logger.info("History max_entries changed to: %d", self._history_max_entries)
+
+    @property
+    def history_refresh_threshold(self) -> int:
+        return self._history_refresh_threshold
+
+    @history_refresh_threshold.setter
+    def history_refresh_threshold(self, value: int) -> None:
+        self._history_refresh_threshold = max(
+            self._history_max_entries + 1, value
+        )
+        logger.info(
+            "History refresh_threshold changed to: %d",
+            self._history_refresh_threshold,
+        )
+
+    @property
     def conversation_history(self) -> ConversationHistory:
         return self._conversation_history
 

@@ -123,6 +123,12 @@ class SettingsController:
             "history_enabled": bool(
                 app._enhancer and app._enhancer.history_enabled
             ),
+            "history_max_entries": (
+                app._enhancer.history_max_entries if app._enhancer else 10
+            ),
+            "history_refresh_threshold": (
+                app._enhancer.history_refresh_threshold if app._enhancer else 50
+            ),
             "config_dir": app._config_dir,
             "scripting_enabled": app._config.get("scripting", {}).get(
                 "enabled", False
@@ -157,6 +163,8 @@ class SettingsController:
             "on_vocab_toggle": self.vocab_toggle,
             "on_auto_build_toggle": self.auto_build_toggle,
             "on_history_toggle": self.history_toggle,
+            "on_history_max_entries": self.history_max_entries_change,
+            "on_history_refresh_threshold": self.history_refresh_threshold_change,
             "on_vocab_build": lambda: app._on_vocab_build(None),
             "on_tab_change": self.tab_change,
             "on_reveal_config_folder": self.reveal_config_folder,
@@ -751,6 +759,30 @@ class SettingsController:
         app._config["ai_enhance"]["conversation_history"]["enabled"] = enabled
         self._save_and_reload()
         logger.info("Conversation history set to: %s (from settings)", enabled)
+
+    def history_max_entries_change(self, value: int) -> None:
+        """Handle history max_entries change from Settings panel."""
+        app = self._app
+        if not app._enhancer:
+            return
+        app._enhancer.history_max_entries = value
+        app._config.setdefault("ai_enhance", {})
+        app._config["ai_enhance"].setdefault("conversation_history", {})
+        app._config["ai_enhance"]["conversation_history"]["max_entries"] = value
+        self._save_and_reload()
+        logger.info("History max_entries set to: %d (from settings)", value)
+
+    def history_refresh_threshold_change(self, value: int) -> None:
+        """Handle history refresh_threshold change from Settings panel."""
+        app = self._app
+        if not app._enhancer:
+            return
+        app._enhancer.history_refresh_threshold = value
+        app._config.setdefault("ai_enhance", {})
+        app._config["ai_enhance"].setdefault("conversation_history", {})
+        app._config["ai_enhance"]["conversation_history"]["refresh_threshold"] = value
+        self._save_and_reload()
+        logger.info("History refresh_threshold set to: %d (from settings)", value)
 
     def reveal_config_folder(self) -> None:
         """Open the config directory in Finder."""

@@ -160,6 +160,8 @@ class SettingsPanel:
                 - on_vocab_toggle: (enabled) -> None
                 - on_auto_build_toggle: (enabled) -> None
                 - on_history_toggle: (enabled) -> None
+                - on_history_max_entries: (value) -> None
+                - on_history_refresh_threshold: (value) -> None
                 - on_vocab_build: () -> None
                 - on_reveal_config_folder: () -> None
         """
@@ -921,6 +923,41 @@ class SettingsPanel:
             pad + 12, y, content_w - 24, doc_view,
         )
 
+        # History cache tuning: base entries + max entries before rebuild
+        label_x = pad + 28
+        popup_w = 70
+        y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
+
+        base_label = self._make_label(
+            "Base entries", label_x, y, 90, small_font,
+        )
+        doc_view.addSubview_(base_label)
+
+        base_items = [(v, str(v)) for v in (5, 10, 15, 20, 30, 50)]
+        current_base = state.get("history_max_entries", 10)
+        self._history_base_popup = self._make_popup(
+            base_items, current_base,
+            label_x + 90, y, popup_w, small_font,
+            b"historyBaseChanged:", doc_view,
+        )
+
+        max_label = self._make_label(
+            "Max entries", label_x + 90 + popup_w + 16, y, 90, small_font,
+        )
+        doc_view.addSubview_(max_label)
+
+        max_items = [(v, str(v)) for v in (20, 30, 50, 80, 100, 200)]
+        current_max = state.get("history_refresh_threshold", 50)
+        self._history_max_popup = self._make_popup(
+            max_items, current_max,
+            label_x + 90 + popup_w + 16 + 90, y, popup_w, small_font,
+            b"historyMaxChanged:", doc_view,
+        )
+        y = self._add_hint(
+            "Base: entries kept after rebuild. Max: triggers a rebuild for cache optimization.",
+            pad + 28, y, content_w - 40, doc_view,
+        )
+
         y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
         self._thinking_check = self._make_switch(
             "Thinking", pad + 12, y, content_w - 24,
@@ -1638,6 +1675,16 @@ class SettingsPanel:
 
     def historyCheckChanged_(self, sender):
         self._call("on_history_toggle", bool(sender.state()))
+
+    def historyBaseChanged_(self, sender):
+        value = sender.selectedItem().representedObject()
+        if value is not None:
+            self._call("on_history_max_entries", int(value))
+
+    def historyMaxChanged_(self, sender):
+        value = sender.selectedItem().representedObject()
+        if value is not None:
+            self._call("on_history_refresh_threshold", int(value))
 
     def buildVocabClicked_(self, sender):
         self._call("on_vocab_build")

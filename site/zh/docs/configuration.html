@@ -459,6 +459,7 @@
 <blockquote>
 <p><strong>注意：</strong> 对话历史超过 20,000 条记录时会自动轮转归档。旧记录按月归档到 <code>conversation_history_archives/</code> 目录下的 JSONL 文件中。此上限不可配置。</p>
 <p><strong>提示词缓存优化：</strong> 对话历史采用追加式构建，保持系统提示词前缀稳定不变，从而让大模型 API 的提示词缓存（OpenAI、DeepSeek 等）可以复用已缓存的 KV 状态。当条目数达到 <code>refresh_threshold</code> 或总字符数达到 <code>max_history_chars</code> 时，会以最近 <code>max_entries</code> 条为基础重建。大多数 API 提供商要求缓存前缀至少达到 <strong>1024 tokens</strong>（约 500-700 个中文字符）。如果你使用的增强模式提示词较短，建议适当增大 <code>max_entries</code>（如改为 20），以确保重建后系统提示词能超过此阈值。</p>
+<p><code>max_entries</code>（基础条目数）和 <code>refresh_threshold</code>（最大条目数）均可在 <strong>Settings &gt; AI</strong> 的 Conversation History 开关下方配置。</p>
 </blockquote>
 <h3 id="_9"><a href="#_9" class="heading-anchor">剪贴板增强</a></h3>
 <div class="table-wrapper"><table>

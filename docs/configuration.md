@@ -174,6 +174,8 @@ The config file is always `config.json` inside the resolved directory.
 > **Note:** Conversation history is automatically rotated when it exceeds 20,000 records. Older records are archived into monthly JSONL files under `conversation_history_archives/`. This limit is not configurable.
 
 > **Prompt caching:** History entries are appended incrementally to keep the system prompt prefix stable, which allows LLM API-level prompt caching (OpenAI, DeepSeek, etc.) to reuse cached KV state. When the entry count reaches `refresh_threshold` or total characters reach `max_history_chars`, the history is rebuilt with the most recent `max_entries` as a new base. Most API providers require the cached prefix to be at least **1024 tokens** (~500–700 Chinese characters). If your enhancement mode prompt is short, consider increasing `max_entries` (e.g., to 20) so the system prompt exceeds this threshold right after a rebuild.
+>
+> Both `max_entries` (Base entries) and `refresh_threshold` (Max entries) can be configured in **Settings > AI** under the Conversation History toggle.
 
 ### Clipboard Enhancement
 

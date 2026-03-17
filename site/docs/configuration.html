@@ -459,6 +459,7 @@
 <blockquote>
 <p><strong>Note:</strong> Conversation history is automatically rotated when it exceeds 20,000 records. Older records are archived into monthly JSONL files under <code>conversation_history_archives/</code>. This limit is not configurable.</p>
 <p><strong>Prompt caching:</strong> History entries are appended incrementally to keep the system prompt prefix stable, which allows LLM API-level prompt caching (OpenAI, DeepSeek, etc.) to reuse cached KV state. When the entry count reaches <code>refresh_threshold</code> or total characters reach <code>max_history_chars</code>, the history is rebuilt with the most recent <code>max_entries</code> as a new base. Most API providers require the cached prefix to be at least <strong>1024 tokens</strong> (~500–700 Chinese characters). If your enhancement mode prompt is short, consider increasing <code>max_entries</code> (e.g., to 20) so the system prompt exceeds this threshold right after a rebuild.</p>
+<p>Both <code>max_entries</code> (Base entries) and <code>refresh_threshold</code> (Max entries) can be configured in <strong>Settings &gt; AI</strong> under the Conversation History toggle.</p>
 </blockquote>
 <h3 id="clipboard-enhancement"><a href="#clipboard-enhancement" class="heading-anchor">Clipboard Enhancement</a></h3>
 <div class="table-wrapper"><table>
