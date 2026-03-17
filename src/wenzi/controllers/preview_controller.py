@@ -280,7 +280,11 @@ class PreviewController:
                 except Exception as e:
                     logger.error("Failed to update conversation history: %s", e)
         else:
-            # Record was from a cancel — create a new conversation history entry
+            # Record was from a cancel — create a new conversation history entry.
+            # Note: chain mode step results are not available here (preview
+            # history only stores the final result), so we log as a single
+            # entry under the current mode.  This is acceptable for a low-
+            # frequency path (re-confirming cancelled previews).
             try:
                 ts = app._conversation_history.log(
                     asr_text=record.asr_text,

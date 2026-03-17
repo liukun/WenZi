@@ -618,11 +618,8 @@ class TextEnhancer:
         if not history_context and not vocab_lines:
             return ""
 
-        # Build the combined section — header reflects actual content
-        parts = [self._context_section_header(
-            has_history=bool(history_context),
-            has_vocab=bool(vocab_lines),
-        )]
+        # Build the combined section — header uses enabled flags for stability
+        parts = [self._context_section_header()]
 
         if history_context:
             parts.append(f"对话记录：\n{history_context}")
@@ -662,9 +659,11 @@ class TextEnhancer:
         lc = ch.log_count
         if lc == self._history_last_log_count and mc.entry_lines:
             return self._format_history_section()
-        self._history_last_log_count = lc
 
-        # Fetch up to threshold entries for the current mode
+        # Fetch up to threshold entries for the current mode.
+        # NOTE: _history_last_log_count is updated only AFTER successful
+        # processing, so that an exception here does not cause future
+        # calls to skip new entries via the fast path.
         entries = ch.get_recent(
             max_entries=self._history_refresh_threshold,
             enhance_mode=self._mode,
@@ -673,17 +672,21 @@ class TextEnhancer:
             mc.entry_lines = []
             mc.total_chars = 0
             mc.last_ts = ""
+            self._history_last_log_count = lc
             return ""
 
         latest_ts = entries[-1].get("timestamp", "")
 
         # No qualifying entries were added for this mode
         if latest_ts == mc.last_ts and mc.entry_lines:
+            self._history_last_log_count = lc
             return self._format_history_section()
 
         # First build
         if not mc.entry_lines:
-            return self._full_rebuild_history(entries)
+            result = self._full_rebuild_history(entries)
+            self._history_last_log_count = lc
+            return result
 
         # Find new entries by walking backwards from the end
         new_entries: list = []
@@ -694,9 +697,12 @@ class TextEnhancer:
         else:
             # Anchor not found — structural change (rotation, deletion)
             logger.info("History anchor not found, performing full rebuild")
-            return self._full_rebuild_history(entries)
+            result = self._full_rebuild_history(entries)
+            self._history_last_log_count = lc
+            return result
 
         if not new_entries:
+            self._history_last_log_count = lc
             return self._format_history_section()
 
         new_entries.reverse()
@@ -717,12 +723,15 @@ class TextEnhancer:
                 projected_count,
                 projected_chars,
             )
-            return self._full_rebuild_history(entries)
+            result = self._full_rebuild_history(entries)
+            self._history_last_log_count = lc
+            return result
 
         # Safe to append
         mc.entry_lines.extend(new_lines)
         mc.total_chars = projected_chars
         mc.last_ts = latest_ts
+        self._history_last_log_count = lc
         logger.info(
             "History cache [%s] appended %d entries (total %d, chars %d)",
             self._mode,
@@ -771,27 +780,24 @@ class TextEnhancer:
             return ""
         return "\n".join(mc.entry_lines)
 
-    def _context_section_header(
-        self, *, has_history: bool, has_vocab: bool
-    ) -> str:
+    def _context_section_header(self) -> str:
         """Build the combined instruction header for the context section.
 
-        Only includes instructions for sections that actually have content,
-        so the LLM never sees instructions for absent data.
-
-        Within a typical session (where both features stay enabled and
-        produce content), this text is static and contributes to the
-        cacheable prompt prefix.
+        Uses ``_history_enabled`` / ``_vocab_enabled`` flags (not per-request
+        content) so the header stays **stable within a session** and
+        contributes to the cacheable prompt prefix.  The subsection labels
+        (``对话记录：`` / ``词库：``) are only emitted when actual content
+        exists, so the LLM never sees a label with no data beneath it.
         """
         lines = ["---", "以下是辅助纠错的参考上下文："]
 
-        if has_history:
+        if self._history_enabled:
             lines.append(
                 "- 对话记录：若 ASR 识别与最终确认不同则用→分隔（识别→确认），"
                 "相同则表示无需纠错。"
             )
 
-        if has_vocab:
+        if self._vocab_enabled:
             lines.append(
                 "- 词库：以下专有名词 ASR 常误写为同音近音词，"
                 "仅当输入中确实存在对应误写时才替换，不要强行套用。"

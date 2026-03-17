@@ -1687,7 +1687,8 @@ class TestIncrementalHistoryContext:
         assert "对话记录：若 ASR" not in result
 
     def test_context_section_history_enabled_but_empty(self):
-        """When history enabled but empty, header should not mention history."""
+        """When history enabled but empty, header still includes history instruction
+        (uses enabled flag for stability), but no '对话记录：' subsection appears."""
         enhancer = self._make_enhancer()
         enhancer._vocab_enabled = True
 
@@ -1709,9 +1710,10 @@ class TestIncrementalHistoryContext:
 
         # Vocab should be present
         assert "WenZi" in result
-        assert "词库：以下专有名词" in result
-        # History instruction should NOT be in header (no history content)
-        assert "对话记录：若 ASR" not in result
+        # Header includes history instruction (enabled flag, not content-based)
+        assert "对话记录：若 ASR" in result
+        # But no "对话记录：\n" subsection (no history entries)
+        assert "对话记录：\n" not in result
 
 
 class TestLastSystemPrompt:
