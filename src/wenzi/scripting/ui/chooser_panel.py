@@ -977,6 +977,45 @@ class ChooserPanel:
             f"setPrefixHints({json.dumps(hints, ensure_ascii=False)})"
         )
 
+    @staticmethod
+    def _ensure_edit_menu() -> None:
+        """Create a minimal Edit menu if the app doesn't have one.
+
+        macOS routes Cmd+C/X/V/A through the main menu's key equivalents
+        into the responder chain.  Without an Edit menu, these shortcuts
+        are never dispatched, producing a beep in borderless panels.
+        The menu is invisible in accessory (statusbar) mode.
+        """
+        from AppKit import NSApp, NSMenu, NSMenuItem
+
+        main_menu = NSApp.mainMenu()
+        if main_menu is None:
+            main_menu = NSMenu.alloc().initWithTitle_("")
+            NSApp.setMainMenu_(main_menu)
+
+        # Check if an Edit submenu already exists
+        for i in range(main_menu.numberOfItems()):
+            item = main_menu.itemAtIndex_(i)
+            if item.submenu() and item.submenu().title() == "Edit":
+                return
+
+        edit_menu = NSMenu.alloc().initWithTitle_("Edit")
+        for title, action, key in (
+            ("Undo", "undo:", "z"),
+            ("Redo", "redo:", "Z"),
+            ("Cut", "cut:", "x"),
+            ("Copy", "copy:", "c"),
+            ("Paste", "paste:", "v"),
+            ("Select All", "selectAll:", "a"),
+        ):
+            edit_menu.addItemWithTitle_action_keyEquivalent_(title, action, key)
+
+        edit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Edit", None, "",
+        )
+        edit_item.setSubmenu_(edit_menu)
+        main_menu.addItem_(edit_item)
+
     def _build_panel(self) -> None:
         """Create NSPanel + WKWebView."""
         from AppKit import (
@@ -1011,6 +1050,12 @@ class ChooserPanel:
         # Transparent background — the HTML provides its own
         from AppKit import NSColor
         panel.setBackgroundColor_(NSColor.clearColor())
+
+        # Ensure the app has an Edit menu so Cmd+C/X/V/A key equivalents
+        # are routed through the responder chain to the WKWebView.
+        # Without this, borderless panels in accessory apps silently
+        # drop these shortcuts (producing a beep).
+        self._ensure_edit_menu()
 
         # Close on focus loss
         delegate_cls = _get_panel_delegate_class()
