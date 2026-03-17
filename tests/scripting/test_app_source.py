@@ -223,6 +223,44 @@ class TestAppSource:
             result = src.search("new")
         assert len(result) == 1
 
+    def test_auto_rescan_after_ttl(self, tmp_path):
+        """New apps should be found automatically after scan TTL expires."""
+        src = self._make_source(tmp_path)
+
+        # New app installed after initial scan
+        (tmp_path / "NewApp.app").mkdir()
+
+        # Simulate TTL expiry by backdating _last_scan_time
+        src._last_scan_time -= AppSource._SCAN_TTL + 1
+
+        with patch(
+            "wenzi.scripting.sources.app_source._APP_DIRS",
+            [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._get_running_app_names",
+            return_value=set(),
+        ):
+            result = src.search("new")
+        assert len(result) == 1
+
+    def test_no_rescan_within_ttl(self, tmp_path):
+        """App list should not be rescanned within the TTL window."""
+        src = self._make_source(tmp_path)
+
+        # New app installed after initial scan
+        (tmp_path / "NewApp.app").mkdir()
+
+        # TTL has NOT expired — search should NOT find the new app
+        with patch(
+            "wenzi.scripting.sources.app_source._APP_DIRS",
+            [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._get_running_app_names",
+            return_value=set(),
+        ):
+            result = src.search("new")
+        assert len(result) == 0
+
     def test_search_by_display_name(self, tmp_path):
         """Should match against localized display_name as well."""
         (tmp_path / "Notes.app").mkdir()

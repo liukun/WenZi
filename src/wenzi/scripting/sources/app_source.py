@@ -12,6 +12,7 @@ import hashlib
 import logging
 import os
 import threading
+import time
 from typing import List, Optional
 
 from wenzi.config import DEFAULT_ICON_CACHE_DIR as _CFG_ICON_CACHE_DIR
@@ -200,9 +201,12 @@ class AppSource:
     Icons are extracted lazily and cached to disk for fast subsequent loads.
     """
 
+    _SCAN_TTL = 30  # seconds before app list is rescanned
+
     def __init__(self, icon_cache_dir: Optional[str] = None) -> None:
         self._apps: list[dict] = []
         self._scanned = False
+        self._last_scan_time: float = 0
         self._icon_cache: dict[str, str] = {}  # path → data URI (memory)
         self._icon_lock = threading.Lock()
         self._icon_cache_dir = icon_cache_dir or _DEFAULT_ICON_CACHE_DIR
@@ -277,15 +281,20 @@ class AppSource:
             logger.debug("Failed to cache icon for %s", app_path, exc_info=True)
 
     def _ensure_scanned(self) -> None:
-        if not self._scanned:
+        now = time.monotonic()
+        if not self._scanned or (now - self._last_scan_time > self._SCAN_TTL):
+            if self._scanned:
+                logger.debug("App list TTL expired, rescanning")
             self._apps = _scan_apps()
             self._scanned = True
+            self._last_scan_time = now
             self._preload_icons_async()
 
     def rescan(self) -> None:
         """Force a rescan of application directories."""
         self._apps = _scan_apps()
         self._scanned = True
+        self._last_scan_time = time.monotonic()
         self._preload_icons_async()
 
     def _preload_icons_async(self) -> None:
