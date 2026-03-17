@@ -642,12 +642,20 @@ class ChooserPanel:
 
                         self._ql_panel = QuickLookPanel(
                             on_resign_key=self._maybe_close,
+                            on_shift_toggle=self._on_ql_shift_toggle,
                         )
                     self._ql_panel.show(path, anchor_panel=self._panel)
                     return
         # Close
         if self._ql_panel is not None:
             self._ql_panel.close()
+
+    def _on_ql_shift_toggle(self) -> None:
+        """Called when Shift is tapped while the QL panel has focus."""
+        if self._ql_panel is not None:
+            self._ql_panel.close()
+        # Reset JS-side qlPreviewOpen state
+        self._eval_js("qlPreviewOpen=false")
 
     def _update_quicklook(self, index: int) -> None:
         """Update Quick Look preview when navigating with ↑↓."""

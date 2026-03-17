@@ -631,6 +631,7 @@ class TestQuickLookIntegration:
             })
             MockQL.assert_called_once_with(
                 on_resign_key=panel._maybe_close,
+                on_shift_toggle=panel._on_ql_shift_toggle,
             )
             mock_ql.show.assert_called_once_with(
                 "/tmp/test.pdf", anchor_panel=panel._panel,
@@ -701,6 +702,17 @@ class TestQuickLookIntegration:
             panel.close()
         mock_ql.close.assert_called_once()
         assert panel._ql_panel is None
+
+    def test_ql_shift_toggle_closes_ql_and_resets_js(self):
+        """Shift tap on QL panel should close QL and reset JS state."""
+        panel = _make_panel()
+        mock_ql = MagicMock()
+        panel._ql_panel = mock_ql
+        panel._on_ql_shift_toggle()
+        mock_ql.close.assert_called_once()
+        # Should reset JS qlPreviewOpen
+        call_args = panel._eval_js.call_args[0][0]
+        assert "qlPreviewOpen=false" in call_args
 
     def test_maybe_close_keeps_open_when_ql_is_key(self):
         """_maybe_close should not close when QL panel is the key window."""

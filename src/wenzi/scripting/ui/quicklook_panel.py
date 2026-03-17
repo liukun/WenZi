@@ -32,12 +32,16 @@ class QuickLookPanel:
             close everything.
     """
 
-    def __init__(self, on_resign_key=None) -> None:
+    def __init__(self, on_resign_key=None, on_shift_toggle=None) -> None:
         self._panel = None
         self._ql_view = None
         self._delegate = None
         self._current_path: Optional[str] = None
         self._on_resign_key = on_resign_key
+        self._on_shift_toggle = on_shift_toggle
+        self._key_monitor = None
+        self._shift_alone: bool = False
+        self._shift_down_time: float = 0.0
 
     # ------------------------------------------------------------------
     # Public API
@@ -69,6 +73,7 @@ class QuickLookPanel:
 
     def close(self) -> None:
         """Close and release the panel."""
+        self._remove_key_monitor()
         if self._panel is not None:
             self._panel.setDelegate_(None)
             self._panel.orderOut_(None)
@@ -144,6 +149,7 @@ class QuickLookPanel:
             self._panel = panel
             self._ql_view = ql_view
             self._delegate = delegate
+            self._install_key_monitor()
         except Exception:
             logger.exception("Failed to build Quick Look panel")
             self._panel = None
@@ -154,6 +160,66 @@ class QuickLookPanel:
         if self._panel is None:
             return
         self._panel.center()
+
+    def _install_key_monitor(self) -> None:
+        """Install a local event monitor to detect Shift-alone taps.
+
+        Only fires when the QL panel is the key window, so it does not
+        interfere with the chooser's own Shift handling in WKWebView.
+        """
+        if self._key_monitor is not None:
+            return
+        try:
+            import time
+
+            from AppKit import NSApp, NSEvent, NSFlagsChangedMask
+
+            _SHIFT_TIMEOUT = 0.4  # seconds
+
+            def _handler(event):
+                # Only handle when QL panel is key
+                if NSApp.keyWindow() != self._panel:
+                    return event
+
+                flags = event.modifierFlags()
+                shift_pressed = bool(flags & (1 << 17))  # NSEventModifierFlagShift
+
+                if shift_pressed:
+                    # Shift went down
+                    self._shift_alone = True
+                    self._shift_down_time = time.monotonic()
+                else:
+                    # Shift went up — check for solo tap
+                    if (
+                        self._shift_alone
+                        and (time.monotonic() - self._shift_down_time) < _SHIFT_TIMEOUT
+                    ):
+                        self._shift_alone = False
+                        if self._on_shift_toggle is not None:
+                            self._on_shift_toggle()
+                            return None  # consume the event
+                    self._shift_alone = False
+
+                return event
+
+            self._key_monitor = (
+                NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+                    NSFlagsChangedMask, _handler,
+                )
+            )
+        except Exception:
+            logger.debug("Failed to install key monitor", exc_info=True)
+
+    def _remove_key_monitor(self) -> None:
+        """Remove the local event monitor."""
+        if self._key_monitor is not None:
+            try:
+                from AppKit import NSEvent
+
+                NSEvent.removeMonitor_(self._key_monitor)
+            except Exception:
+                pass
+            self._key_monitor = None
 
 
 # ---------------------------------------------------------------------------

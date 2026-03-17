@@ -157,3 +157,27 @@ class TestQuickLookPanel:
         callback = MagicMock()
         ql = QuickLookPanel(on_resign_key=callback)
         assert ql._on_resign_key is callback
+
+    def test_on_shift_toggle_callback(self, _mock_appkit):
+        """on_shift_toggle callback should be stored."""
+        from wenzi.scripting.ui.quicklook_panel import QuickLookPanel
+
+        callback = MagicMock()
+        ql = QuickLookPanel(on_shift_toggle=callback)
+        assert ql._on_shift_toggle is callback
+
+    def test_close_removes_key_monitor(self, _mock_appkit):
+        """close() should remove the key event monitor."""
+        from wenzi.scripting.ui.quicklook_panel import QuickLookPanel
+
+        ql = QuickLookPanel()
+        anchor = MagicMock()
+
+        with patch("os.path.exists", return_value=True):
+            ql.show("/tmp/test.pdf", anchor_panel=anchor)
+
+        ql._key_monitor = MagicMock()
+        with patch("AppKit.NSEvent.removeMonitor_") as mock_remove:
+            ql.close()
+            mock_remove.assert_called_once()
+        assert ql._key_monitor is None
