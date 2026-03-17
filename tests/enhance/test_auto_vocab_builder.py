@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from wenzi.enhance.auto_vocab_builder import AutoVocabBuilder
+from wenzi.enhance.conversation_history import ConversationHistory
 
 
 @pytest.fixture
@@ -219,3 +222,124 @@ class TestOnBuildDoneCallback:
             builder._build()
 
         callback.assert_not_called()
+
+
+class TestInitCounterFromDisk:
+    def test_counter_initialized_from_pending_corrections(self, config, tmp_path):
+        """Counter should reflect unprocessed corrections on disk."""
+        # Write vocabulary.json with a last_processed_timestamp
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps({
+                "last_processed_timestamp": "2026-01-01T10:00:00+00:00",
+                "entries": [],
+            }),
+            encoding="utf-8",
+        )
+
+        # Write conversation history with corrections after the timestamp
+        ch = ConversationHistory(config_dir=str(tmp_path))
+        ch.log("old asr", "old enhanced", "old final", "proofread", True, user_corrected=True)
+        # Manually backdate the record to before last_processed_timestamp
+        with open(tmp_path / "conversation_history.jsonl", "r") as f:
+            lines = f.readlines()
+        old_record = json.loads(lines[0])
+        old_record["timestamp"] = "2026-01-01T09:00:00+00:00"
+        with open(tmp_path / "conversation_history.jsonl", "w") as f:
+            f.write(json.dumps(old_record, ensure_ascii=False) + "\n")
+
+        # Add 3 corrections after the timestamp
+        for i in range(3):
+            ch.log(f"asr{i}", f"enhanced{i}", f"final{i}", "proofread", True, user_corrected=True)
+
+        builder = AutoVocabBuilder(
+            config, enabled=True, threshold=10,
+            conversation_history=ch, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 3
+
+    def test_counter_zero_when_no_vocab_file(self, config, tmp_path):
+        """Without vocabulary.json, all corrections count as pending."""
+        ch = ConversationHistory(config_dir=str(tmp_path))
+        for i in range(5):
+            ch.log(f"asr{i}", f"enhanced{i}", f"final{i}", "proofread", True, user_corrected=True)
+
+        builder = AutoVocabBuilder(
+            config, enabled=True, threshold=10,
+            conversation_history=ch, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 5
+
+    def test_counter_zero_when_no_corrections(self, config, tmp_path):
+        """Counter stays 0 when there are no corrections since last build."""
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps({
+                "last_processed_timestamp": "2099-01-01T00:00:00+00:00",
+                "entries": [],
+            }),
+            encoding="utf-8",
+        )
+
+        ch = ConversationHistory(config_dir=str(tmp_path))
+        ch.log("asr", "enhanced", "final", "proofread", True, user_corrected=True)
+
+        builder = AutoVocabBuilder(
+            config, enabled=True, threshold=10,
+            conversation_history=ch, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 0
+
+    def test_counter_zero_when_disabled(self, config, tmp_path):
+        """Disabled builder should not init counter from disk."""
+        ch = ConversationHistory(config_dir=str(tmp_path))
+        for i in range(5):
+            ch.log(f"asr{i}", f"enhanced{i}", f"final{i}", "proofread", True, user_corrected=True)
+
+        builder = AutoVocabBuilder(
+            config, enabled=False, threshold=10,
+            conversation_history=ch, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 0
+
+    def test_counter_zero_when_no_conversation_history(self, config, tmp_path):
+        """Without conversation_history, counter stays 0."""
+        builder = AutoVocabBuilder(
+            config, enabled=True, threshold=10,
+            conversation_history=None, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 0
+
+    @patch.object(AutoVocabBuilder, "_run_silent_build")
+    def test_next_correction_triggers_build_after_init(self, mock_build, config, tmp_path):
+        """When disk counter is threshold-1, one more correction triggers build."""
+        ch = ConversationHistory(config_dir=str(tmp_path))
+        for i in range(4):
+            ch.log(f"asr{i}", f"enhanced{i}", f"final{i}", "proofread", True, user_corrected=True)
+
+        builder = AutoVocabBuilder(
+            config, enabled=True, threshold=5,
+            conversation_history=ch, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 4
+
+        mock_build.assert_not_called()
+        builder.on_correction_logged()
+        mock_build.assert_called_once()
+        assert builder._counter == 0
+
+    @patch.object(AutoVocabBuilder, "_run_silent_build")
+    def test_exceeding_threshold_triggers_on_next_correction(self, mock_build, config, tmp_path):
+        """When disk corrections already exceed threshold, next correction triggers."""
+        ch = ConversationHistory(config_dir=str(tmp_path))
+        for i in range(20):
+            ch.log(f"asr{i}", f"enhanced{i}", f"final{i}", "proofread", True, user_corrected=True)
+
+        builder = AutoVocabBuilder(
+            config, enabled=True, threshold=5,
+            conversation_history=ch, config_dir=str(tmp_path),
+        )
+        assert builder._counter == 20
+
+        builder.on_correction_logged()
+        mock_build.assert_called_once()

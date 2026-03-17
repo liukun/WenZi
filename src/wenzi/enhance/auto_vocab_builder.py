@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import threading
 from typing import Any, Callable, Dict, Optional
 
@@ -34,6 +36,36 @@ class AutoVocabBuilder:
         self._on_build_done = on_build_done
         self._conversation_history = conversation_history
         self._config_dir = config_dir
+        self._init_counter_from_disk()
+
+    def _init_counter_from_disk(self) -> None:
+        """Initialize counter from unprocessed corrections on disk.
+
+        Reads the last_processed_timestamp from vocabulary.json and counts
+        corrections that occurred after it, so the counter survives app restarts.
+        """
+        if not self._enabled or not self._conversation_history or not self._config_dir:
+            return
+
+        try:
+            vocab_path = os.path.join(
+                os.path.expanduser(self._config_dir), "vocabulary.json"
+            )
+            since = None
+            if os.path.exists(vocab_path):
+                with open(vocab_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                since = data.get("last_processed_timestamp")
+
+            pending = len(self._conversation_history.get_corrections(since=since))
+            if pending > 0:
+                self._counter = pending
+                logger.info(
+                    "Auto vocab builder: %d unprocessed corrections from disk",
+                    pending,
+                )
+        except Exception as e:
+            logger.debug("Failed to init counter from disk: %s", e)
 
     def set_enhancer(self, enhancer: Any) -> None:
         """Bind the TextEnhancer instance (needed for vocab_index reload)."""
