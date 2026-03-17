@@ -194,6 +194,7 @@ class ScriptEngine:
             "folder_search": ("folders", self._enable_folder_source),
             "snippets": ("snippets", self._enable_snippet_source),
             "bookmarks": ("bookmarks", self._enable_bookmark_source),
+            "calculator": ("calculator", self._enable_calculator_source),
         }
         entry = source_map.get(config_key)
         if not entry:
@@ -211,6 +212,7 @@ class ScriptEngine:
             "folder_search": "folders",
             "snippets": "snippets",
             "bookmarks": "bookmarks",
+            "calculator": "calculator",
         }
         source_name = source_name_map.get(config_key)
         if not source_name:
@@ -298,6 +300,16 @@ class ScriptEngine:
         except Exception:
             logger.exception("Failed to enable bookmark source")
 
+    def _enable_calculator_source(self, _prefix: str) -> None:
+        try:
+            from wenzi.scripting.sources.calculator_source import CalculatorSource
+
+            calc_source = CalculatorSource()
+            self._wz.chooser.register_source(calc_source.as_chooser_source())
+            logger.info("Calculator source enabled at runtime")
+        except Exception:
+            logger.exception("Failed to enable calculator source")
+
     def rebind_chooser_hotkey(self, old_hotkey: str, new_hotkey: str) -> None:
         """Unbind old chooser hotkey and bind the new one at runtime."""
         if old_hotkey:
@@ -347,6 +359,17 @@ class ScriptEngine:
                 logger.exception("Failed to set up usage tracker")
 
         prefixes = chooser_config.get("prefixes", {})
+
+        # Calculator source
+        if chooser_config.get("calculator", True):
+            try:
+                from wenzi.scripting.sources.calculator_source import CalculatorSource
+
+                calc_source = CalculatorSource()
+                self._wz.chooser.register_source(calc_source.as_chooser_source())
+                logger.info("Built-in calculator source registered")
+            except Exception:
+                logger.exception("Failed to register calculator source")
 
         # App search source
         if chooser_config.get("app_search", True):

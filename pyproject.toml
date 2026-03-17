@@ -22,6 +22,8 @@ dependencies = [
     "sherpa-onnx>=1.12.29",
     "sherpa-onnx-core>=1.12.29",
     "pyyaml>=6.0",
+    "simpleeval>=1.0.5",
+    "pint>=0.24",
 ]
 # NOTE: sherpa-onnx declares sherpa-onnx-core as a dependency, but uv's resolver
 # does not always pick it up from the sdist metadata. Listing it explicitly
