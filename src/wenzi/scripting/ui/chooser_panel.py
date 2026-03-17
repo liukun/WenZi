@@ -11,6 +11,7 @@ import logging
 from typing import Callable, Dict, List, Optional
 
 from wenzi.scripting.sources import ChooserItem, ChooserSource
+from wenzi.ui_helpers import get_frontmost_app, reactivate_app, restore_accessory
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,7 @@ class ChooserPanel:
 
     _PANEL_WIDTH = 960
     _PANEL_HEIGHT = 400
+    _MAX_TOTAL_RESULTS = 50
 
     def __init__(self, usage_tracker=None) -> None:
         self._panel = None
@@ -170,6 +172,7 @@ class ChooserPanel:
         self._pending_initial_query: Optional[str] = None
         self._pending_placeholder: Optional[str] = None
         self._event_callback: Optional[Callable] = None  # (event, *args)
+        self._previous_app = None  # NSRunningApplication saved on show()
 
     # ------------------------------------------------------------------
     # Source management
@@ -235,6 +238,8 @@ class ChooserPanel:
             NSApp.activateIgnoringOtherApps_(True)
             return
 
+        self._previous_app = get_frontmost_app()
+
         self._build_panel()
         self._panel.makeKeyAndOrderFront_(None)
 
@@ -278,8 +283,22 @@ class ChooserPanel:
         self._current_items = []
         self._closing = False
 
-        from AppKit import NSApp
-        NSApp.setActivationPolicy_(1)  # Accessory (statusbar-only)
+        # Reactivate the previous app's focused window, then restore accessory mode.
+        # Order matters: activate first (without AllWindows) so macOS doesn't
+        # trigger its own all-windows activation when we drop to accessory.
+        from PyObjCTools import AppHelper
+
+        previous_app = self._previous_app
+        self._previous_app = None
+
+        def _activate_prev():
+            reactivate_app(previous_app)
+
+        def _go_accessory():
+            restore_accessory()
+
+        AppHelper.callAfter(_activate_prev)
+        AppHelper.callAfter(_go_accessory)
 
         self._fire_event("close")
 
@@ -340,10 +359,11 @@ class ChooserPanel:
                         all_items.extend(src.search(query))
                     except Exception:
                         logger.exception("Chooser source %s search error", src.name)
-            self._current_items = all_items
+            self._current_items = all_items[:self._MAX_TOTAL_RESULTS]
         else:
             try:
-                self._current_items = source.search(query) if source.search else []
+                items = source.search(query) if source.search else []
+                self._current_items = items[:self._MAX_TOTAL_RESULTS]
             except Exception:
                 logger.exception("Chooser source %s search error", source.name)
                 self._current_items = []

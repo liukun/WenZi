@@ -345,12 +345,38 @@ def send_notification(title: str, subtitle: str, message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Quit
+# Quit / Restart
 # ---------------------------------------------------------------------------
 
 def quit_application(sender=None) -> None:
     """Quit the application."""
     NSApplication.sharedApplication().terminate_(sender)
+
+
+def restart_application() -> None:
+    """Spawn a shell watcher that waits for this process to exit, then relaunches."""
+    import os
+    import shlex
+    import subprocess
+    import sys
+
+    pid = os.getpid()
+    cmd = shlex.join([sys.executable] + sys.argv)
+
+    # Use /bin/sh so the watcher is fully independent of the Python runtime.
+    # `kill -0` checks if the process is still alive; once it's gone, relaunch.
+    script = f"while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; exec {cmd}"
+    subprocess.Popen(
+        ["/bin/sh", "-c", script],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logging.getLogger(__name__).info(
+        "Restart watcher spawned (pid=%d), quitting...", pid
+    )
+    quit_application()
 
 
 # ---------------------------------------------------------------------------

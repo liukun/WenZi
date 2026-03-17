@@ -193,6 +193,47 @@ class TestSearchLogic:
         assert panel._current_items == []
 
 
+class TestResultTruncation:
+    """Tests for P0: _MAX_TOTAL_RESULTS truncation in _do_search."""
+
+    def test_non_prefix_results_truncated(self):
+        panel = _make_panel()
+        items = [ChooserItem(title=f"item {i}") for i in range(80)]
+        panel.register_source(
+            ChooserSource(
+                name="many",
+                search=lambda q: [i for i in items if q.lower() in i.title.lower()],
+            )
+        )
+        panel._do_search("item")
+        assert len(panel._current_items) == panel._MAX_TOTAL_RESULTS
+
+    def test_prefix_results_truncated(self):
+        panel = _make_panel()
+        items = [ChooserItem(title=f"entry {i}") for i in range(80)]
+        panel.register_source(
+            ChooserSource(
+                name="clipboard",
+                prefix="cb",
+                search=lambda q: items,
+            )
+        )
+        panel._do_search("cb ")
+        assert len(panel._current_items) == panel._MAX_TOTAL_RESULTS
+
+    def test_fewer_than_max_not_truncated(self):
+        panel = _make_panel()
+        items = [ChooserItem(title=f"item {i}") for i in range(5)]
+        panel.register_source(
+            ChooserSource(
+                name="few",
+                search=lambda q: items,
+            )
+        )
+        panel._do_search("item")
+        assert len(panel._current_items) == 5
+
+
 class TestItemExecution:
     def test_execute_item(self):
         import time
@@ -481,6 +522,54 @@ class TestUsageTrackerIntegration:
             panel._execute_item(0)
 
         assert tracker.score("saf", "app:Safari") == 1
+
+
+class TestCloseReactivation:
+    def test_close_reactivates_previous_app(self):
+        """close() should reactivate the saved previous app without raising all windows."""
+        panel = _make_panel()
+        mock_app = MagicMock()
+        panel._previous_app = mock_app
+
+        call_order = []
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn: (call_order.append(fn), fn())):
+            with patch("wenzi.scripting.ui.chooser_panel.reactivate_app") as mock_reactivate, \
+                 patch("wenzi.scripting.ui.chooser_panel.restore_accessory") as mock_restore:
+                panel.close()
+                mock_reactivate.assert_called_once_with(mock_app)
+                mock_restore.assert_called_once()
+                # reactivate must be called before restore_accessory
+                reactivate_idx = next(
+                    i for i, fn in enumerate(call_order)
+                    if hasattr(fn, '__code__') and 'reactivate' in (fn.__code__.co_names if hasattr(fn.__code__, 'co_names') else ())
+                    or 'activate' in getattr(fn, '__name__', '')
+                )
+                restore_idx = next(
+                    i for i, fn in enumerate(call_order)
+                    if hasattr(fn, '__code__') and 'restore' in (fn.__code__.co_names if hasattr(fn.__code__, 'co_names') else ())
+                    or 'accessory' in getattr(fn, '__name__', '')
+                )
+                assert reactivate_idx < restore_idx
+
+    def test_close_clears_previous_app(self):
+        """close() should clear _previous_app after use."""
+        panel = _make_panel()
+        panel._previous_app = MagicMock()
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn: fn()), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"), \
+             patch("wenzi.scripting.ui.chooser_panel.restore_accessory"):
+            panel.close()
+        assert panel._previous_app is None
+
+    def test_close_without_previous_app(self):
+        """close() should not crash when _previous_app is None."""
+        panel = _make_panel()
+        panel._previous_app = None
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn: fn()), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app") as mock_reactivate, \
+             patch("wenzi.scripting.ui.chooser_panel.restore_accessory"):
+            panel.close()
+        mock_reactivate.assert_called_once_with(None)
 
 
 class TestInitialQuery:

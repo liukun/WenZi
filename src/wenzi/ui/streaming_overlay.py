@@ -137,7 +137,7 @@ function appendText(chunk, tokens) {
     if (el._hasThinking) { el.innerHTML = ''; el._hasThinking = false; }
     el.appendChild(document.createTextNode(chunk));
     el.scrollTop = el.scrollHeight;
-    if (tokens > 0) setStatus(C.aiBase + '  Tokens: \u2193' + tokens.toLocaleString());
+    if (tokens > 0) setStatus(C.aiBase + '  Chars: \u2193' + tokens.toLocaleString());
 }
 
 function appendThinkingText(chunk, tokens) {
@@ -148,7 +148,7 @@ function appendThinkingText(chunk, tokens) {
     span.textContent = chunk;
     el.appendChild(span);
     el.scrollTop = el.scrollHeight;
-    if (tokens > 0) setStatus(C.aiBase + '  \u25b6 Thinking: ' + tokens.toLocaleString());
+    if (tokens > 0) setStatus(C.aiBase + '  \u25b6 Thinking: ' + tokens.toLocaleString() + ' chars');
 }
 
 function clearText() {

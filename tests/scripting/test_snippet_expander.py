@@ -55,6 +55,7 @@ class TestBufferAndMatching:
         args = expand_mock.call_args[0]
         assert args[0] == "/lsof/"
         assert "lsof" in args[1]
+        assert args[2] is False  # raw defaults to False
 
     def test_check_expansion_no_match(self):
         def setup(d):
@@ -110,6 +111,30 @@ class TestBufferAndMatching:
             expander._check_expansion("text ;;ab")
 
         # One of them should match (whichever comes first in iteration)
+        expand_mock.assert_called_once()
+
+    def test_check_expansion_skips_auto_expand_false(self):
+        def setup(d):
+            path = os.path.join(d, "email.md")
+            with open(path, "w") as f:
+                f.write('---\nkeyword: "@@e"\nauto_expand: false\n---\ne@x.com')
+
+        expander = self._make_expander(setup)
+        expand_mock = MagicMock()
+        with patch.object(expander, "_expand", expand_mock):
+            expander._check_expansion("text @@e")
+
+        expand_mock.assert_not_called()
+
+    def test_check_expansion_allows_auto_expand_true(self):
+        def setup(d):
+            _write_snippet(d, "email", "@@e", "e@x.com")
+
+        expander = self._make_expander(setup)
+        expand_mock = MagicMock()
+        with patch.object(expander, "_expand", expand_mock):
+            expander._check_expansion("text @@e")
+
         expand_mock.assert_called_once()
 
     def test_expanding_flag_prevents_reentrance(self):
@@ -185,6 +210,75 @@ class TestExpand:
             expander._expand(";;d", "{date}")
 
         mock_ep.assert_called_once_with("{date}")
+
+    def test_expand_raw_skips_placeholder_expansion(self):
+        store = _make_store()
+        expander = SnippetExpander(store)
+
+        with (
+            patch.object(expander, "_send_backspaces"),
+            patch(
+                "wenzi.scripting.sources.snippet_source._expand_placeholders",
+            ) as mock_ep,
+            patch("wenzi.input._set_pasteboard_concealed") as mock_paste,
+            patch("subprocess.run"),
+        ):
+            expander._expand(";;tpl", "Today is {date}", raw=True)
+
+        mock_ep.assert_not_called()
+        mock_paste.assert_called_once_with("Today is {date}")
+
+
+class TestRandomExpansion:
+    """Test auto-expansion with random variant snippets."""
+
+    def _make_expander(self, setup_fn=None):
+        store = _make_store(setup_fn)
+        return SnippetExpander(store)
+
+    def test_random_snippet_picks_from_variants(self):
+        def setup(d):
+            path = os.path.join(d, "thx.md")
+            with open(path, "w") as f:
+                f.write(
+                    '---\n'
+                    'keyword: "thx "\n'
+                    'random: true\n'
+                    '---\n'
+                    'Thanks!\n'
+                    '===\n'
+                    'Thank you!\n'
+                    '===\n'
+                    'Much appreciated!\n'
+                )
+
+        expander = self._make_expander(setup)
+
+        # Verify expansion picks a variant via random.choice
+        expand_mock = MagicMock()
+        with (
+            patch.object(expander, "_expand", expand_mock),
+            patch("random.choice", return_value="Thank you!"),
+        ):
+            expander._check_expansion("hello thx ")
+
+        expand_mock.assert_called_once()
+        args = expand_mock.call_args[0]
+        assert args[0] == "thx "
+        assert args[1] == "Thank you!"
+
+    def test_non_random_snippet_uses_content(self):
+        def setup(d):
+            _write_snippet(d, "email", "@@e", "user@example.com")
+
+        expander = self._make_expander(setup)
+        expand_mock = MagicMock()
+        with patch.object(expander, "_expand", expand_mock):
+            expander._check_expansion("text @@e")
+
+        expand_mock.assert_called_once()
+        args = expand_mock.call_args[0]
+        assert args[1] == "user@example.com"
 
 
 class TestEngineIntegration:

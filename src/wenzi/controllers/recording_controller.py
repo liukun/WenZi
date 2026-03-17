@@ -796,7 +796,7 @@ class RecordingController:
                         app._streaming_overlay.set_status(f"\u23f3 {label}")
                     elif is_thinking and chunk:
                         had_thinking = True
-                        thinking_tokens += 1
+                        thinking_tokens += len(chunk)
                         app._streaming_overlay.append_thinking_text(
                             chunk, thinking_tokens=thinking_tokens
                         )
@@ -805,7 +805,7 @@ class RecordingController:
                             had_thinking = False
                             app._streaming_overlay.clear_text()
                         collected.append(chunk)
-                        completion_tokens += 1
+                        completion_tokens += len(chunk)
                         app._streaming_overlay.append_text(
                             chunk, completion_tokens=completion_tokens
                         )
@@ -882,7 +882,7 @@ class RecordingController:
                                 )
                             elif is_thinking and chunk:
                                 had_thinking = True
-                                thinking_tokens += 1
+                                thinking_tokens += len(chunk)
                                 app._streaming_overlay.append_thinking_text(
                                     chunk, thinking_tokens=thinking_tokens
                                 )
@@ -891,7 +891,7 @@ class RecordingController:
                                     had_thinking = False
                                     # Don't clear previous steps' content
                                 collected.append(chunk)
-                                completion_tokens += 1
+                                completion_tokens += len(chunk)
                                 app._streaming_overlay.append_text(
                                     chunk, completion_tokens=completion_tokens
                                 )

@@ -839,27 +839,9 @@ class SettingsController:
 
     @staticmethod
     def _restart_app() -> None:
-        """Spawn a shell watcher that waits for this process to exit, then relaunches."""
-        import shlex
-        import sys
-
-        pid = os.getpid()
-        cmd = shlex.join([sys.executable] + sys.argv)
-
-        # Use /bin/sh so the watcher is fully independent of the Python runtime.
-        # `kill -0` checks if the process is still alive; once it's gone, relaunch.
-        script = f"while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; exec {cmd}"
-        subprocess.Popen(
-            ["/bin/sh", "-c", script],
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        logger.info("Restart watcher spawned (pid=%d), quitting...", pid)
-
-        from wenzi.statusbar import quit_application
-        quit_application()
+        """Restart the application."""
+        from wenzi.statusbar import restart_application
+        restart_application()
 
     # ── Launcher tab ─────────────────────────────────────────────────
 

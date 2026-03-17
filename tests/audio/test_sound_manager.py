@@ -3,7 +3,41 @@
 import os
 from unittest.mock import MagicMock, patch
 
-from wenzi.audio.sound_manager import SoundManager, ensure_start_sound
+from wenzi.audio.sound_manager import (
+    BUNDLED_SOUNDS_DIR,
+    CUSTOM_START_SOUND,
+    DEFAULT_START_SOUND,
+    SoundManager,
+    _resolve_start_sound,
+)
+
+
+class TestResolveStartSound:
+    def test_returns_bundled_when_no_custom(self, tmp_path):
+        """When no custom sound exists, return the bundled default."""
+        config_dir = str(tmp_path / "config")
+        path = _resolve_start_sound(config_dir)
+        expected = os.path.join(BUNDLED_SOUNDS_DIR, DEFAULT_START_SOUND)
+        assert path == expected
+
+    def test_returns_custom_when_exists(self, tmp_path):
+        """When user has a custom sound, prefer it over bundled."""
+        config_dir = str(tmp_path / "config")
+        sounds_dir = os.path.join(config_dir, "sounds")
+        os.makedirs(sounds_dir)
+        custom_path = os.path.join(sounds_dir, CUSTOM_START_SOUND)
+        with open(custom_path, "wb") as f:
+            f.write(b"custom sound data")
+
+        path = _resolve_start_sound(config_dir)
+        assert path == custom_path
+
+    def test_bundled_sound_file_exists(self):
+        """The bundled start_default.wav must be present in the package."""
+        bundled_path = os.path.join(BUNDLED_SOUNDS_DIR, DEFAULT_START_SOUND)
+        assert os.path.exists(bundled_path), (
+            f"Bundled sound file missing: {bundled_path}"
+        )
 
 
 class TestSoundManagerInit:
@@ -114,52 +148,3 @@ class TestSoundManagerPlay:
         sm.warmup()
         # Should not replace existing cache
         assert sm._cached_sound is existing
-
-
-class TestEnsureStartSound:
-    def test_generates_wav_in_sounds_dir(self, tmp_path, monkeypatch):
-        sounds_dir = str(tmp_path / "sounds")
-        monkeypatch.setattr("wenzi.audio.sound_manager.SOUNDS_DIR", sounds_dir)
-        path = ensure_start_sound()
-        assert os.path.exists(path)
-        assert path.endswith("recording_start.wav")
-        assert sounds_dir.replace("~", os.path.expanduser("~")) in path
-
-    def test_does_not_regenerate_if_exists(self, tmp_path, monkeypatch):
-        sounds_dir = str(tmp_path / "sounds")
-        monkeypatch.setattr("wenzi.audio.sound_manager.SOUNDS_DIR", sounds_dir)
-        path1 = ensure_start_sound()
-        mtime1 = os.path.getmtime(path1)
-        path2 = ensure_start_sound()
-        mtime2 = os.path.getmtime(path2)
-        assert path1 == path2
-        assert mtime1 == mtime2
-
-    def test_user_can_replace_sound(self, tmp_path, monkeypatch):
-        sounds_dir = str(tmp_path / "sounds")
-        monkeypatch.setattr("wenzi.audio.sound_manager.SOUNDS_DIR", sounds_dir)
-        # Generate default first
-        path = ensure_start_sound()
-        # User replaces with custom file
-        with open(path, "wb") as f:
-            f.write(b"custom sound data")
-        # Should return the same path without overwriting
-        path2 = ensure_start_sound()
-        assert path == path2
-        with open(path2, "rb") as f:
-            assert f.read() == b"custom sound data"
-
-    def test_fallback_when_blow_missing(self, tmp_path, monkeypatch):
-        sounds_dir = str(tmp_path / "sounds")
-        monkeypatch.setattr("wenzi.audio.sound_manager.SOUNDS_DIR", sounds_dir)
-
-        original_exists = os.path.exists
-
-        def fake_exists(p):
-            if "Blow.aiff" in str(p):
-                return False
-            return original_exists(p)
-
-        monkeypatch.setattr("os.path.exists", fake_exists)
-        path = ensure_start_sound()
-        assert os.path.exists(path)

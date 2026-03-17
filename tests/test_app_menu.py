@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 from wenzi.controllers.config_controller import ConfigController
@@ -70,7 +71,10 @@ class TestBuildConfigInfo:
         info = _get_info(app)
 
         assert "None" not in info
-        assert ".config/WenZi/config.json" in info
+        # Config path may be patched by conftest; check the live value
+        import wenzi.config as _cfg
+        expected = os.path.expanduser(_cfg.DEFAULT_CONFIG_PATH)
+        assert expected in info
 
     def test_no_enhancer(self):
         app = _make_mock_app()
@@ -124,7 +128,7 @@ class TestHelpMenu:
     """Tests for the help menu functionality."""
 
     @patch("webbrowser.open")
-    @patch("locale.getdefaultlocale", return_value=("zh_CN", "UTF-8"))
+    @patch("locale.getlocale", return_value=("zh_CN", "UTF-8"))
     def test_help_click_chinese_locale(self, mock_locale, mock_open):
         app = MagicMock()
         builder = MenuBuilder(app)
@@ -132,10 +136,21 @@ class TestHelpMenu:
 
         mock_open.assert_called_once()
         url = mock_open.call_args[0][0]
-        assert "README.zh.md" in url
+        assert url == "https://airead.github.io/WenZi/zh/docs/user-guide.html"
 
     @patch("webbrowser.open")
-    @patch("locale.getdefaultlocale", return_value=("en_US", "UTF-8"))
+    @patch("locale.getlocale", return_value=("zh_TW", "UTF-8"))
+    def test_help_click_chinese_traditional_locale(self, mock_locale, mock_open):
+        app = MagicMock()
+        builder = MenuBuilder(app)
+        builder.on_help_click(MagicMock())
+
+        mock_open.assert_called_once()
+        url = mock_open.call_args[0][0]
+        assert url == "https://airead.github.io/WenZi/zh/docs/user-guide.html"
+
+    @patch("webbrowser.open")
+    @patch("locale.getlocale", return_value=("en_US", "UTF-8"))
     def test_help_click_english_locale(self, mock_locale, mock_open):
         app = MagicMock()
         builder = MenuBuilder(app)
@@ -143,11 +158,10 @@ class TestHelpMenu:
 
         mock_open.assert_called_once()
         url = mock_open.call_args[0][0]
-        assert "README.md" in url
-        assert "README.zh.md" not in url
+        assert url == "https://airead.github.io/WenZi/docs/user-guide.html"
 
     @patch("webbrowser.open")
-    @patch("locale.getdefaultlocale", return_value=(None, None))
+    @patch("locale.getlocale", return_value=(None, None))
     def test_help_click_no_locale(self, mock_locale, mock_open):
         app = MagicMock()
         builder = MenuBuilder(app)
@@ -155,6 +169,4 @@ class TestHelpMenu:
 
         mock_open.assert_called_once()
         url = mock_open.call_args[0][0]
-        # Default to English
-        assert "README.md" in url
-        assert "README.zh.md" not in url
+        assert url == "https://airead.github.io/WenZi/docs/user-guide.html"

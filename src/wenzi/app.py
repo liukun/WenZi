@@ -45,6 +45,7 @@ from .controllers.recording_controller import RecordingController
 from .controllers.settings_controller import SettingsController
 from .controllers.config_controller import ConfigController
 from .controllers.enhance_mode_controller import EnhanceModeController
+from .controllers.update_controller import UpdateController
 from .transcription.base import create_transcriber
 from .ui_helpers import (
     activate_for_dialog,
@@ -270,7 +271,11 @@ class WenZiApp(StatusBarApp):
         self._menu_builder.build_model_menu()
 
         # AI Enhance
-        self._enhancer = create_enhancer(self._config, config_dir=self._config_dir)
+        self._enhancer = create_enhancer(
+            self._config,
+            config_dir=self._config_dir,
+            conversation_history=self._conversation_history,
+        )
         ai_cfg = self._config.get("ai_enhance", {})
         self._enhance_mode: str = ai_cfg.get("mode", "proofread")
         if self._enhancer and not ai_cfg.get("enabled", False):
@@ -423,8 +428,12 @@ class WenZiApp(StatusBarApp):
             "Usage Stats", callback=self._on_show_usage_stats
         )
 
-        # About item
+        # Restart / About / Help items
+        self._restart_item = StatusMenuItem("Restart", callback=self._on_restart)
         self._about_item = StatusMenuItem("About WenZi", callback=self._on_about)
+        self._help_item = StatusMenuItem(
+            "Help", callback=self._menu_builder.on_help_click
+        )
 
         # History browser (lazy-created)
         self._history_browser = None
@@ -455,8 +464,14 @@ class WenZiApp(StatusBarApp):
                 self._view_logs_item,
                 self._usage_stats_item,
                 self._about_item,
+                self._help_item,
+                None,
+                self._restart_item,
             ]
         self.quit_button.set_callback(self._on_quit_click)
+
+        # Update checker
+        self._update_controller = UpdateController(self)
 
     def _setup_logging(self) -> None:
         level = self._config["logging"]["level"]
@@ -886,6 +901,10 @@ class WenZiApp(StatusBarApp):
     def _on_about(self, _) -> None:
         self._config_controller.on_about(_)
 
+    def _on_restart(self, _) -> None:
+        from wenzi.statusbar import restart_application
+        restart_application()
+
     # ── Settings panel ────────────────────────────────────────────────
 
     def _on_open_settings(self, _) -> None:
@@ -896,6 +915,7 @@ class WenZiApp(StatusBarApp):
         self._settings_controller.on_open_settings(_)
 
     def _on_quit_click(self, _) -> None:
+        self._update_controller.stop()
         if hasattr(self, "_script_engine") and self._script_engine:
             self._script_engine.stop()
         if self._hotkey_listener:
@@ -1155,6 +1175,10 @@ class WenZiApp(StatusBarApp):
         from PyObjCTools import AppHelper
 
         AppHelper.callAfter(self._warmup)
+
+        # Start background update checker
+        if not self._config_degraded:
+            AppHelper.callAfter(self._update_controller.start)
 
         # Show config error alert after the event loop starts
         if self._config_error is not None:

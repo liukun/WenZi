@@ -20,6 +20,17 @@ When adding new modules, place them in the appropriate subpackage. Subpackage `_
 
 Cross-package imports from controllers/ui should use absolute paths (`from wenzi.config import ...`), not relative imports to parent package.
 
+## Test Safety — Never Use Real User Data Paths
+
+When writing tests that instantiate classes with default paths pointing to real user directories (e.g. `~/.config/WenZi/`), **always override those paths with `tmp_path`** to prevent tests from reading, modifying, or deleting real user data.
+
+Known dangerous defaults:
+- `ClipboardMonitor()` → `image_dir` defaults to `~/.config/WenZi/clipboard_images`. Calling `clear()` will delete all real images.
+- `ClipboardMonitor(persist_path=...)` → connects to real SQLite database.
+- `SnippetStore()` → `path` defaults to `~/.config/WenZi/snippets`.
+
+**Rule:** Always check what default paths a class uses before instantiating it in tests. Pass `tmp_path`-based paths for any file/directory parameters. Follow existing test patterns in the same file.
+
 ## UI Dialogs
 
 This is a macOS statusbar (accessory) app built with pure PyObjC (via `statusbar.py`). Standard modal dialogs will not appear on screen because the app has no foreground presence.
@@ -140,6 +151,7 @@ This mirrors the CI pipeline in `.github/workflows/test.yml`.
 
 1. Ensure all changes are committed and tests pass (`uv run pytest tests/`)
 2. Update version in `pyproject.toml` (single source of truth — all other files read from it dynamically)
-3. Commit: `git commit -m "chore: bump version to X.Y.Z"`
-4. Tag: `git tag vX.Y.Z`
-5. Push: `git push && git push --tags`
+3. Run `uv lock` to sync `uv.lock` with the new version — this is **required** because `uv.lock` records the package version and won't update until `uv lock` is explicitly run
+4. Commit the version bump together with `uv.lock`: `git add pyproject.toml uv.lock && git commit -m "chore: bump version to X.Y.Z"`
+5. Tag: `git tag vX.Y.Z`
+6. Push: `git push && git push --tags`

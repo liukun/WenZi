@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from .mode_loader import (
@@ -107,10 +108,89 @@ def build_thinking_body(model: str, enabled: bool) -> Dict[str, Any]:
     return {}
 
 
+_THINK_TAG_RE = re.compile(r"</?think>", re.IGNORECASE)
+
+
+def strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from text (non-streaming)."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+
+
+class ThinkTagParser:
+    """Incremental parser that splits streaming chunks at <think>/<​/think> boundaries.
+
+    Yields ``(text, is_thinking)`` pairs.  Handles tags split across chunks
+    and buffering of partial tag candidates (e.g. receiving ``<`` then ``think>``).
+    """
+
+    def __init__(self) -> None:
+        self._inside_think = False
+        self._buf = ""
+        self._just_exited_think = False
+
+    def feed(self, text: str) -> list[tuple[str, bool]]:
+        """Feed a chunk and return a list of (text, is_thinking) segments."""
+        self._buf += text
+        results: list[tuple[str, bool]] = []
+
+        while self._buf:
+            m = _THINK_TAG_RE.search(self._buf)
+            if m is None:
+                # No complete tag found — check if buffer ends with a partial
+                # tag candidate (starts with '<' that could become <think> or </think>).
+                partial_pos = self._buf.rfind("<")
+                if partial_pos != -1 and partial_pos > len(self._buf) - len("</think>"):
+                    # Flush everything before the partial, keep the rest buffered
+                    if partial_pos > 0:
+                        results.append((self._buf[:partial_pos], self._inside_think))
+                    self._buf = self._buf[partial_pos:]
+                else:
+                    # No partial tag — flush everything
+                    results.append((self._buf, self._inside_think))
+                    self._buf = ""
+                break
+
+            # Flush text before the tag
+            if m.start() > 0:
+                results.append((self._buf[:m.start()], self._inside_think))
+
+            # Toggle state based on tag
+            tag = m.group().lower()
+            if tag == "<think>":
+                self._inside_think = True
+                self._just_exited_think = False
+            else:  # </think>
+                self._inside_think = False
+                self._just_exited_think = True
+
+            self._buf = self._buf[m.end():]
+
+        # Strip leading whitespace from the first content segment after </think>
+        # to avoid blank lines at the top of the enhance text area.
+        stripped: list[tuple[str, bool]] = []
+        for t, th in results:
+            if not t:
+                continue
+            if self._just_exited_think and not th:
+                t = t.lstrip()
+                self._just_exited_think = False
+                if not t:
+                    continue
+            elif not th:
+                self._just_exited_think = False
+            stripped.append((t, th))
+        return stripped
+
+
 class TextEnhancer:
     """Enhance transcribed text using LLM via OpenAI-compatible API."""
 
-    def __init__(self, config: Dict[str, Any], config_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        config_dir: str | None = None,
+        conversation_history: Optional[ConversationHistory] = None,
+    ) -> None:
         self._enabled = config.get("enabled", False)
         self._timeout = config.get("timeout", 30)
         self._connection_timeout = config.get("connection_timeout", 10)
@@ -165,9 +245,12 @@ class TextEnhancer:
         history_cfg = config.get("conversation_history", {})
         self._history_enabled = history_cfg.get("enabled", False)
         self._history_max_entries = history_cfg.get("max_entries", 10)
-        self._conversation_history = ConversationHistory(
-            **({"config_dir": config_dir} if config_dir else {})
-        )
+        if conversation_history is not None:
+            self._conversation_history = conversation_history
+        else:
+            self._conversation_history = ConversationHistory(
+                **({"config_dir": config_dir} if config_dir else {})
+            )
 
         # Validate active provider/model
         if self._active_provider not in self._providers and self._providers:
@@ -532,6 +615,8 @@ class TextEnhancer:
                 timeout=self._timeout,
             )
             enhanced = response.choices[0].message.content
+            if enhanced:
+                enhanced = strip_think_tags(enhanced)
 
             # Extract token usage
             usage = None
@@ -640,6 +725,7 @@ class TextEnhancer:
 
             collected = []
             usage = None
+            think_parser = ThinkTagParser()
             # Timeout applies between chunks: resets on each received chunk
             aiter = stream.__aiter__()
             try:
@@ -672,8 +758,13 @@ class TextEnhancer:
                             if reasoning:
                                 yield reasoning, None, True
                             if delta.content:
-                                collected.append(delta.content)
-                                yield delta.content, None, False
+                                # Parse <think> tags inline (MiniMax and similar models)
+                                for segment, is_thinking in think_parser.feed(delta.content):
+                                    if is_thinking:
+                                        yield segment, None, True
+                                    else:
+                                        collected.append(segment)
+                                        yield segment, None, False
             finally:
                 self._active_stream = None
                 if hasattr(stream, 'close'):
@@ -704,7 +795,9 @@ class TextEnhancer:
 
 
 def create_enhancer(
-    config: Dict[str, Any], config_dir: str | None = None,
+    config: Dict[str, Any],
+    config_dir: str | None = None,
+    conversation_history: Optional[ConversationHistory] = None,
 ) -> Optional[TextEnhancer]:
     """Factory function to create a TextEnhancer from app config.
 
@@ -713,4 +806,6 @@ def create_enhancer(
     ai_config = config.get("ai_enhance")
     if ai_config is None:
         return None
-    return TextEnhancer(ai_config, config_dir=config_dir)
+    return TextEnhancer(
+        ai_config, config_dir=config_dir, conversation_history=conversation_history
+    )

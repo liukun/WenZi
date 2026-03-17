@@ -188,16 +188,20 @@ class MenuBuilder:
                 )
 
     def on_help_click(self, sender) -> None:
-        """Open the help documentation URL in the default browser."""
+        """Open the user guide on GitHub Pages in the default browser.
+
+        Automatically selects the Chinese version when the system locale
+        starts with ``zh``, otherwise defaults to English.
+        """
         import locale
         import webbrowser
 
-        base_url = "https://github.com/Airead/WenZi"
-        current_locale = locale.getdefaultlocale()[0] or ""
+        base_url = "https://airead.github.io/WenZi"
+        current_locale = locale.getlocale()[0] or ""
         if current_locale.startswith("zh"):
-            url = f"{base_url}/blob/main/README.zh.md"
+            url = f"{base_url}/zh/docs/user-guide.html"
         else:
-            url = f"{base_url}/blob/main/README.md"
+            url = f"{base_url}/docs/user-guide.html"
 
         try:
             webbrowser.open(url)

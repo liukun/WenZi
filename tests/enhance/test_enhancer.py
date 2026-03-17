@@ -10,7 +10,9 @@ import pytest
 from wenzi.enhance.conversation_history import ConversationHistory
 from wenzi.enhance.enhancer import (
     TextEnhancer,
+    ThinkTagParser,
     build_thinking_body,
+    strip_think_tags,
     _is_deepseek_reasoning_model,
     _is_deepseek_thinking_model,
     _is_openai_reasoning_model,
@@ -993,6 +995,15 @@ class TestCreateEnhancer:
         assert enhancer is not None
         assert enhancer.is_active is False
 
+    def test_passes_conversation_history_to_enhancer(self):
+        shared_history = ConversationHistory()
+        config = {"ai_enhance": _make_config(enabled=True)}
+        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
+            enhancer = create_enhancer(
+                config, conversation_history=shared_history
+            )
+        assert enhancer.conversation_history is shared_history
+
 
 # --- Vocabulary integration tests ---
 
@@ -1226,6 +1237,14 @@ class TestConversationHistoryIntegration:
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_config())
         assert isinstance(enhancer.conversation_history, ConversationHistory)
+
+    def test_shared_conversation_history_instance(self):
+        shared_history = ConversationHistory()
+        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(
+                _make_config(), conversation_history=shared_history
+            )
+        assert enhancer.conversation_history is shared_history
 
     def test_enhance_with_history_injects_context(self):
         mock_client = _make_mock_client("enhanced text")
@@ -1625,3 +1644,178 @@ class TestConnectionTimeoutRetry:
         # No content yields
         content = [r for r in results if r[2] is False]
         assert len(content) == 0
+
+
+# --- strip_think_tags tests ---
+
+
+class TestStripThinkTags:
+    def test_removes_think_block(self):
+        text = "<think>some reasoning</think>Hello world"
+        assert strip_think_tags(text) == "Hello world"
+
+    def test_removes_multiline_think_block(self):
+        text = "<think>\nline1\nline2\n</think>\nResult here"
+        assert strip_think_tags(text) == "Result here"
+
+    def test_no_think_tags(self):
+        assert strip_think_tags("plain text") == "plain text"
+
+    def test_empty_think_block(self):
+        assert strip_think_tags("<think></think>Answer") == "Answer"
+
+    def test_case_insensitive(self):
+        assert strip_think_tags("<THINK>reason</THINK>Result") == "Result"
+
+    def test_only_think_block(self):
+        assert strip_think_tags("<think>only thinking</think>") == ""
+
+
+# --- ThinkTagParser tests ---
+
+
+class TestThinkTagParser:
+    def test_no_think_tags(self):
+        parser = ThinkTagParser()
+        result = parser.feed("hello world")
+        assert result == [("hello world", False)]
+
+    def test_complete_think_in_one_chunk(self):
+        parser = ThinkTagParser()
+        result = parser.feed("<think>reasoning</think>answer")
+        assert result == [("reasoning", True), ("answer", False)]
+
+    def test_think_tag_split_across_chunks(self):
+        parser = ThinkTagParser()
+        # First chunk: partial tag
+        r1 = parser.feed("<thi")
+        # Buffer held, nothing emitted yet or partial emitted
+        # Second chunk: completes tag
+        r2 = parser.feed("nk>thinking content</think>final")
+        all_segments = r1 + r2
+        thinking = "".join(t for t, is_th in all_segments if is_th)
+        content = "".join(t for t, is_th in all_segments if not is_th)
+        assert thinking == "thinking content"
+        assert content == "final"
+
+    def test_think_across_multiple_chunks(self):
+        parser = ThinkTagParser()
+        r1 = parser.feed("<think>part1")
+        r2 = parser.feed(" part2")
+        r3 = parser.feed("</think>result")
+        all_segments = r1 + r2 + r3
+        thinking = "".join(t for t, is_th in all_segments if is_th)
+        content = "".join(t for t, is_th in all_segments if not is_th)
+        assert thinking == "part1 part2"
+        assert content == "result"
+
+    def test_content_before_think(self):
+        parser = ThinkTagParser()
+        # Edge case: content appears before think tag (unusual but handle it)
+        result = parser.feed("prefix<think>thought</think>suffix")
+        thinking = "".join(t for t, is_th in result if is_th)
+        content = "".join(t for t, is_th in result if not is_th)
+        assert thinking == "thought"
+        assert content == "prefixsuffix"
+
+    def test_empty_think_block(self):
+        parser = ThinkTagParser()
+        result = parser.feed("<think></think>answer")
+        content = "".join(t for t, is_th in result if not is_th)
+        assert content == "answer"
+
+    def test_newlines_inside_think(self):
+        parser = ThinkTagParser()
+        r1 = parser.feed("<think>\nline1\n")
+        r2 = parser.feed("line2\n</think>\nresult")
+        all_segments = r1 + r2
+        thinking = "".join(t for t, is_th in all_segments if is_th)
+        content = "".join(t for t, is_th in all_segments if not is_th)
+        assert "line1" in thinking
+        assert "line2" in thinking
+        # Leading whitespace after </think> is stripped
+        assert content == "result"
+
+    def test_strips_leading_whitespace_after_think(self):
+        """Content after </think> should not have leading newlines/spaces."""
+        parser = ThinkTagParser()
+        result = parser.feed("<think>reasoning</think>\n\nanswer")
+        content = "".join(t for t, is_th in result if not is_th)
+        assert content == "answer"
+
+    def test_strips_leading_whitespace_across_chunks(self):
+        """Leading whitespace stripping works even when split across chunks."""
+        parser = ThinkTagParser()
+        r1 = parser.feed("<think>reasoning</think>")
+        r2 = parser.feed("\n\n")
+        r3 = parser.feed("answer")
+        all_segments = r1 + r2 + r3
+        content = "".join(t for t, is_th in all_segments if not is_th)
+        assert content == "answer"
+
+    def test_closing_tag_split_across_chunks(self):
+        parser = ThinkTagParser()
+        r1 = parser.feed("<think>thought</th")
+        r2 = parser.feed("ink>answer")
+        all_segments = r1 + r2
+        thinking = "".join(t for t, is_th in all_segments if is_th)
+        content = "".join(t for t, is_th in all_segments if not is_th)
+        assert thinking == "thought"
+        assert content == "answer"
+
+
+class TestStreamThinkTagIntegration:
+    """Test that <think> tags in streaming content are correctly split."""
+
+    def test_stream_with_think_tags(self):
+        """Simulate MiniMax-style response with <think> tags in content."""
+        mock_client = _make_mock_stream_client(
+            ["<think>", "reasoning here", "</think>", "final answer"],
+            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        )
+        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "minimax": (mock_client, ["MiniMax-M2.5"], {}),
+            }
+            enhancer._active_provider = "minimax"
+            enhancer._active_model = "MiniMax-M2.5"
+
+        results = []
+        async def collect():
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("test"):
+                results.append((chunk, usage, is_thinking))
+
+        asyncio.run(collect())
+
+        thinking_chunks = [r[0] for r in results if r[2] is True]
+        content_chunks = [r[0] for r in results if r[2] is False and r[0]]
+        assert "".join(thinking_chunks) == "reasoning here"
+        assert "".join(content_chunks) == "final answer"
+
+    def test_stream_without_think_tags(self):
+        """Normal content without <think> tags should pass through unchanged."""
+        mock_client = _make_mock_stream_client(
+            ["hello", " ", "world"],
+            usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+        )
+        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
+            enhancer = TextEnhancer(_make_config(enabled=True, mode="proofread"))
+            enhancer._providers = {
+                "ollama": (mock_client, ["qwen2.5:7b"], {}),
+            }
+            enhancer._active_provider = "ollama"
+            enhancer._active_model = "qwen2.5:7b"
+
+        results = []
+        async def collect():
+            async for chunk, usage, is_thinking in enhancer.enhance_stream("test"):
+                results.append((chunk, usage, is_thinking))
+
+        asyncio.run(collect())
+
+        # All content, no thinking
+        content_chunks = [r[0] for r in results if r[2] is False and r[0]]
+        thinking_chunks = [r[0] for r in results if r[2] is True]
+        assert "".join(content_chunks) == "hello world"
+        assert thinking_chunks == []

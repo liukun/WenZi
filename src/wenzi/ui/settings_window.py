@@ -97,6 +97,7 @@ class SettingsPanel:
         self._llm_buttons: Dict[Tuple[str, str], object] = {}
         self._enhance_mode_buttons: Dict[str, object] = {}
         self._enhance_edit_buttons: Dict[str, object] = {}
+        self._doc_link_buttons: list = []
         self._scripting_check = None
         self._thinking_check = None
         self._vocab_check = None
@@ -201,6 +202,7 @@ class SettingsPanel:
 
     def _build_panel(self, state: Dict) -> None:
         """Build the NSPanel and all subviews."""
+        self._doc_link_buttons.clear()
         from AppKit import (
             NSBackingStoreBuffered,
             NSButton,
@@ -334,6 +336,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         hotkey_label = self._make_label("Hotkeys", pad, y, content_w, label_font)
         doc_view.addSubview_(hotkey_label)
+        self._add_doc_link(hotkey_label, "user-guide.html#your-first-transcription", doc_view)
 
         self._hotkey_checks.clear()
         self._hotkey_mode_popups.clear()
@@ -451,6 +454,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         fb_label = self._make_label("Feedback", pad, y, content_w, label_font)
         doc_view.addSubview_(fb_label)
+        self._add_doc_link(fb_label, "user-guide.html#recording-feedback", doc_view)
 
         y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
         self._sound_check = self._make_switch(
@@ -491,6 +495,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         out_label = self._make_label("Output", pad, y, content_w, label_font)
         doc_view.addSubview_(out_label)
+        self._add_doc_link(out_label, "user-guide.html#preview-mode-vs-direct-mode", doc_view)
 
         y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
         self._preview_check = self._make_switch(
@@ -520,6 +525,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         scripting_label = self._make_label("Scripting", pad, y, content_w, label_font)
         doc_view.addSubview_(scripting_label)
+        self._add_doc_link(scripting_label, "scripting.html#quick-start", doc_view)
 
         y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
         self._scripting_check = self._make_switch(
@@ -539,6 +545,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         cfg_label = self._make_label("Config Directory", pad, y, content_w, label_font)
         doc_view.addSubview_(cfg_label)
+        self._add_doc_link(cfg_label, "configuration.html#config-directory-resolution", doc_view)
 
         config_dir = state.get("config_dir", "~/.config/WenZi")
         y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
@@ -621,9 +628,9 @@ class SettingsPanel:
 
         # --- Local presets ---
         y -= self._LABEL_HEIGHT
-        doc_view.addSubview_(
-            self._make_label("Local", pad, y, content_w, label_font)
-        )
+        local_label = self._make_label("Local", pad, y, content_w, label_font)
+        doc_view.addSubview_(local_label)
+        self._add_doc_link(local_label, "provider-model-guide.html#asr-model-selection", doc_view)
         y = self._add_hint(
             "Speech recognition models running on your device",
             pad + 12, y, content_w - 24, doc_view,
@@ -660,9 +667,9 @@ class SettingsPanel:
         # --- Remote providers ---
         y -= self._SECTION_GAP
         y -= self._LABEL_HEIGHT
-        doc_view.addSubview_(
-            self._make_label("Remote", pad, y, content_w, label_font)
-        )
+        remote_label = self._make_label("Remote", pad, y, content_w, label_font)
+        doc_view.addSubview_(remote_label)
+        self._add_doc_link(remote_label, "provider-model-guide.html#remote-asr-providers", doc_view)
         y = self._add_hint(
             "Cloud-based speech recognition services",
             pad + 12, y, content_w - 24, doc_view,
@@ -739,9 +746,9 @@ class SettingsPanel:
         y = total_h - pad
 
         y -= self._LABEL_HEIGHT
-        doc_view.addSubview_(
-            self._make_label("Provider / Model", pad, y, content_w, label_font)
-        )
+        pm_label = self._make_label("Provider / Model", pad, y, content_w, label_font)
+        doc_view.addSubview_(pm_label)
+        self._add_doc_link(pm_label, "provider-model-guide.html#ai-llm-provider-configuration", doc_view)
         y = self._add_hint(
             "Language model used for AI enhancement features",
             pad + 12, y, content_w - 24, doc_view,
@@ -824,6 +831,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         mode_label = self._make_label("Enhance Mode", pad, y, content_w, label_font)
         doc_view.addSubview_(mode_label)
+        self._add_doc_link(mode_label, "enhance-modes.html#how-it-works", doc_view)
         y = self._add_hint(
             "AI post-processing mode applied to transcribed text",
             pad + 12, y, content_w - 24, doc_view,
@@ -889,6 +897,7 @@ class SettingsPanel:
         y -= self._LABEL_HEIGHT
         opt_label = self._make_label("Options", pad, y, content_w, label_font)
         doc_view.addSubview_(opt_label)
+        self._add_doc_link(opt_label, "configuration.html#ai-enhancement", doc_view)
 
         y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
         self._auto_build_check = self._make_switch(
@@ -1015,9 +1024,9 @@ class SettingsPanel:
 
         # --- Hotkey section ---
         y -= self._LABEL_HEIGHT
-        doc_view.addSubview_(
-            self._make_label("Hotkey", pad, y, content_w, label_font)
-        )
+        hk_label = self._make_label("Hotkey", pad, y, content_w, label_font)
+        doc_view.addSubview_(hk_label)
+        self._add_doc_link(hk_label, "scripting.html#activation", doc_view)
         y = self._add_hint(
             "Global hotkey to toggle the launcher panel",
             pad + 12, y, content_w - 24, doc_view,
@@ -1060,9 +1069,9 @@ class SettingsPanel:
 
         # --- Data Sources section ---
         y -= self._LABEL_HEIGHT
-        doc_view.addSubview_(
-            self._make_label("Data Sources", pad, y, content_w, label_font)
-        )
+        ds_label = self._make_label("Data Sources", pad, y, content_w, label_font)
+        doc_view.addSubview_(ds_label)
+        self._add_doc_link(ds_label, "scripting.html#built-in-data-sources", doc_view)
         y = self._add_hint(
             "Enable/disable sources and customize their prefix triggers",
             pad + 12, y, content_w - 24, doc_view,
@@ -1320,6 +1329,60 @@ class SettingsPanel:
         warn.setTextColor_(NSColor.systemRedColor())
         parent.addSubview_(warn)
         return y
+
+    _DOCS_BASE_URL = "https://airead.github.io/WenZi"
+
+    @staticmethod
+    def _doc_url(path: str) -> str:
+        """Build a full documentation URL with locale-aware prefix.
+
+        *path* should be relative, e.g. ``"enhance-modes.html#how-it-works"``.
+        """
+        import locale
+
+        current_locale = locale.getlocale()[0] or ""
+        if current_locale.startswith("zh"):
+            return f"{SettingsPanel._DOCS_BASE_URL}/zh/docs/{path}"
+        return f"{SettingsPanel._DOCS_BASE_URL}/docs/{path}"
+
+    def _add_doc_link(self, label, doc_path: str, parent) -> None:
+        """Add a small 'Learn more' link button right after a section label.
+
+        Shrinks *label* to fit its text so it does not overlap the button.
+        """
+        from AppKit import NSBezelStyleInline, NSButton, NSColor, NSFont
+        from Foundation import NSMakeRect
+
+        label.sizeToFit()
+        lf = label.frame()
+        btn_x = lf.origin.x + lf.size.width + 8
+        btn_y = lf.origin.y
+
+        btn = NSButton.alloc().initWithFrame_(
+            NSMakeRect(btn_x, btn_y, 80, self._LABEL_HEIGHT)
+        )
+        btn.setTitle_("Learn more")
+        btn.setBezelStyle_(NSBezelStyleInline)
+        btn.setFont_(NSFont.systemFontOfSize_(11.0))
+        btn.setContentTintColor_(NSColor.linkColor())
+
+        url = self._doc_url(doc_path)
+        self._set_meta(btn, doc_url=url)
+        btn.setTarget_(self)
+        btn.setAction_(b"docLinkClicked:")
+        parent.addSubview_(btn)
+        self._doc_link_buttons.append(btn)
+
+    def docLinkClicked_(self, sender):
+        import webbrowser
+
+        meta = self._get_meta(sender)
+        url = meta.get("doc_url")
+        if url:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                logger.exception("Failed to open doc URL: %s", url)
 
     def _make_switch(self, title, x, y, width, state_on, font, action, parent):
         """Create a NSSwitchButton checkbox and add to parent."""
