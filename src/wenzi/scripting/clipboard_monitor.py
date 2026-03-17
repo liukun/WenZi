@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from wenzi.config import DEFAULT_CLIPBOARD_IMAGES_DIR
+from wenzi.config import DEFAULT_CLIPBOARD_IMAGES_DIR, DEFAULT_ICON_CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,80 @@ def _mask_text(text: str) -> str:
 _MIN_IMAGE_DIM = 4  # ignore images smaller than 4×4 (tracking pixels, mock artifacts)
 
 _DEFAULT_IMAGE_DIR = os.path.expanduser(DEFAULT_CLIPBOARD_IMAGES_DIR)
+_DEFAULT_ICON_CACHE_DIR = os.path.expanduser(DEFAULT_ICON_CACHE_DIR)
+
+_ICON_SIZE = 64  # 64x64 px for Retina display (rendered at 32x32 @2x)
+
+
+def _icon_cache_path(icon_cache_dir: str, bundle_id: str) -> str:
+    """Return the disk cache path for an app icon by bundle ID."""
+    key = hashlib.md5(bundle_id.encode()).hexdigest()  # noqa: S324
+    return os.path.join(icon_cache_dir, f"cb_{key}.png")
+
+
+def _icon_fail_path(icon_cache_dir: str, bundle_id: str) -> str:
+    """Return the sentinel path for a failed icon extraction."""
+    key = hashlib.md5(bundle_id.encode()).hexdigest()  # noqa: S324
+    return os.path.join(icon_cache_dir, f"cb_{key}.fail")
+
+
+def _get_app_icon_png(bundle_id: str) -> Optional[bytes]:
+    """Extract app icon as a 64x64 PNG by bundle identifier.
+
+    Uses NSGraphicsContext.graphicsContextWithBitmapImageRep_ to draw
+    the icon into a new bitmap at the target size.  This avoids mutating
+    the shared NSImage returned by NSWorkspace and avoids lockFocus
+    (setCurrentContext_ is thread-local, so this is safe from any thread).
+
+    Returns None if the app is not found or icon extraction fails.
+    """
+    try:
+        from AppKit import (
+            NSBitmapImageRep,
+            NSCalibratedRGBColorSpace,
+            NSCompositingOperationSourceOver,
+            NSGraphicsContext,
+            NSPNGFileType,
+            NSWorkspace,
+        )
+        from Foundation import NSMakeRect, NSZeroRect
+
+        ws = NSWorkspace.sharedWorkspace()
+        url = ws.URLForApplicationWithBundleIdentifier_(bundle_id)
+        if url is None:
+            return None
+        icon = ws.iconForFile_(url.path())
+        if icon is None:
+            return None
+
+        # Draw into a new bitmap at the exact pixel size we want.
+        sz = _ICON_SIZE
+        new_rep = NSBitmapImageRep.alloc() \
+            .initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(  # noqa: E501
+                None, sz, sz, 8, 4, True, False,
+                NSCalibratedRGBColorSpace, 0, 0,
+            )
+        if new_rep is None:
+            return None
+
+        ctx = NSGraphicsContext.graphicsContextWithBitmapImageRep_(new_rep)
+        if ctx is None:
+            return None
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.setCurrentContext_(ctx)
+        ctx.setImageInterpolation_(3)  # NSImageInterpolationHigh
+        icon.drawInRect_fromRect_operation_fraction_(
+            NSMakeRect(0, 0, sz, sz), NSZeroRect,
+            NSCompositingOperationSourceOver, 1.0,
+        )
+        NSGraphicsContext.restoreGraphicsState()
+
+        png = new_rep.representationUsingType_properties_(NSPNGFileType, {})
+        return bytes(png) if png else None
+    except Exception:
+        logger.debug("Failed to extract icon for %s", bundle_id, exc_info=True)
+        return None
 
 
 @dataclass
@@ -58,6 +132,7 @@ class ClipboardEntry:
     text: str = ""
     timestamp: float = field(default_factory=time.time)
     source_app: str = ""
+    source_bundle_id: str = ""  # e.g. "com.apple.Safari"
     image_path: str = ""  # filename in clipboard_images/ (empty = text entry)
     image_width: int = 0
     image_height: int = 0
@@ -74,6 +149,7 @@ CREATE TABLE IF NOT EXISTS entries (
     text       TEXT    NOT NULL DEFAULT '',
     timestamp  REAL    NOT NULL,
     source_app TEXT    NOT NULL DEFAULT '',
+    source_bundle_id TEXT NOT NULL DEFAULT '',
     image_path TEXT    NOT NULL DEFAULT '',
     image_width  INTEGER NOT NULL DEFAULT 0,
     image_height INTEGER NOT NULL DEFAULT 0,
@@ -92,6 +168,15 @@ class _ClipboardDB:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
+        # Migrate: add source_bundle_id column for existing databases
+        try:
+            self._conn.execute(
+                "ALTER TABLE entries ADD COLUMN"
+                " source_bundle_id TEXT NOT NULL DEFAULT ''"
+            )
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def close(self) -> None:
         self._conn.close()
@@ -101,13 +186,13 @@ class _ClipboardDB:
     def insert(self, entry: ClipboardEntry) -> None:
         self._conn.execute(
             "INSERT INTO entries"
-            " (text, timestamp, source_app, image_path,"
+            " (text, timestamp, source_app, source_bundle_id, image_path,"
             "  image_width, image_height, image_size)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 entry.text, entry.timestamp, entry.source_app,
-                entry.image_path, entry.image_width,
-                entry.image_height, entry.image_size,
+                entry.source_bundle_id, entry.image_path,
+                entry.image_width, entry.image_height, entry.image_size,
             ),
         )
         self._conn.commit()
@@ -199,7 +284,7 @@ class _ClipboardDB:
         """Return all non-expired entries, newest first."""
         cutoff = time.time() - max_days * 86400
         cur = self._conn.execute(
-            "SELECT text, timestamp, source_app,"
+            "SELECT text, timestamp, source_app, source_bundle_id,"
             " image_path, image_width, image_height, image_size"
             " FROM entries WHERE timestamp >= ?"
             " ORDER BY timestamp DESC",
@@ -208,8 +293,9 @@ class _ClipboardDB:
         return [
             ClipboardEntry(
                 text=row[0], timestamp=row[1], source_app=row[2],
-                image_path=row[3], image_width=row[4],
-                image_height=row[5], image_size=row[6],
+                source_bundle_id=row[3], image_path=row[4],
+                image_width=row[5], image_height=row[6],
+                image_size=row[7],
             )
             for row in cur.fetchall()
         ]
@@ -291,11 +377,13 @@ class ClipboardMonitor:
         poll_interval: float = 0.5,
         persist_path: Optional[str] = None,
         image_dir: Optional[str] = None,
+        icon_cache_dir: Optional[str] = None,
     ) -> None:
         self._max_days = max_days
         self._poll_interval = poll_interval
         self._persist_path = persist_path
         self._image_dir = image_dir or _DEFAULT_IMAGE_DIR
+        self._icon_cache_dir = icon_cache_dir or _DEFAULT_ICON_CACHE_DIR
         self._entries: List[ClipboardEntry] = []
         self._lock = threading.Lock()
         self._version: int = 0
@@ -354,6 +442,52 @@ class ClipboardMonitor:
     def default_image_dir() -> str:
         """Return the default directory for clipboard image storage."""
         return _DEFAULT_IMAGE_DIR
+
+    @property
+    def icon_cache_dir(self) -> str:
+        """Return the icon cache directory used by this monitor."""
+        return self._icon_cache_dir
+
+    _ICON_FAIL_TTL = 600  # retry failed extractions after 10 minutes
+
+    def _cache_app_icon(self, bundle_id: str) -> None:
+        """Cache the app icon to disk if not already cached.
+
+        Called from the polling thread after detecting a clipboard change.
+        Writes a .fail sentinel on extraction failure; the sentinel
+        expires after _ICON_FAIL_TTL seconds so transient failures
+        are retried automatically.
+        """
+        if not bundle_id:
+            return
+
+        png_path = _icon_cache_path(self._icon_cache_dir, bundle_id)
+        if os.path.isfile(png_path):
+            return
+
+        fail_path = _icon_fail_path(self._icon_cache_dir, bundle_id)
+        try:
+            if os.path.isfile(fail_path):
+                age = time.time() - os.path.getmtime(fail_path)
+                if age < self._ICON_FAIL_TTL:
+                    return
+                os.remove(fail_path)
+        except OSError:
+            pass
+
+        png = _get_app_icon_png(bundle_id)
+        try:
+            os.makedirs(self._icon_cache_dir, exist_ok=True)
+            if png is None:
+                with open(fail_path, "wb") as f:
+                    f.write(b"")
+                return
+            with open(png_path, "wb") as f:
+                f.write(png)
+        except Exception:
+            logger.debug(
+                "Failed to cache icon for %s", bundle_id, exc_info=True,
+            )
 
     @property
     def entries(self) -> List[ClipboardEntry]:
@@ -449,13 +583,16 @@ class ClipboardMonitor:
         # image would create bogus image entries for every text copy.
         # TIFF-only (no PNG, no text) is the rare case where an app
         # provides only a TIFF image (e.g. Preview).
-        source_app = self._get_frontmost_app()
+        source_app, source_bundle_id = self._get_frontmost_app()
+        self._cache_app_icon(source_bundle_id)
 
         # PNG — if saved successfully, we're done; otherwise fall through
         # to text (the PNG may have been too small, e.g. a tracking pixel).
         png_data = pb.dataForType_(NSPasteboardTypePNG)
         if png_data is not None:
-            if self._add_image_entry(bytes(png_data), "png", source_app):
+            if self._add_image_entry(
+                bytes(png_data), "png", source_app, source_bundle_id,
+            ):
                 return
 
         text = pb.stringForType_(NSPasteboardTypeString)
@@ -467,12 +604,14 @@ class ClipboardMonitor:
                     len(text_str),
                 )
                 return
-            self._add_entry(text_str, source_app)
+            self._add_entry(text_str, source_app, source_bundle_id)
             return
 
         tiff_data = pb.dataForType_(NSPasteboardTypeTIFF)
         if tiff_data is not None:
-            self._add_image_entry(bytes(tiff_data), "tiff", source_app)
+            self._add_image_entry(
+                bytes(tiff_data), "tiff", source_app, source_bundle_id,
+            )
 
     @staticmethod
     def _is_concealed(pb) -> bool:
@@ -483,18 +622,22 @@ class ClipboardMonitor:
         return bool(_CONCEALED_TYPES.intersection(types))
 
     @staticmethod
-    def _get_frontmost_app() -> str:
-        """Return the name of the frontmost application."""
+    def _get_frontmost_app() -> tuple:
+        """Return (name, bundle_id) of the frontmost application."""
         try:
             from AppKit import NSWorkspace
 
             workspace = NSWorkspace.sharedWorkspace()
             app = workspace.frontmostApplication()
-            if app and app.localizedName():
-                return str(app.localizedName())
+            if app:
+                name = str(app.localizedName()) if app.localizedName() else ""
+                bundle_id = (
+                    str(app.bundleIdentifier()) if app.bundleIdentifier() else ""
+                )
+                return name, bundle_id
         except Exception:
             pass
-        return ""
+        return "", ""
 
     def promote(self, text: str) -> None:
         """Move an existing text entry to the top of the history list."""
@@ -556,7 +699,8 @@ class ClipboardMonitor:
         return True
 
     def _add_image_entry(
-        self, image_data: bytes, image_type: str, source_app: str = ""
+        self, image_data: bytes, image_type: str,
+        source_app: str = "", source_bundle_id: str = "",
     ) -> bool:
         """Save image data to disk and add an image clipboard entry.
 
@@ -573,6 +717,7 @@ class ClipboardMonitor:
             text="",
             timestamp=time.time(),
             source_app=source_app,
+            source_bundle_id=source_bundle_id,
             image_path=filename,
             image_width=width,
             image_height=height,
@@ -676,12 +821,15 @@ class ClipboardMonitor:
         except Exception:
             logger.debug("Failed to clear image directory", exc_info=True)
 
-    def _add_entry(self, text: str, source_app: str = "") -> None:
+    def _add_entry(
+        self, text: str, source_app: str = "", source_bundle_id: str = "",
+    ) -> None:
         """Add a new entry, deduplicating consecutive identical texts."""
         entry = ClipboardEntry(
             text=text,
             timestamp=time.time(),
             source_app=source_app,
+            source_bundle_id=source_bundle_id,
         )
 
         removed: List[str] = []

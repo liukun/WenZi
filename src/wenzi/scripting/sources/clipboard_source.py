@@ -10,9 +10,13 @@ import base64
 import logging
 import os
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from wenzi.scripting.clipboard_monitor import ClipboardMonitor
+from wenzi.scripting.clipboard_monitor import (
+    ClipboardMonitor,
+    _get_app_icon_png,
+    _icon_cache_path,
+)
 from wenzi.scripting.sources import ChooserItem, ChooserSource
 
 logger = logging.getLogger(__name__)
@@ -117,6 +121,12 @@ def _make_thumbnail_data_uri(image_path: str, max_dim: int = 480) -> str:
     return f"data:image/png;base64,{b64}"
 
 
+def _png_to_data_uri(png_bytes: bytes) -> str:
+    """Convert PNG bytes to a base64 data URI."""
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    return f"data:image/png;base64,{b64}"
+
+
 def _paste_image(image_path: str) -> None:
     """Write image from file to clipboard and simulate Cmd+V."""
     try:
@@ -194,6 +204,53 @@ class ClipboardSource:
         self._empty_cache: Optional[List[ChooserItem]] = None
         self._empty_cache_version: int = -1
         self._empty_cache_time: float = 0.0
+        self._icon_mem_cache: Dict[str, str] = {}  # bundle_id → data URI or ""
+
+    def _get_icon_uri(self, bundle_id: str) -> str:
+        """Return base64 data URI for an app icon.
+
+        Primary path: memory cache → disk cache (written by the polling
+        thread via ClipboardMonitor._cache_app_icon).
+
+        Fallback: if the icon is not on disk yet (race condition or old
+        entries), extract it on the main thread and save to disk.
+        """
+        if not bundle_id:
+            return ""
+        if bundle_id in self._icon_mem_cache:
+            return self._icon_mem_cache[bundle_id]
+
+        icon_dir = self._monitor.icon_cache_dir
+
+        # Check disk cache (normally pre-populated by polling thread)
+        png_path = _icon_cache_path(icon_dir, bundle_id)
+        if os.path.isfile(png_path):
+            try:
+                with open(png_path, "rb") as f:
+                    png = f.read()
+                uri = _png_to_data_uri(png)
+                self._icon_mem_cache[bundle_id] = uri
+                return uri
+            except Exception:
+                pass
+
+        # Fallback: extract on main thread (race condition or old entry)
+        png = _get_app_icon_png(bundle_id)
+        if png is None:
+            self._icon_mem_cache[bundle_id] = ""
+            return ""
+
+        # Save to disk so next time we hit the fast path
+        try:
+            os.makedirs(icon_dir, exist_ok=True)
+            with open(png_path, "wb") as f:
+                f.write(png)
+        except Exception:
+            logger.debug("Failed to cache icon for %s", bundle_id, exc_info=True)
+
+        uri = _png_to_data_uri(png)
+        self._icon_mem_cache[bundle_id] = uri
+        return uri
 
     def search(self, query: str) -> List[ChooserItem]:
         """Search clipboard history entries."""
@@ -251,6 +308,7 @@ class ClipboardSource:
                     ChooserItem(
                         title=display,
                         subtitle=f"{subtitle}  {time_ago}".strip() if subtitle else time_ago,
+                        icon=self._get_icon_uri(entry.source_bundle_id),
                         item_id=f"cb:img:{ep}",
                         preview=preview,
                         action=_do_paste_img,
@@ -291,6 +349,7 @@ class ClipboardSource:
                     ChooserItem(
                         title=display,
                         subtitle=f"{subtitle}  {time_ago}".strip() if subtitle else time_ago,
+                        icon=self._get_icon_uri(entry.source_bundle_id),
                         item_id=f"cb:txt:{text_key}",
                         preview=preview,
                         action=_do_paste,

@@ -131,6 +131,13 @@ body { display: flex; flex-direction: column; }
     border-radius: 6px;
     image-rendering: -webkit-optimize-contrast;
 }
+.result-item .icon-placeholder {
+    background-color: var(--secondary);
+    -webkit-mask-size: 20px 20px;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    opacity: 0.35;
+}
 .result-item:hover { background: var(--item-hover); }
 .result-item.selected { background: var(--item-selected); }
 .result-item .left {
@@ -227,6 +234,17 @@ body { display: flex; flex-direction: column; }
 var items = [];
 var selectedIndex = -1;
 var itemsVersion = 0;
+var hasAnyIcon = false;  // true when at least one item has an icon
+var _PLACEHOLDER_SVG = "data:image/svg+xml,"
+    + "%3Csvg xmlns='http://www.w3.org/2000/svg' "
+    + "viewBox='0 0 24 24' fill='none' stroke='black' "
+    + "stroke-width='1.5' stroke-linecap='round' "
+    + "stroke-linejoin='round'%3E"
+    + "%3Crect x='3' y='2' width='18' height='20' rx='2.5'/%3E"
+    + "%3Cline x1='7' y1='8' x2='17' y2='8'/%3E"
+    + "%3Cline x1='7' y1='12' x2='17' y2='12'/%3E"
+    + "%3Cline x1='7' y1='16' x2='13' y2='16'/%3E"
+    + "%3C/svg%3E";
 var prefixHints = [];
 var activeModifier = null;  // "alt", "ctrl", "shift" or null
 
@@ -328,6 +346,11 @@ function _createRow(item, i) {
         img.src = item.icon;
         img.draggable = false;
         row.appendChild(img);
+    } else if (hasAnyIcon) {
+        var ph = document.createElement('div');
+        ph.className = 'icon icon-placeholder';
+        ph.style.webkitMaskImage = 'url("' + _PLACEHOLDER_SVG + '")';
+        row.appendChild(ph);
     }
 
     var left = document.createElement('div');
@@ -570,6 +593,7 @@ document.addEventListener('keyup', function(e) {
 function setResults(newItems, version, selectedIdx) {
     items = newItems || [];
     itemsVersion = version || 0;
+    hasAnyIcon = items.some(function(it) { return !!it.icon; });
     if (typeof selectedIdx === 'number') {
         // Preserve scroll position for delete/refresh operations
         selectedIndex = Math.max(0, Math.min(selectedIdx, items.length - 1));

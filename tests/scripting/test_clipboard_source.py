@@ -1,5 +1,6 @@
 """Tests for clipboard history data source."""
 
+import os
 import time
 from unittest.mock import MagicMock, patch
 
@@ -510,3 +511,158 @@ class TestEmptyQueryCache:
         result = source.search("hello")
         assert len(result) == 1
         assert "hello" in result[0].title.lower()
+
+
+class TestIconCaching:
+    """Tests for app icon display in clipboard history items."""
+
+    # Minimal 1x1 PNG for testing
+    _FAKE_PNG = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00"
+        b"\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00"
+        b"\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    def _make_monitor(self, entries, icon_cache_dir="/tmp/test_icons"):
+        monitor = MagicMock(spec=ClipboardMonitor)
+        monitor.entries = [
+            ClipboardEntry(
+                text=e.get("text", ""),
+                timestamp=e.get("timestamp", time.time()),
+                source_app=e.get("source_app", ""),
+                source_bundle_id=e.get("source_bundle_id", ""),
+                image_path=e.get("image_path", ""),
+                image_width=e.get("image_width", 0),
+                image_height=e.get("image_height", 0),
+                image_size=e.get("image_size", 0),
+            )
+            for e in entries
+        ]
+        monitor.image_dir = "/tmp/test_images"
+        monitor.icon_cache_dir = icon_cache_dir
+        monitor.version = 1
+        return monitor
+
+    def test_empty_bundle_id_returns_no_icon(self, tmp_path):
+        monitor = self._make_monitor(
+            [{"text": "hello", "timestamp": time.time()}],
+            icon_cache_dir=str(tmp_path / "icons"),
+        )
+        source = ClipboardSource(monitor)
+        result = source.search("")
+        assert result[0].icon == ""
+
+    def test_icon_loaded_from_disk_cache(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        os.makedirs(icon_dir)
+
+        # Pre-create a cached icon file
+        from wenzi.scripting.clipboard_monitor import _icon_cache_path
+        bundle_id = "com.apple.Safari"
+        png_path = _icon_cache_path(icon_dir, bundle_id)
+        with open(png_path, "wb") as f:
+            f.write(self._FAKE_PNG)
+
+        monitor = self._make_monitor(
+            [{
+                "text": "hello", "timestamp": time.time(),
+                "source_app": "Safari",
+                "source_bundle_id": bundle_id,
+            }],
+            icon_cache_dir=icon_dir,
+        )
+        source = ClipboardSource(monitor)
+        result = source.search("")
+        assert result[0].icon.startswith("data:image/png;base64,")
+
+    def test_icon_cached_in_memory(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        os.makedirs(icon_dir)
+
+        bundle_id = "com.apple.Safari"
+        from wenzi.scripting.clipboard_monitor import _icon_cache_path
+        png_path = _icon_cache_path(icon_dir, bundle_id)
+        with open(png_path, "wb") as f:
+            f.write(self._FAKE_PNG)
+
+        monitor = self._make_monitor(
+            [{
+                "text": "hello", "timestamp": time.time(),
+                "source_bundle_id": bundle_id,
+            }],
+            icon_cache_dir=icon_dir,
+        )
+        source = ClipboardSource(monitor)
+        source.search("")
+
+        # Second call should use memory cache
+        assert bundle_id in source._icon_mem_cache
+        assert source._icon_mem_cache[bundle_id].startswith("data:image/png;base64,")
+
+    def test_fallback_extracts_on_main_thread(self, tmp_path):
+        """When disk cache is empty (race condition), fallback extracts icon."""
+        icon_dir = str(tmp_path / "icons")
+        monitor = self._make_monitor(
+            [{
+                "text": "hello", "timestamp": time.time(),
+                "source_bundle_id": "com.apple.Notes",
+            }],
+            icon_cache_dir=icon_dir,
+        )
+        source = ClipboardSource(monitor)
+        with patch(
+            "wenzi.scripting.sources.clipboard_source._get_app_icon_png",
+            return_value=self._FAKE_PNG,
+        ):
+            result = source.search("")
+
+        assert result[0].icon.startswith("data:image/png;base64,")
+        # Verify fallback saved to disk
+        from wenzi.scripting.clipboard_monitor import _icon_cache_path
+        assert os.path.isfile(_icon_cache_path(icon_dir, "com.apple.Notes"))
+
+    def test_fallback_missing_app_caches_empty_string(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        monitor = self._make_monitor(
+            [{
+                "text": "hello", "timestamp": time.time(),
+                "source_bundle_id": "com.nonexistent.app",
+            }],
+            icon_cache_dir=icon_dir,
+        )
+        source = ClipboardSource(monitor)
+        with patch(
+            "wenzi.scripting.sources.clipboard_source._get_app_icon_png",
+            return_value=None,
+        ):
+            result = source.search("")
+        assert result[0].icon == ""
+        assert source._icon_mem_cache["com.nonexistent.app"] == ""
+
+    def test_image_entry_also_gets_icon(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        bundle_id = "com.apple.Safari"
+
+        monitor = self._make_monitor(
+            [{
+                "image_path": "test.png",
+                "image_width": 100,
+                "image_height": 100,
+                "image_size": 1000,
+                "timestamp": time.time(),
+                "source_bundle_id": bundle_id,
+            }],
+            icon_cache_dir=icon_dir,
+        )
+        source = ClipboardSource(monitor)
+        with patch(
+            "wenzi.scripting.sources.clipboard_source._get_app_icon_png",
+            return_value=self._FAKE_PNG,
+        ), patch.object(
+            source, "_make_image_preview",
+            return_value={"type": "image", "src": "", "info": ""},
+        ):
+            result = source.search("")
+
+        assert result[0].icon.startswith("data:image/png;base64,")

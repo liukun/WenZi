@@ -36,6 +36,7 @@ class TestClipboardEntry:
         assert entry.text == "hello"
         assert entry.timestamp > 0
         assert entry.source_app == ""
+        assert entry.source_bundle_id == ""
         assert entry.image_path == ""
         assert entry.image_width == 0
         assert entry.image_height == 0
@@ -43,11 +44,13 @@ class TestClipboardEntry:
 
     def test_with_all_fields(self):
         entry = ClipboardEntry(
-            text="test", timestamp=1000.0, source_app="Safari"
+            text="test", timestamp=1000.0, source_app="Safari",
+            source_bundle_id="com.apple.Safari",
         )
         assert entry.text == "test"
         assert entry.timestamp == 1000.0
         assert entry.source_app == "Safari"
+        assert entry.source_bundle_id == "com.apple.Safari"
 
     def test_image_entry(self):
         entry = ClipboardEntry(
@@ -68,11 +71,15 @@ class TestClipboardDB:
     def test_insert_and_load(self, tmp_path):
         import time
         db = _ClipboardDB(str(tmp_path / "test.db"))
-        entry = ClipboardEntry(text="hello", timestamp=time.time())
+        entry = ClipboardEntry(
+            text="hello", timestamp=time.time(),
+            source_app="Safari", source_bundle_id="com.apple.Safari",
+        )
         db.insert(entry)
         entries = db.load_all(max_days=999)
         assert len(entries) == 1
         assert entries[0].text == "hello"
+        assert entries[0].source_bundle_id == "com.apple.Safari"
         db.close()
 
     def test_delete_expired(self, tmp_path):
@@ -179,6 +186,45 @@ class TestClipboardDB:
         assert db.delete_by_image_path("nope.png") is False
         db.close()
 
+    def test_migration_adds_source_bundle_id(self, tmp_path):
+        """Opening a DB without source_bundle_id column should add it."""
+        import sqlite3
+        db_path = str(tmp_path / "old.db")
+        conn = sqlite3.connect(db_path)
+        conn.executescript("""\
+CREATE TABLE entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL DEFAULT '',
+    timestamp REAL NOT NULL,
+    source_app TEXT NOT NULL DEFAULT '',
+    image_path TEXT NOT NULL DEFAULT '',
+    image_width INTEGER NOT NULL DEFAULT 0,
+    image_height INTEGER NOT NULL DEFAULT 0,
+    image_size INTEGER NOT NULL DEFAULT 0
+);
+""")
+        conn.execute(
+            "INSERT INTO entries (text, timestamp, source_app)"
+            " VALUES (?, ?, ?)",
+            ("hello", 1000.0, "Safari"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Opening via _ClipboardDB should run migration
+        db = _ClipboardDB(db_path)
+        entries = db.load_all(max_days=999999)
+        assert len(entries) == 1
+        assert entries[0].source_bundle_id == ""  # migrated default
+        # New inserts should work with the new column
+        db.insert(ClipboardEntry(
+            text="new", timestamp=2000.0,
+            source_bundle_id="com.apple.Notes",
+        ))
+        entries = db.load_all(max_days=999999)
+        assert entries[0].source_bundle_id == "com.apple.Notes"
+        db.close()
+
     def test_latest_text(self, tmp_path):
         import time
         db = _ClipboardDB(str(tmp_path / "test.db"))
@@ -237,8 +283,9 @@ class TestClipboardMonitor:
 
     def test_add_entry_with_source_app(self, tmp_path):
         monitor = ClipboardMonitor(max_days=7, image_dir=str(tmp_path / "images"))
-        monitor._add_entry("hello", source_app="Safari")
+        monitor._add_entry("hello", source_app="Safari", source_bundle_id="com.apple.Safari")
         assert monitor.entries[0].source_app == "Safari"
+        assert monitor.entries[0].source_bundle_id == "com.apple.Safari"
 
     def test_deduplication(self, tmp_path):
         """Consecutive identical texts should not create duplicate entries."""
@@ -773,6 +820,7 @@ class TestCheckClipboardDetectionOrder:
         monitor._last_change_count = 0
         monitor._add_image_entry = MagicMock(return_value=True)
         monitor._add_entry = MagicMock()
+        monitor._cache_app_icon = MagicMock()
 
         mock_pb = MagicMock()
         mock_pb.changeCount.return_value = 1
@@ -782,10 +830,12 @@ class TestCheckClipboardDetectionOrder:
 
         return monitor, mock_pb
 
-    def _run(self, monitor, mock_pb, source_app="TestApp"):
+    def _run(self, monitor, mock_pb, source_app="TestApp",
+             source_bundle_id="com.test.app"):
         """Execute _check_clipboard with mocked AppKit imports."""
         with patch.object(
-            ClipboardMonitor, "_get_frontmost_app", return_value=source_app,
+            ClipboardMonitor, "_get_frontmost_app",
+            return_value=(source_app, source_bundle_id),
         ), patch.object(
             ClipboardMonitor, "_is_concealed", return_value=False,
         ), patch.object(
@@ -796,7 +846,7 @@ class TestCheckClipboardDetectionOrder:
             # the real internal methods but with a fake pasteboard.
             monitor._last_change_count = mock_pb.changeCount() - 1
             # Call the private method directly, passing our mock pb
-            _run_check(monitor, mock_pb, source_app)
+            _run_check(monitor, mock_pb, source_app, source_bundle_id)
 
     def test_png_preferred_over_text(self):
         """When clipboard has PNG + text, PNG image entry is saved."""
@@ -804,10 +854,10 @@ class TestCheckClipboardDetectionOrder:
             pb_data={self.PNG_TYPE: b"fake_png"},
             pb_text={self.STR_TYPE: "https://example.com/img.png"},
         )
-        _run_check(monitor, mock_pb, "Safari")
+        _run_check(monitor, mock_pb, "Safari", "com.apple.Safari")
 
         monitor._add_image_entry.assert_called_once_with(
-            b"fake_png", "png", "Safari",
+            b"fake_png", "png", "Safari", "com.apple.Safari",
         )
         monitor._add_entry.assert_not_called()
 
@@ -819,10 +869,12 @@ class TestCheckClipboardDetectionOrder:
         )
         # Simulate _add_image_entry rejecting the tiny image
         monitor._add_image_entry.return_value = False
-        _run_check(monitor, mock_pb, "Safari")
+        _run_check(monitor, mock_pb, "Safari", "com.apple.Safari")
 
         monitor._add_image_entry.assert_called_once()
-        monitor._add_entry.assert_called_once_with("actual text content", "Safari")
+        monitor._add_entry.assert_called_once_with(
+            "actual text content", "Safari", "com.apple.Safari",
+        )
 
     def test_text_preferred_over_tiff(self):
         """When clipboard has text + TIFF (rich text), text entry is saved."""
@@ -830,9 +882,11 @@ class TestCheckClipboardDetectionOrder:
             pb_data={self.TIFF_TYPE: b"tiff_rendering"},
             pb_text={self.STR_TYPE: "hello world"},
         )
-        _run_check(monitor, mock_pb, "Notes")
+        _run_check(monitor, mock_pb, "Notes", "com.apple.Notes")
 
-        monitor._add_entry.assert_called_once_with("hello world", "Notes")
+        monitor._add_entry.assert_called_once_with(
+            "hello world", "Notes", "com.apple.Notes",
+        )
         monitor._add_image_entry.assert_not_called()
 
     def test_tiff_only_saved_as_image(self):
@@ -840,10 +894,10 @@ class TestCheckClipboardDetectionOrder:
         monitor, mock_pb = self._setup(
             pb_data={self.TIFF_TYPE: b"tiff_image"},
         )
-        _run_check(monitor, mock_pb, "Preview")
+        _run_check(monitor, mock_pb, "Preview", "com.apple.Preview")
 
         monitor._add_image_entry.assert_called_once_with(
-            b"tiff_image", "tiff", "Preview",
+            b"tiff_image", "tiff", "Preview", "com.apple.Preview",
         )
         monitor._add_entry.assert_not_called()
 
@@ -852,13 +906,15 @@ class TestCheckClipboardDetectionOrder:
         monitor, mock_pb = self._setup(
             pb_text={self.STR_TYPE: "plain text"},
         )
-        _run_check(monitor, mock_pb, "Terminal")
+        _run_check(monitor, mock_pb, "Terminal", "com.apple.Terminal")
 
-        monitor._add_entry.assert_called_once_with("plain text", "Terminal")
+        monitor._add_entry.assert_called_once_with(
+            "plain text", "Terminal", "com.apple.Terminal",
+        )
         monitor._add_image_entry.assert_not_called()
 
 
-def _run_check(monitor, mock_pb, source_app):
+def _run_check(monitor, mock_pb, source_app, source_bundle_id="com.test.app"):
     """Simulate _check_clipboard logic with a mock pasteboard.
 
     Reproduces the detection order (PNG → text → TIFF) without importing
@@ -868,20 +924,26 @@ def _run_check(monitor, mock_pb, source_app):
     TIFF = "public.tiff"
     STRING = "public.utf8-plain-text"
 
+    monitor._cache_app_icon(source_bundle_id)
+
     png_data = mock_pb.dataForType_(PNG)
     if png_data is not None:
-        if monitor._add_image_entry(bytes(png_data), "png", source_app):
+        if monitor._add_image_entry(
+            bytes(png_data), "png", source_app, source_bundle_id,
+        ):
             return
 
     text = mock_pb.stringForType_(STRING)
     if text and str(text).strip():
         text_str = str(text).strip()
-        monitor._add_entry(text_str, source_app)
+        monitor._add_entry(text_str, source_app, source_bundle_id)
         return
 
     tiff_data = mock_pb.dataForType_(TIFF)
     if tiff_data is not None:
-        monitor._add_image_entry(bytes(tiff_data), "tiff", source_app)
+        monitor._add_image_entry(
+            bytes(tiff_data), "tiff", source_app, source_bundle_id,
+        )
 
 
 class TestVersionProperty:
@@ -932,3 +994,120 @@ class TestVersionProperty:
         v = monitor.version
         monitor._add_entry("hello")  # duplicate, skipped
         assert monitor.version == v
+
+
+class TestCacheAppIcon:
+    """Tests for app icon caching in the polling thread."""
+
+    _FAKE_PNG = b"\x89PNG\r\n\x1a\nfake"
+
+    def test_empty_bundle_id_does_nothing(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        monitor._cache_app_icon("")
+        assert not os.path.isdir(icon_dir)
+
+    def test_skips_if_already_cached(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        os.makedirs(icon_dir)
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        from wenzi.scripting.clipboard_monitor import _icon_cache_path
+        png_path = _icon_cache_path(icon_dir, "com.apple.Safari")
+        with open(png_path, "wb") as f:
+            f.write(self._FAKE_PNG)
+
+        with patch(
+            "wenzi.scripting.clipboard_monitor._get_app_icon_png"
+        ) as mock_extract:
+            monitor._cache_app_icon("com.apple.Safari")
+            mock_extract.assert_not_called()
+
+    def test_skips_if_fail_sentinel_exists(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        os.makedirs(icon_dir)
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        from wenzi.scripting.clipboard_monitor import _icon_fail_path
+        fail_path = _icon_fail_path(icon_dir, "com.bad.app")
+        with open(fail_path, "wb") as f:
+            f.write(b"")
+
+        with patch(
+            "wenzi.scripting.clipboard_monitor._get_app_icon_png"
+        ) as mock_extract:
+            monitor._cache_app_icon("com.bad.app")
+            mock_extract.assert_not_called()
+
+    def test_extracts_and_saves_icon(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        with patch(
+            "wenzi.scripting.clipboard_monitor._get_app_icon_png",
+            return_value=self._FAKE_PNG,
+        ):
+            monitor._cache_app_icon("com.apple.Safari")
+
+        from wenzi.scripting.clipboard_monitor import _icon_cache_path
+        png_path = _icon_cache_path(icon_dir, "com.apple.Safari")
+        assert os.path.isfile(png_path)
+        with open(png_path, "rb") as f:
+            assert f.read() == self._FAKE_PNG
+
+    def test_writes_fail_sentinel_on_extraction_failure(self, tmp_path):
+        icon_dir = str(tmp_path / "icons")
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        with patch(
+            "wenzi.scripting.clipboard_monitor._get_app_icon_png",
+            return_value=None,
+        ):
+            monitor._cache_app_icon("com.bad.app")
+
+        from wenzi.scripting.clipboard_monitor import (
+            _icon_cache_path,
+            _icon_fail_path,
+        )
+        assert not os.path.isfile(_icon_cache_path(icon_dir, "com.bad.app"))
+        assert os.path.isfile(_icon_fail_path(icon_dir, "com.bad.app"))
+
+    def test_expired_fail_sentinel_retries(self, tmp_path):
+        """Fail sentinel older than TTL should be removed and retried."""
+        import time as _time
+
+        icon_dir = str(tmp_path / "icons")
+        os.makedirs(icon_dir)
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        from wenzi.scripting.clipboard_monitor import _icon_fail_path
+        fail_path = _icon_fail_path(icon_dir, "com.old.fail")
+        with open(fail_path, "wb") as f:
+            f.write(b"")
+        # Backdate the sentinel beyond TTL
+        old_mtime = _time.time() - monitor._ICON_FAIL_TTL - 1
+        os.utime(fail_path, (old_mtime, old_mtime))
+
+        with patch(
+            "wenzi.scripting.clipboard_monitor._get_app_icon_png",
+            return_value=self._FAKE_PNG,
+        ):
+            monitor._cache_app_icon("com.old.fail")
+
+        from wenzi.scripting.clipboard_monitor import _icon_cache_path
+        assert os.path.isfile(_icon_cache_path(icon_dir, "com.old.fail"))
+        assert not os.path.isfile(fail_path)
+
+    def test_icon_cache_dir_property(self, tmp_path):
+        icon_dir = str(tmp_path / "custom_icons")
+        monitor = ClipboardMonitor(
+            image_dir=str(tmp_path / "images"), icon_cache_dir=icon_dir,
+        )
+        assert monitor.icon_cache_dir == icon_dir
