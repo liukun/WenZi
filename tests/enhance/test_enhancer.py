@@ -1689,10 +1689,10 @@ class TestIncrementalHistoryContext:
         mode_def = _TEST_MODES["proofread"]
         result = enhancer._build_system_content("test WenZi", mode_def)
 
-        # Combined header should contain both instructions
+        # Combined header should contain both instructions with priority hints
         header_pos = result.find("以下是辅助纠错的参考上下文")
-        history_instr_pos = result.find("- 对话记录：")
-        vocab_instr_pos = result.find("- 词库：以下专有名词")
+        history_instr_pos = result.find("- 对话记录（优先参考）")
+        vocab_instr_pos = result.find("- 词库（仅供辅助）")
         assert header_pos < history_instr_pos < vocab_instr_pos
 
         # History entries come before vocab entries
@@ -1722,8 +1722,8 @@ class TestIncrementalHistoryContext:
 
         assert "词库" in result
         assert "API" in result
-        # No history instruction in header
-        assert "对话记录：若 ASR" not in result
+        # No history instruction in header (history disabled)
+        assert "对话记录（优先参考）" not in result
 
     def test_context_section_history_enabled_but_empty(self):
         """When history enabled but empty, header still includes history instruction
@@ -1750,7 +1750,7 @@ class TestIncrementalHistoryContext:
         # Vocab should be present
         assert "WenZi" in result
         # Header includes history instruction (enabled flag, not content-based)
-        assert "对话记录：若 ASR" in result
+        assert "对话记录（优先参考）" in result
         # But no "对话记录：\n" subsection (no history entries)
         assert "对话记录：\n" not in result
 
