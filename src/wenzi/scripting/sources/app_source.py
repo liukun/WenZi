@@ -7,7 +7,6 @@ matching with running apps ranked first.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import logging
 import os
@@ -106,12 +105,6 @@ def _get_app_icon_png(path: str) -> Optional[bytes]:
         return None
 
 
-def _png_to_data_uri(png_bytes: bytes) -> str:
-    """Convert raw PNG bytes to a data:image/png;base64 URI."""
-    b64 = base64.b64encode(png_bytes).decode("ascii")
-    return f"data:image/png;base64,{b64}"
-
-
 def _cache_key(path: str) -> str:
     """Return a stable cache filename for an app path."""
     return hashlib.md5(path.encode()).hexdigest()
@@ -207,12 +200,12 @@ class AppSource:
         self._apps: list[dict] = []
         self._scanned = False
         self._last_scan_time: float = 0
-        self._icon_cache: dict[str, str] = {}  # path → data URI (memory)
+        self._icon_cache: dict[str, str] = {}  # path → file:// URL (memory)
         self._icon_lock = threading.Lock()
         self._icon_cache_dir = icon_cache_dir or _DEFAULT_ICON_CACHE_DIR
 
     def _get_icon(self, path: str) -> str:
-        """Return cached icon data URI, checking disk then extracting.
+        """Return cached icon file:// URL, checking disk then extracting.
 
         Thread-safe: protected by ``_icon_lock`` so the preload thread
         and main-thread search cannot race on the cache dict.
@@ -221,11 +214,11 @@ class AppSource:
             if path in self._icon_cache:
                 return self._icon_cache[path]
 
-        data_uri = self._load_icon_from_disk(path)
-        if data_uri:
+        file_url = self._load_icon_from_disk(path)
+        if file_url:
             with self._icon_lock:
-                self._icon_cache[path] = data_uri
-            return data_uri
+                self._icon_cache[path] = file_url
+            return file_url
 
         png = _get_app_icon_png(path)
         if png is None:
@@ -233,11 +226,13 @@ class AppSource:
                 self._icon_cache[path] = ""
             return ""
 
-        data_uri = _png_to_data_uri(png)
-        with self._icon_lock:
-            self._icon_cache[path] = data_uri
         self._save_icon_to_disk(path, png)
-        return data_uri
+        key = _cache_key(path)
+        png_path = os.path.join(self._icon_cache_dir, f"{key}.png")
+        file_url = "file://" + png_path
+        with self._icon_lock:
+            self._icon_cache[path] = file_url
+        return file_url
 
     def _load_icon_from_disk(self, app_path: str) -> str:
         """Load a cached icon from disk if it exists and is still fresh."""
@@ -256,9 +251,7 @@ class AppSource:
             if cached_mtime != current_mtime:
                 return ""  # app updated, cache stale
 
-            with open(png_path, "rb") as f:
-                png = f.read()
-            return _png_to_data_uri(png) if png else ""
+            return "file://" + png_path
         except Exception:
             logger.debug("Failed to load cached icon for %s", app_path, exc_info=True)
             return ""

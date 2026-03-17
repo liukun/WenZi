@@ -20,7 +20,7 @@ class ChooserItem:
 
     title: str
     subtitle: str = ""
-    icon: str = ""  # data: URI (base64 PNG) or empty
+    icon: str = ""  # file:// URL, data: URI, or empty
     item_id: str = ""  # Stable identifier for usage tracking
     # {"type": "text"|"image", ...} or a callable returning such a dict
     preview: object = field(default=None, repr=False)

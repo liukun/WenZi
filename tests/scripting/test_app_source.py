@@ -9,7 +9,6 @@ from wenzi.scripting.sources.app_source import (
     _APP_DIRS,
     _cache_key,
     _is_internal_app,
-    _png_to_data_uri,
     _scan_apps,
 )
 
@@ -341,11 +340,12 @@ class TestIconDiskCache:
         ):
             uri1 = src._get_icon(app_path)
 
-        assert uri1 == _png_to_data_uri(self._FAKE_PNG)
+        key = _cache_key(app_path)
+        expected_png_path = os.path.join(cache_dir, f"{key}.png")
+        assert uri1 == "file://" + expected_png_path
 
         # Verify files written to disk
-        key = _cache_key(app_path)
-        assert os.path.isfile(os.path.join(cache_dir, f"{key}.png"))
+        assert os.path.isfile(expected_png_path)
         assert os.path.isfile(os.path.join(cache_dir, f"{key}.meta"))
 
         # New instance should load from disk without calling AppKit
@@ -387,7 +387,8 @@ class TestIconDiskCache:
         ):
             uri = src2._get_icon(app_path)
 
-        assert uri == _png_to_data_uri(new_png)
+        key = _cache_key(app_path)
+        assert uri == "file://" + os.path.join(cache_dir, f"{key}.png")
 
     def test_missing_cache_dir_created(self, tmp_path):
         """Cache dir should be auto-created on first save."""

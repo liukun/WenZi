@@ -6,18 +6,19 @@ Activated via the "bm" prefix (e.g. "bm github").
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import os
 import subprocess
 from typing import Dict, List, Optional
 
+from wenzi.config import DEFAULT_ICON_CACHE_DIR as _CFG_ICON_CACHE_DIR
 from wenzi.scripting.sources import ChooserItem, ChooserSource, fuzzy_match
 
 logger = logging.getLogger(__name__)
 
 _ICON_SIZE = 32
+_DEFAULT_ICON_CACHE_DIR = os.path.expanduser(_CFG_ICON_CACHE_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +334,7 @@ _APP_SEARCH_DIRS = [
     "/System/Applications",
 ]
 
-# In-memory icon cache: browser_id -> data URI string
+# In-memory icon cache: browser_id -> file:// URL string
 _browser_icon_cache: Dict[str, str] = {}
 
 
@@ -349,10 +350,17 @@ def _find_browser_app(browser: str) -> str:
     return ""
 
 
-def _get_browser_icon(browser: str) -> str:
-    """Return a base64 data URI for the browser's app icon."""
+def _get_browser_icon(browser: str, icon_cache_dir: str = _DEFAULT_ICON_CACHE_DIR) -> str:
+    """Return a file:// URL for the browser's app icon, cached to disk."""
     if browser in _browser_icon_cache:
         return _browser_icon_cache[browser]
+
+    # Check disk cache first
+    png_path = os.path.join(icon_cache_dir, f"browser_{browser}.png")
+    if os.path.isfile(png_path):
+        url = "file://" + png_path
+        _browser_icon_cache[browser] = url
+        return url
 
     app_path = _find_browser_app(browser)
     if not app_path:
@@ -389,10 +397,12 @@ def _get_browser_icon(browser: str) -> str:
         rep = NSBitmapImageRep.imageRepWithData_(target.TIFFRepresentation())
         png_data = rep.representationUsingType_properties_(NSPNGFileType, None)
         if png_data:
-            b64 = base64.b64encode(bytes(png_data)).decode("ascii")
-            uri = f"data:image/png;base64,{b64}"
-            _browser_icon_cache[browser] = uri
-            return uri
+            os.makedirs(icon_cache_dir, exist_ok=True)
+            with open(png_path, "wb") as f:
+                f.write(bytes(png_data))
+            url = "file://" + png_path
+            _browser_icon_cache[browser] = url
+            return url
     except Exception:
         logger.debug("Failed to get icon for %s", browser, exc_info=True)
 

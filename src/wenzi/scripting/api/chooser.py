@@ -265,7 +265,7 @@ class ChooserAPI:
                 return [{
                     "title": "Fix bug #123",
                     "subtitle": "backend",
-                    "icon": "data:image/png;base64,...",
+                    "icon": "file:///path/to/icon.png",
                     "item_id": "todo-123",
                     "action": lambda: ...,
                     "secondary_action": lambda: ...,
