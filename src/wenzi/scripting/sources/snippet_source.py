@@ -33,11 +33,12 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple
 
+from wenzi.config import DEFAULT_SNIPPETS_DIR as _CFG_SNIPPETS_DIR
 from wenzi.scripting.sources import ChooserItem, ChooserSource, fuzzy_match
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SNIPPETS_DIR = os.path.expanduser("~/.config/WenZi/snippets")
+_DEFAULT_SNIPPETS_DIR = os.path.expanduser(_CFG_SNIPPETS_DIR)
 
 _SUPPORTED_EXTENSIONS = (".md", ".txt")
 

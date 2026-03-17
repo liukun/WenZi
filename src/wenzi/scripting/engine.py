@@ -8,6 +8,7 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+import wenzi.config as _cfg
 from wenzi.scripting.registry import ScriptingRegistry
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class ScriptEngine:
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._script_dir = os.path.expanduser(
-            script_dir or "~/.config/WenZi/scripts"
+            script_dir or _cfg.DEFAULT_SCRIPTS_DIR
         )
         self._config = config or {}
         self._registry = ScriptingRegistry()
@@ -144,7 +145,7 @@ class ScriptEngine:
             chooser_config = self._config.get("chooser", {})
             max_days = chooser_config.get("clipboard_max_days", 7)
             persist_path = os.path.expanduser(
-                "~/.config/WenZi/clipboard_history.json"
+                _cfg.DEFAULT_CLIPBOARD_HISTORY_PATH
             )
             prefixes = chooser_config.get("prefixes", {})
 
@@ -346,7 +347,7 @@ class ScriptEngine:
 
                 max_days = chooser_config.get("clipboard_max_days", 7)
                 persist_path = os.path.expanduser(
-                    "~/.config/WenZi/clipboard_history.json"
+                    _cfg.DEFAULT_CLIPBOARD_HISTORY_PATH
                 )
 
                 self._clipboard_monitor = ClipboardMonitor(

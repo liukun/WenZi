@@ -19,6 +19,8 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from wenzi.config import DEFAULT_CLIPBOARD_IMAGES_DIR
+
 logger = logging.getLogger(__name__)
 
 # Pasteboard types that indicate concealed/transient/sensitive content.
@@ -46,7 +48,7 @@ def _mask_text(text: str) -> str:
     return f"{text[:2]}..{text[-2:]}"
 _MIN_IMAGE_DIM = 4  # ignore images smaller than 4×4 (tracking pixels, mock artifacts)
 
-_DEFAULT_IMAGE_DIR = os.path.expanduser("~/.config/WenZi/clipboard_images")
+_DEFAULT_IMAGE_DIR = os.path.expanduser(DEFAULT_CLIPBOARD_IMAGES_DIR)
 
 
 @dataclass

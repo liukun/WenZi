@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import builtins
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -35,34 +37,119 @@ def _no_real_snippet_tap():
 def _safe_default_paths(tmp_path, monkeypatch):
     """Redirect all default data paths to tmp_path.
 
-    Classes like ClipboardMonitor, SnippetStore, AppSource, etc. have
-    default paths under ~/.config/WenZi/. If a test instantiates one
-    without overriding the path, destructive ops (clear, delete) would
-    hit real user data. This fixture patches all known defaults.
+    Two layers of protection:
 
-    When adding a new _DEFAULT_* path constant, update this fixture.
+    1. **Patch layer** — overrides all known ``_DEFAULT_*`` path constants
+       so classes instantiated without explicit paths use tmp_path.
+    2. **Guard layer** — intercepts ``builtins.open``, ``os.remove``,
+       ``os.makedirs``, ``os.rename``, ``os.replace``, ``os.unlink``,
+       ``shutil.rmtree``, and ``shutil.copytree`` to raise immediately
+       if a test tries to *write/delete* inside the real data directory.
+       This catches any path that was missed by the patch layer.
+
+    When adding a new ``_DEFAULT_*`` path constant, add it to the
+    patch dicts below.  The guard layer does not need updating.
     """
     safe = str(tmp_path / "wenzi_safe")
-    monkeypatch.setattr(
-        "wenzi.scripting.clipboard_monitor._DEFAULT_IMAGE_DIR",
-        safe + "/clipboard_images",
-    )
-    monkeypatch.setattr(
-        "wenzi.scripting.sources.snippet_source._DEFAULT_SNIPPETS_DIR",
-        safe + "/snippets",
-    )
-    monkeypatch.setattr(
-        "wenzi.scripting.sources.app_source._DEFAULT_ICON_CACHE_DIR",
-        safe + "/icon_cache",
-    )
-    monkeypatch.setattr(
-        "wenzi.scripting.sources.usage_tracker._DEFAULT_PATH",
-        safe + "/chooser_usage.json",
-    )
-    monkeypatch.setattr(
-        "wenzi.scripting.api.store._DEFAULT_PATH",
-        safe + "/script_data.json",
-    )
+
+    # --- Patch layer: config.py central constants --------------------------
+    config_patches = {
+        "DEFAULT_CONFIG_DIR": safe,
+        "DEFAULT_CONFIG_PATH": os.path.join(safe, "config.json"),
+        "DEFAULT_ENHANCE_MODES_DIR": os.path.join(safe, "enhance_modes"),
+        "DEFAULT_SCRIPTS_DIR": os.path.join(safe, "scripts"),
+        "DEFAULT_CLIPBOARD_HISTORY_PATH": os.path.join(safe, "clipboard_history.json"),
+        "DEFAULT_CLIPBOARD_IMAGES_DIR": os.path.join(safe, "clipboard_images"),
+        "DEFAULT_SNIPPETS_DIR": os.path.join(safe, "snippets"),
+        "DEFAULT_ICON_CACHE_DIR": os.path.join(safe, "icon_cache"),
+        "DEFAULT_CHOOSER_USAGE_PATH": os.path.join(safe, "chooser_usage.json"),
+        "DEFAULT_SCRIPT_DATA_PATH": os.path.join(safe, "script_data.json"),
+    }
+    for attr, value in config_patches.items():
+        monkeypatch.setattr(f"wenzi.config.{attr}", value)
+
+    # --- Patch layer: consumer module copies (import-time snapshots) -------
+    consumer_patches = {
+        "wenzi.scripting.clipboard_monitor._DEFAULT_IMAGE_DIR":
+            os.path.join(safe, "clipboard_images"),
+        "wenzi.scripting.sources.snippet_source._DEFAULT_SNIPPETS_DIR":
+            os.path.join(safe, "snippets"),
+        "wenzi.scripting.sources.app_source._DEFAULT_ICON_CACHE_DIR":
+            os.path.join(safe, "icon_cache"),
+        "wenzi.scripting.sources.usage_tracker._DEFAULT_PATH":
+            os.path.join(safe, "chooser_usage.json"),
+        "wenzi.scripting.api.store._DEFAULT_PATH":
+            os.path.join(safe, "script_data.json"),
+        "wenzi.enhance.mode_loader.DEFAULT_MODES_DIR":
+            os.path.join(safe, "enhance_modes"),
+    }
+    for attr, value in consumer_patches.items():
+        monkeypatch.setattr(attr, value)
+
+    # --- Guard layer: block writes/deletes to real data dir ----------------
+    _real_config_dir = os.path.expanduser("~/.config/WenZi")
+
+    def _is_guarded(path):
+        """Return True if *path* is inside the real data directory."""
+        if not isinstance(path, (str, bytes)):
+            return False
+        p = os.fsdecode(path) if isinstance(path, bytes) else path
+        try:
+            return os.path.abspath(p).startswith(_real_config_dir)
+        except (ValueError, OSError):
+            return False
+
+    def _reject(op_name, path):
+        raise RuntimeError(
+            f"Test attempted {op_name}() on real user data: {path}\n"
+            f"Ensure this path is redirected to tmp_path via _safe_default_paths."
+        )
+
+    # Guard builtins.open for write modes
+    _original_open = builtins.open
+
+    def _guarded_open(file, mode="r", *args, **kwargs):
+        if _is_guarded(file) and any(c in mode for c in "wxa"):
+            _reject("open", file)
+        return _original_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _guarded_open)
+
+    # Guard destructive os/shutil operations
+    _GUARDED_OPS = {
+        "os.remove": os.remove,
+        "os.unlink": os.unlink,
+        "os.makedirs": os.makedirs,
+        "os.mkdir": os.mkdir,
+        "os.rename": os.rename,
+        "os.replace": os.replace,
+    }
+    for dotpath, original_fn in _GUARDED_OPS.items():
+        mod_name, fn_name = dotpath.rsplit(".", 1)
+
+        def _make_guard(orig, name):
+            def _guard(path, *a, **kw):
+                if _is_guarded(path):
+                    _reject(name, path)
+                return orig(path, *a, **kw)
+            return _guard
+
+        monkeypatch.setattr(dotpath, _make_guard(original_fn, fn_name))
+
+    import shutil
+    for fn_name in ("rmtree", "copytree"):
+        original_fn = getattr(shutil, fn_name)
+
+        def _make_shutil_guard(orig, name):
+            def _guard(path, *a, **kw):
+                if _is_guarded(path):
+                    _reject(name, path)
+                return orig(path, *a, **kw)
+            return _guard
+
+        monkeypatch.setattr(
+            f"shutil.{fn_name}", _make_shutil_guard(original_fn, fn_name),
+        )
 
 
 class MockAppKitModules:
