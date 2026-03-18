@@ -53,6 +53,8 @@ class WhisperAPITranscriber(BaseTranscriber):
         )
 
     def cleanup(self) -> None:
+        if self._client is not None:
+            self._client.close()
         self._client = None
         self._initialized = False
         logger.info("Whisper API transcriber cleaned up")
@@ -98,6 +100,7 @@ class WhisperAPITranscriber(BaseTranscriber):
             wf.writeframes(struct.pack(f"<{num_samples}h", *([0] * num_samples)))
         wav_data = buf.getvalue()
 
+        client = None
         try:
             client = OpenAI(base_url=base_url, api_key=api_key)
             audio_file = io.BytesIO(wav_data)
@@ -106,3 +109,6 @@ class WhisperAPITranscriber(BaseTranscriber):
             return None
         except Exception as e:
             return str(e)
+        finally:
+            if client is not None:
+                client.close()

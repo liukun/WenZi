@@ -263,7 +263,7 @@ class TestTextEnhancerAddRemoveProvider:
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_config())
             enhancer._providers = {
-                "ollama": (MagicMock(), ["qwen2.5:7b"]),
+                "ollama": (MagicMock(), ["qwen2.5:7b"], {}),
             }
             enhancer._active_provider = "ollama"
             enhancer._active_model = "qwen2.5:7b"
@@ -272,7 +272,7 @@ class TestTextEnhancerAddRemoveProvider:
             "wenzi.enhance.enhancer.TextEnhancer._init_single_provider"
         ) as mock_init:
             def fake_init(name, pcfg):
-                enhancer._providers[name] = (MagicMock(), pcfg["models"])
+                enhancer._providers[name] = (MagicMock(), pcfg["models"], {})
 
             mock_init.side_effect = fake_init
             result = enhancer.add_provider(
@@ -307,7 +307,7 @@ class TestTextEnhancerAddRemoveProvider:
             "wenzi.enhance.enhancer.TextEnhancer._init_single_provider"
         ) as mock_init:
             def fake_init(name, pcfg):
-                enhancer._providers[name] = (MagicMock(), pcfg["models"])
+                enhancer._providers[name] = (MagicMock(), pcfg["models"], {})
 
             mock_init.side_effect = fake_init
             enhancer.add_provider(
@@ -333,12 +333,18 @@ class TestTextEnhancerAddRemoveProvider:
         assert result is False
         assert "bad" not in enhancer.provider_names
 
+    @staticmethod
+    def _mock_client():
+        client = MagicMock()
+        client.close = AsyncMock()
+        return client
+
     def test_remove_provider_success(self):
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_multi_provider_config())
             enhancer._providers = {
-                "ollama": (MagicMock(), ["qwen2.5:7b"]),
-                "openai": (MagicMock(), ["gpt-4o"]),
+                "ollama": (self._mock_client(), ["qwen2.5:7b"], {}),
+                "openai": (self._mock_client(), ["gpt-4o"], {}),
             }
             enhancer._active_provider = "openai"
             enhancer._active_model = "gpt-4o"
@@ -354,7 +360,7 @@ class TestTextEnhancerAddRemoveProvider:
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_config())
             enhancer._providers = {
-                "ollama": (MagicMock(), ["qwen2.5:7b"]),
+                "ollama": (self._mock_client(), ["qwen2.5:7b"], {}),
             }
         result = enhancer.remove_provider("nonexistent")
         assert result is False
@@ -363,8 +369,8 @@ class TestTextEnhancerAddRemoveProvider:
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_multi_provider_config())
             enhancer._providers = {
-                "ollama": (MagicMock(), ["qwen2.5:7b"]),
-                "openai": (MagicMock(), ["gpt-4o"]),
+                "ollama": (self._mock_client(), ["qwen2.5:7b"], {}),
+                "openai": (self._mock_client(), ["gpt-4o"], {}),
             }
             enhancer._active_provider = "ollama"
             enhancer._active_model = "qwen2.5:7b"
@@ -379,7 +385,7 @@ class TestTextEnhancerAddRemoveProvider:
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_config())
             enhancer._providers = {
-                "ollama": (MagicMock(), ["qwen2.5:7b"]),
+                "ollama": (self._mock_client(), ["qwen2.5:7b"], {}),
             }
             enhancer._active_provider = "ollama"
 
@@ -396,6 +402,7 @@ class TestTextEnhancerVerifyProvider:
     def _make_mock_openai(self):
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=MagicMock())
+        mock_client.close = AsyncMock()
         return MagicMock(return_value=mock_client)
 
     def test_verify_success(self):
@@ -418,6 +425,7 @@ class TestTextEnhancerVerifyProvider:
         mock_client.chat.completions.create = AsyncMock(
             side_effect=asyncio.TimeoutError()
         )
+        mock_client.close = AsyncMock()
         mock_openai = MagicMock(return_value=mock_client)
         with patch("openai.AsyncOpenAI", mock_openai):
             result = asyncio.run(
@@ -435,6 +443,7 @@ class TestTextEnhancerVerifyProvider:
         mock_client.chat.completions.create = AsyncMock(
             side_effect=Exception("Connection refused")
         )
+        mock_client.close = AsyncMock()
         mock_openai = MagicMock(return_value=mock_client)
         with patch("openai.AsyncOpenAI", mock_openai):
             result = asyncio.run(

@@ -950,6 +950,14 @@ class WenZiApp(StatusBarApp):
             self._clipboard_hotkey_listener.stop()
         if self._settings_panel.is_visible:
             self._settings_panel.close()
+        # Close AI provider clients to release connection pools
+        if self._enhancer:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(self._enhancer.close())
+            finally:
+                loop.close()
         quit_application()
 
     @staticmethod

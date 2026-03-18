@@ -191,12 +191,12 @@ class TestExtractBatch:
         mock_response.usage = mock_usage
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        with patch("openai.AsyncOpenAI", return_value=mock_client):
-            entries, usage = asyncio.run(
-                builder._extract_batch(batch)
-            )
+        entries, usage = asyncio.run(
+            builder._extract_batch(batch, client=mock_client)
+        )
 
         assert len(entries) == 1
         assert entries[0]["term"] == "Python"
@@ -212,12 +212,12 @@ class TestExtractBatch:
         mock_response.usage = None
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        with patch("openai.AsyncOpenAI", return_value=mock_client):
-            entries, usage = asyncio.run(
-                builder._extract_batch(batch)
-            )
+        entries, usage = asyncio.run(
+            builder._extract_batch(batch, client=mock_client)
+        )
 
         assert entries == []
 
@@ -241,13 +241,13 @@ class TestExtractBatch:
             await asyncio.sleep(10)
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = slow_create
 
-        with patch("openai.AsyncOpenAI", return_value=mock_client):
-            with pytest.raises(asyncio.TimeoutError):
-                asyncio.run(
-                    builder._extract_batch(batch)
-                )
+        with pytest.raises(asyncio.TimeoutError):
+            asyncio.run(
+                builder._extract_batch(batch, client=mock_client)
+            )
 
 
 class TestParseLLMResponse:
@@ -422,6 +422,7 @@ class TestBuild:
         mock_response.usage = None
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -460,6 +461,7 @@ class TestBuild:
         mock_response.usage = None
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -495,6 +497,7 @@ class TestBuild:
         mock_response.usage = None
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -542,6 +545,7 @@ class TestBuildWithCancel:
             return mock_response
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -619,16 +623,16 @@ class TestExtractBatchStreaming:
             return _AsyncStreamMock(chunks)
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         collected_chunks = []
         def on_chunk(c):
             return collected_chunks.append(c)
 
-        with patch("openai.AsyncOpenAI", return_value=mock_client):
-            entries, usage = asyncio.run(
-                builder._extract_batch(batch, on_stream_chunk=on_chunk)
-            )
+        entries, usage = asyncio.run(
+            builder._extract_batch(batch, client=mock_client, on_stream_chunk=on_chunk)
+        )
 
         assert collected_chunks == pipe_parts
         assert len(entries) == 1
@@ -645,12 +649,12 @@ class TestExtractBatchStreaming:
         mock_response.usage = None
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        with patch("openai.AsyncOpenAI", return_value=mock_client):
-            entries, usage = asyncio.run(
-                builder._extract_batch(batch)
-            )
+        entries, usage = asyncio.run(
+            builder._extract_batch(batch, client=mock_client)
+        )
 
         create_call = mock_client.chat.completions.create
         create_call.assert_called_once()
@@ -681,6 +685,7 @@ class TestBuildWithCallbacks:
             return _AsyncStreamMock([stream_chunk])
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         on_batch_start = MagicMock()
@@ -774,6 +779,7 @@ class TestBuildRetryAndAbort:
             return mock_response
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -792,6 +798,7 @@ class TestBuildRetryAndAbort:
             raise ConnectionError("server down")
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -819,6 +826,7 @@ class TestBuildRetryAndAbort:
             raise ConnectionError("server down")
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -851,6 +859,7 @@ class TestBuildRetryAndAbort:
             raise ConnectionError("server down")
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -884,6 +893,7 @@ class TestBuildRetryAndAbort:
             original_save(self_inner, vocab)
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -916,6 +926,7 @@ class TestBuildRetryAndAbort:
             return mock_response
 
         mock_client = MagicMock()
+        mock_client.close = AsyncMock()
         mock_client.chat.completions.create = mock_create
 
         retry_calls = []
