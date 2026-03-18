@@ -79,6 +79,37 @@ fi
 echo "==> Verifying signature..."
 codesign --verify --verbose "$APP_PATH"
 
+# Verify bundled resources: scan src/wenzi/ for non-Python files
+# and check they exist in the packaged app bundle
+FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+echo "==> Verifying bundled resources..."
+MISSING=0
+FOUND=0
+while IFS= read -r src_file; do
+    rel_path="${src_file#$PROJECT_DIR/src/}"
+    if [ -f "$FRAMEWORKS_DIR/$rel_path" ]; then
+        echo "    OK: $rel_path"
+        FOUND=$((FOUND + 1))
+    else
+        echo "    MISSING: $rel_path"
+        MISSING=$((MISSING + 1))
+    fi
+done < <(find "$PROJECT_DIR/src/wenzi" -type f \
+    ! -name "*.py" \
+    ! -name "*.pyc" \
+    ! -path "*/__pycache__/*" \
+    ! -path "*/.DS_Store" \
+    ! -name "*.egg-info" \
+    ! -path "*.egg-info/*")
+
+if [ "$MISSING" -gt 0 ]; then
+    echo ""
+    echo "ERROR: $MISSING resource(s) missing from app bundle!"
+    echo "       Add them to WenZi.spec datas= section."
+    exit 1
+fi
+echo "    $FOUND resource(s) verified."
+
 echo "==> Creating DMG..."
 # Remove previous DMG if exists (create-dmg won't overwrite)
 rm -f "$DMG_PATH"

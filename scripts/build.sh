@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DIST_DIR="$PROJECT_DIR/dist"
 APP_PATH="$DIST_DIR/WenZi.app"
+FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+
 # Resolve signing identity: env var > auto-detect fingerprint > ad-hoc
 if [ -n "${CODESIGN_IDENTITY:-}" ]; then
     SIGN_IDENTITY="$CODESIGN_IDENTITY"
@@ -40,6 +42,37 @@ fi
 
 echo "==> Verifying signature..."
 codesign --verify --verbose "$APP_PATH"
+
+# Verify bundled resources: scan src/wenzi/ for non-Python files
+# and check they exist in the packaged app bundle
+echo "==> Verifying bundled resources..."
+MISSING=0
+FOUND=0
+while IFS= read -r src_file; do
+    # Convert src/wenzi/audio/sounds/start_default.wav -> wenzi/audio/sounds/start_default.wav
+    rel_path="${src_file#$PROJECT_DIR/src/}"
+    if [ -f "$FRAMEWORKS_DIR/$rel_path" ]; then
+        echo "    OK: $rel_path"
+        FOUND=$((FOUND + 1))
+    else
+        echo "    MISSING: $rel_path"
+        MISSING=$((MISSING + 1))
+    fi
+done < <(find "$PROJECT_DIR/src/wenzi" -type f \
+    ! -name "*.py" \
+    ! -name "*.pyc" \
+    ! -path "*/__pycache__/*" \
+    ! -path "*/.DS_Store" \
+    ! -name "*.egg-info" \
+    ! -path "*.egg-info/*")
+
+if [ "$MISSING" -gt 0 ]; then
+    echo ""
+    echo "ERROR: $MISSING resource(s) missing from app bundle!"
+    echo "       Add them to WenZi.spec datas= section."
+    exit 1
+fi
+echo "    $FOUND resource(s) verified."
 
 APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)
 echo ""
