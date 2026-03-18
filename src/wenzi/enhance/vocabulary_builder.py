@@ -90,86 +90,100 @@ class VocabularyBuilder:
         if callbacks and callbacks.on_progress_init:
             callbacks.on_progress_init(len(records), self._batch_size)
 
-        for i, batch in enumerate(batches, 1):
-            if cancel_event is not None and cancel_event.is_set():
-                logger.info("Build cancelled before batch %d/%d", i, len(batches))
-                cancelled = True
-                break
+        # Create a single client for all batches to avoid connection pool leaks
+        from openai import AsyncOpenAI
 
-            # Try extraction with one retry on failure
-            extracted = None
-            batch_usage: Dict[str, int] = {}
-            for attempt in range(2):
-                try:
-                    if attempt == 0:
-                        if callbacks and callbacks.on_batch_start:
-                            callbacks.on_batch_start(i, len(batches))
-                    else:
-                        if cancel_event is not None and cancel_event.is_set():
-                            logger.info("Build cancelled before retry of batch %d/%d", i, len(batches))
-                            break
-                        logger.info("Retrying batch %d/%d...", i, len(batches))
-                        if callbacks and callbacks.on_batch_retry:
-                            callbacks.on_batch_retry(i, len(batches))
+        client = None
+        if provider_cfg:
+            client = AsyncOpenAI(
+                base_url=provider_cfg["base_url"],
+                api_key=provider_cfg["api_key"],
+            )
 
-                    logger.info(
-                        "Extracting batch %d/%d (%d records, attempt %d)...",
-                        i, len(batches), len(batch), attempt + 1,
-                    )
-                    on_chunk = callbacks.on_stream_chunk if callbacks else None
-                    extracted, batch_usage = await self._extract_batch(
-                        batch, on_stream_chunk=on_chunk
-                    )
-                    break
-                except Exception as e:
-                    if attempt == 0:
-                        logger.warning(
-                            "Batch %d/%d failed (attempt 1), will retry: %s",
-                            i, len(batches), e,
-                        )
-                    else:
-                        logger.error(
-                            "Batch %d/%d failed after retry, aborting build: %s",
-                            i, len(batches), e,
-                        )
-
-            if extracted is None:
+        try:
+            for i, batch in enumerate(batches, 1):
                 if cancel_event is not None and cancel_event.is_set():
+                    logger.info("Build cancelled before batch %d/%d", i, len(batches))
                     cancelled = True
-                else:
-                    aborted = True
-                break
+                    break
 
-            # Batch succeeded — accumulate results
-            for key in total_usage:
-                total_usage[key] += batch_usage.get(key, 0)
-            if callbacks and callbacks.on_usage_update:
-                callbacks.on_usage_update(
-                    total_usage["prompt_tokens"],
-                    total_usage["completion_tokens"],
-                    total_usage["total_tokens"],
-                )
-            logger.info("Batch %d/%d: extracted %d entries", i, len(batches), len(extracted))
-            all_new_entries.extend(extracted)
-            records_processed += len(batch)
+                # Try extraction with one retry on failure
+                extracted = None
+                batch_usage: Dict[str, int] = {}
+                for attempt in range(2):
+                    try:
+                        if attempt == 0:
+                            if callbacks and callbacks.on_batch_start:
+                                callbacks.on_batch_start(i, len(batches))
+                        else:
+                            if cancel_event is not None and cancel_event.is_set():
+                                logger.info("Build cancelled before retry of batch %d/%d", i, len(batches))
+                                break
+                            logger.info("Retrying batch %d/%d...", i, len(batches))
+                            if callbacks and callbacks.on_batch_retry:
+                                callbacks.on_batch_retry(i, len(batches))
 
-            if callbacks and callbacks.on_batch_done:
-                callbacks.on_batch_done(i, len(batches), len(extracted))
+                        logger.info(
+                            "Extracting batch %d/%d (%d records, attempt %d)...",
+                            i, len(batches), len(batch), attempt + 1,
+                        )
+                        on_chunk = callbacks.on_stream_chunk if callbacks else None
+                        extracted, batch_usage = await self._extract_batch(
+                            batch, client=client, on_stream_chunk=on_chunk
+                        )
+                        break
+                    except Exception as e:
+                        if attempt == 0:
+                            logger.warning(
+                                "Batch %d/%d failed (attempt 1), will retry: %s",
+                                i, len(batches), e,
+                            )
+                        else:
+                            logger.error(
+                                "Batch %d/%d failed after retry, aborting build: %s",
+                                i, len(batches), e,
+                            )
 
-            # Persist progress after each successful batch
-            merged_entries = self._merge_entries(merged_entries, extracted)
-            batch_last_ts = batch[-1].get("timestamp", datetime.now(timezone.utc).isoformat())
-            vocabulary = {
-                "last_processed_timestamp": batch_last_ts,
-                "built_at": datetime.now(timezone.utc).isoformat(),
-                "built_with": {
-                    "provider": self._get_active_provider_name(),
-                    "model": provider_cfg["model"] if provider_cfg else "N/A",
-                    "usage": total_usage,
-                },
-                "entries": merged_entries,
-            }
-            self._save_vocabulary(vocabulary)
+                if extracted is None:
+                    if cancel_event is not None and cancel_event.is_set():
+                        cancelled = True
+                    else:
+                        aborted = True
+                    break
+
+                # Batch succeeded — accumulate results
+                for key in total_usage:
+                    total_usage[key] += batch_usage.get(key, 0)
+                if callbacks and callbacks.on_usage_update:
+                    callbacks.on_usage_update(
+                        total_usage["prompt_tokens"],
+                        total_usage["completion_tokens"],
+                        total_usage["total_tokens"],
+                    )
+                logger.info("Batch %d/%d: extracted %d entries", i, len(batches), len(extracted))
+                all_new_entries.extend(extracted)
+                records_processed += len(batch)
+
+                if callbacks and callbacks.on_batch_done:
+                    callbacks.on_batch_done(i, len(batches), len(extracted))
+
+                # Persist progress after each successful batch
+                merged_entries = self._merge_entries(merged_entries, extracted)
+                batch_last_ts = batch[-1].get("timestamp", datetime.now(timezone.utc).isoformat())
+                vocabulary = {
+                    "last_processed_timestamp": batch_last_ts,
+                    "built_at": datetime.now(timezone.utc).isoformat(),
+                    "built_with": {
+                        "provider": self._get_active_provider_name(),
+                        "model": provider_cfg["model"] if provider_cfg else "N/A",
+                        "usage": total_usage,
+                    },
+                    "entries": merged_entries,
+                }
+                self._save_vocabulary(vocabulary)
+        finally:
+            if client is not None:
+                await client.close()
 
         summary: Dict[str, Any] = {
             "new_records": records_processed,
@@ -246,12 +260,15 @@ class VocabularyBuilder:
     async def _extract_batch(
         self,
         batch: List[Dict[str, Any]],
+        *,
+        client: Any = None,
         on_stream_chunk: Optional[Callable[[str], None]] = None,
     ) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
         """Call LLM to extract vocabulary entries from a batch of records.
 
         Args:
             batch: Records to process.
+            client: AsyncOpenAI client to use for API calls.
             on_stream_chunk: If provided, use streaming mode and call this
                 with each text chunk as it arrives.
 
@@ -259,17 +276,11 @@ class VocabularyBuilder:
             A tuple of (entries, usage) where usage has prompt_tokens,
             completion_tokens, total_tokens.
         """
-        from openai import AsyncOpenAI
-
         provider_cfg = self._get_provider_config()
-        if not provider_cfg:
+        if not provider_cfg or client is None:
             logger.warning("No AI provider configured for vocabulary extraction")
             return [], {}
 
-        client = AsyncOpenAI(
-            base_url=provider_cfg["base_url"],
-            api_key=provider_cfg["api_key"],
-        )
         model = provider_cfg["model"]
         prompt = self._build_extraction_prompt(batch)
         extra_body = build_thinking_body(model, enabled=False)

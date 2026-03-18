@@ -326,6 +326,15 @@ class TextEnhancer:
         except ImportError as e:
             logger.warning("Failed to initialize AI provider %s: %s", name, e)
 
+    async def close(self) -> None:
+        """Close all cached provider clients to release connection pools."""
+        for name, (client, _, _) in list(self._providers.items()):
+            try:
+                await client.close()
+            except Exception:
+                pass
+        self._providers.clear()
+
     @property
     def mode(self) -> str:
         return self._mode
@@ -496,10 +505,10 @@ class TextEnhancer:
 
         Returns None on success, or an error message string on failure.
         """
-        try:
-            from openai import AsyncOpenAI
+        from openai import AsyncOpenAI
 
-            client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        try:
             kwargs: Dict[str, Any] = {
                 "model": model,
                 "messages": [{"role": "user", "content": "hi"}],
@@ -516,6 +525,8 @@ class TextEnhancer:
             return f"Connection timed out after {timeout}s"
         except Exception as e:
             return str(e)
+        finally:
+            await client.close()
 
     def add_provider(
         self,
@@ -554,7 +565,21 @@ class TextEnhancer:
         """Remove a provider. Returns True if removed, False otherwise."""
         if name not in self._providers:
             return False
-        del self._providers[name]
+        client, _, _ = self._providers.pop(name)
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(client.close())
+        except RuntimeError:
+            # No running event loop — close synchronously via a new loop
+            import asyncio as _asyncio
+            _loop = _asyncio.new_event_loop()
+            try:
+                _loop.run_until_complete(client.close())
+            finally:
+                _loop.close()
+        except Exception:
+            pass
         self._providers_config.pop(name, None)
         # If removed the active provider, switch to another
         if self._active_provider == name:
