@@ -402,10 +402,8 @@ class TestParseLLMResponse:
 
     def test_parse_filters_common_english_words(self):
         """Common English words are filtered out — LLMs already know them."""
-        from wenzi.enhance.vocabulary_builder import _load_common_words
-
         builder = VocabularyBuilder(_make_config())
-        builder._english_words = _load_common_words()
+        builder._english_words = {"delete", "cache", "merge", "build"}
         content = (
             "term|category|variants|context\n"
             "delete|tech|弟弟他|删除操作\n"
@@ -420,10 +418,8 @@ class TestParseLLMResponse:
 
     def test_parse_keeps_proper_nouns(self):
         """Proper nouns not in English dictionary are kept."""
-        from wenzi.enhance.vocabulary_builder import _load_common_words
-
         builder = VocabularyBuilder(_make_config())
-        builder._english_words = _load_common_words()
+        builder._english_words = {"delete", "cache", "merge", "build"}
         content = (
             "term|category|variants|context\n"
             "PyObjC|tech|pyobjectc|开发框架\n"
@@ -434,11 +430,9 @@ class TestParseLLMResponse:
         assert len(result) == 3
 
     def test_parse_filters_common_chinese_words(self):
-        """Common Chinese words in THUOCL dictionary are filtered out."""
-        from wenzi.enhance.vocabulary_builder import _load_common_words
-
+        """Common Chinese words are filtered out."""
         builder = VocabularyBuilder(_make_config())
-        builder._english_words = _load_common_words()
+        builder._english_words = {"快捷键", "剪贴板", "配置文件"}
         content = (
             "term|category|variants|context\n"
             "快捷键|tech|会计件|系统操作\n"
@@ -1111,7 +1105,7 @@ class TestBuildPrompts:
         prompt = VocabularyBuilder._build_user_prompt(batch)
         # Only the record with a replacement should appear
         assert "[派森→Python]" in prompt
-        lines = [l for l in prompt.split("\n") if l.strip()]
+        lines = [line for line in prompt.split("\n") if line.strip()]
         assert len(lines) == 1
 
     def test_user_prompt_replaces_newlines(self):

@@ -5,10 +5,23 @@ english_words.txt
   License: Public domain
 
 chinese_words.txt
-  Source: THUOCL (THU Open Chinese Lexicon)
-  URL: https://github.com/thunlp/THUOCL
-  License: MIT License
-  Copyright (c) 2018 THUNLP
+  Combined from two sources:
+
+  1) THUOCL (THU Open Chinese Lexicon)
+     URL: https://github.com/thunlp/THUOCL
+     License: MIT License
+     Copyright (c) 2018 THUNLP
+
+  2) 现代汉语常用词表 (Modern Chinese Common Word List)
+     URL: https://github.com/liangqi/chinese-frequency-word-list
+     Source: Ministry of Education, PRC (教育部《现代汉语常用词表（草案）》)
+     56,008 words from a 250-million-character corpus
+     No explicit license declared in repository
+
+  3) 12dicts-zh (Chinese Common Word List)
+     URL: https://github.com/thiefstar/12dicts-zh
+     License: CC0-1.0 (Public Domain)
+     ~504K words compiled from CC-CEDICT, jieba, HanLP, and other sources
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
