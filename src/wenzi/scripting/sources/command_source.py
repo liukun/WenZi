@@ -20,7 +20,7 @@ from wenzi.scripting.sources import (
     ChooserItem,
     ChooserSource,
     ModifierAction,
-    fuzzy_match,
+    fuzzy_match_fields,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,11 +104,7 @@ class CommandSource:
         # Fuzzy search mode
         scored: List[tuple] = []
         for cmd in self._commands.values():
-            matched, score = fuzzy_match(query, cmd.title)
-            if not matched:
-                m2, s2 = fuzzy_match(query, cmd.name)
-                if m2:
-                    matched, score = True, s2
+            matched, score = fuzzy_match_fields(query, (cmd.title, cmd.name))
             if matched:
                 scored.append((-score, cmd.name, cmd))
 
@@ -142,11 +138,7 @@ class CommandSource:
 
         scored: List[tuple] = []
         for cmd in promoted:
-            matched, score = fuzzy_match(query, cmd.title)
-            if not matched:
-                m2, s2 = fuzzy_match(query, cmd.name)
-                if m2:
-                    matched, score = True, s2
+            matched, score = fuzzy_match_fields(query, (cmd.title, cmd.name))
             if matched:
                 scored.append((-score, cmd.name, cmd))
 

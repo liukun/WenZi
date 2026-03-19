@@ -19,7 +19,7 @@ from wenzi.scripting.sources import (
     ChooserItem,
     ChooserSource,
     ModifierAction,
-    fuzzy_match,
+    fuzzy_match_fields,
 )
 
 logger = logging.getLogger(__name__)
@@ -323,11 +323,9 @@ class AppSource:
         for app in self._apps:
             name = app["name"]
             display_name = app["display_name"]
-            matched_name, score_name = fuzzy_match(query, name)
-            matched_display, score_display = fuzzy_match(query, display_name)
-            if not matched_name and not matched_display:
+            matched, score = fuzzy_match_fields(query, (name, display_name))
+            if not matched:
                 continue
-            score = max(score_name, score_display)
             # Match running status against both English and localized names
             is_running = name in running or display_name in running
             path = app["path"]

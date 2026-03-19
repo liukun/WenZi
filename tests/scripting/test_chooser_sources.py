@@ -4,6 +4,7 @@ from wenzi.scripting.sources import (
     ChooserItem,
     ChooserSource,
     fuzzy_match,
+    fuzzy_match_fields,
     _word_initials,
     _chars_in_order,
 )
@@ -170,3 +171,49 @@ class TestFuzzyMatch:
         _, initials_score = fuzzy_match("dd", "DragonDrop")
         _, scattered_score = fuzzy_match("dp", "DragonDrop")
         assert initials_score > scattered_score
+
+
+class TestFuzzyMatchFields:
+    def test_single_term_matches_any_field(self):
+        matched, score = fuzzy_match_fields("rsync", ("deploy", "rsync -avz ops@aws"))
+        assert matched is True
+        assert score == 100  # prefix match
+
+    def test_multi_term_and_logic(self):
+        """'rsync merger' should match when both terms hit across fields."""
+        matched, score = fuzzy_match_fields(
+            "rsync merger", ("deploy", "", "rsync -avz ops@aws-merger-00", ""),
+        )
+        assert matched is True
+        assert score > 0
+
+    def test_multi_term_partial_miss(self):
+        """Fails when one term doesn't match any field."""
+        matched, score = fuzzy_match_fields(
+            "rsync nonexistent", ("deploy", "", "rsync -avz ops@aws-merger-00", ""),
+        )
+        assert matched is False
+
+    def test_empty_query(self):
+        matched, score = fuzzy_match_fields("", ("foo", "bar"))
+        assert matched is False
+
+    def test_single_term_degrades_to_fuzzy_match(self):
+        """Single-term query should give the same result as fuzzy_match best."""
+        matched, score = fuzzy_match_fields("saf", ("Safari", "Web browser"))
+        fm_matched, fm_score = fuzzy_match("saf", "Safari")
+        assert matched == fm_matched
+        assert score == fm_score
+
+    def test_score_averages_across_terms(self):
+        # "saf" prefix-matches "Safari" (100), "web" prefix-matches "Web browser" (100)
+        matched, score = fuzzy_match_fields("saf web", ("Safari", "Web browser"))
+        assert matched is True
+        assert score == 100  # avg of 100 + 100
+
+    def test_terms_can_match_same_field(self):
+        """Both terms can match the same field."""
+        matched, score = fuzzy_match_fields(
+            "rsync aws", ("", "", "rsync -avz ops@aws-merger-00", ""),
+        )
+        assert matched is True
