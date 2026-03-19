@@ -347,6 +347,7 @@ class TestOnCancelRecording:
 
         # Mode should be restored
         assert mock_app._enhance_mode == "proofread"
+        assert mock_app._enhance_controller.enhance_mode == "proofread"
         assert ctrl._saved_mode is None
 
 
