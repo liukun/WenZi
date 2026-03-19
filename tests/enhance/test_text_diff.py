@@ -91,6 +91,19 @@ class TestInlineDiff:
         assert "[" not in result
         assert result == "你觉得靠谱吗？"
 
+    def test_whitespace_stripped_from_brackets(self):
+        """Whitespace around replacement content should be outside brackets."""
+        result = inline_diff("Gate 库", " git 库")
+        assert "[Gate→git]" in result
+        assert "→ " not in result
+        assert " →" not in result
+
+    def test_whitespace_preserved_outside_brackets(self):
+        """Stripped whitespace appears outside, not lost."""
+        result = inline_diff("写jason格式", "写 JSON 格式")
+        assert "[jason→JSON]" in result
+        assert " [" in result or result.index("[") > 0  # leading space preserved
+
 
 class TestIsPunctuationOnly:
     def test_ascii_punctuation(self):

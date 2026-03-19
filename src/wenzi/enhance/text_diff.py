@@ -53,12 +53,16 @@ def inline_diff(asr: str, final: str) -> str:
         if op == "equal":
             parts.append("".join(asr_tokens[i1:i2]))
         elif op == "replace":
-            old = "".join(asr_tokens[i1:i2])
-            new = "".join(final_tokens[j1:j2])
-            if _is_punctuation_only(old) and _is_punctuation_only(new):
-                parts.append(new)
+            old_raw = "".join(asr_tokens[i1:i2])
+            new_raw = "".join(final_tokens[j1:j2])
+            if _is_punctuation_only(old_raw) and _is_punctuation_only(new_raw):
+                parts.append(new_raw)
             else:
-                parts.append(f"[{old}→{new}]")
+                old = old_raw.strip()
+                new = new_raw.strip()
+                leading = new_raw[: len(new_raw) - len(new_raw.lstrip())]
+                trailing = new_raw[len(new_raw.rstrip()) :]
+                parts.append(f"{leading}[{old}→{new}]{trailing}")
         elif op == "insert":
             parts.append("".join(final_tokens[j1:j2]))
         # delete: omit old text silently
