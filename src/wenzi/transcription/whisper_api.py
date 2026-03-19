@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from openai import OpenAI
 
 from .base import BaseTranscriber
 
 logger = logging.getLogger(__name__)
+
+
+# Whisper API prompt token limit is 224; leave margin for tokenizer variance.
+_MAX_PROMPT_CHARS = 200
 
 
 class WhisperAPITranscriber(BaseTranscriber):
@@ -24,12 +28,14 @@ class WhisperAPITranscriber(BaseTranscriber):
         model: str,
         language: Optional[str] = None,
         temperature: Optional[float] = None,
+        hotwords: Optional[List[str]] = None,
     ) -> None:
         self._base_url = base_url
         self._api_key = api_key
         self._model = model
         self._language = language
         self._temperature = temperature if temperature is not None else 0.0
+        self._hotwords = hotwords
         self._client: Optional[OpenAI] = None
         self._initialized = False
 
@@ -73,12 +79,30 @@ class WhisperAPITranscriber(BaseTranscriber):
         }
         if self._language:
             kwargs["language"] = self._language
+        if self._hotwords:
+            prompt = self._build_hotwords_prompt(self._hotwords)
+            if prompt:
+                kwargs["prompt"] = prompt
+                logger.debug("ASR hotwords prompt: %s", prompt)
 
         response = self._client.audio.transcriptions.create(**kwargs)
         text = response.text.strip()
 
         logger.info("Transcription result: %s", text[:100])
         return text
+
+    @staticmethod
+    def _build_hotwords_prompt(hotwords: List[str]) -> str:
+        """Join hotwords into a prompt string, truncating to fit token limit."""
+        parts: list[str] = []
+        total = 0
+        for word in hotwords:
+            added = len(word) + (2 if parts else 0)  # ", " separator
+            if total + added > _MAX_PROMPT_CHARS:
+                break
+            parts.append(word)
+            total += added
+        return ", ".join(parts)
 
     @staticmethod
     def verify_provider(base_url: str, api_key: str, model: str) -> Optional[str]:

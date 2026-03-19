@@ -24,6 +24,7 @@ _VALID_MODIFIER_KEYS = {k for k, _ in MODIFIER_KEY_CHOICES}
 DEFAULT_CONFIG_DIR = os.path.join("~", ".config", "WenZi")
 DEFAULT_DATA_DIR = os.path.join("~", ".local", "share", "WenZi")
 DEFAULT_CACHE_DIR = os.path.join("~", ".cache", "WenZi")
+DEFAULT_LOG_DIR = os.path.join("~", "Library", "Logs", "WenZi")
 
 # Config files (user-editable, suitable for Git tracking)
 DEFAULT_CONFIG_PATH = os.path.join(DEFAULT_CONFIG_DIR, "config.json")
@@ -255,6 +256,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "device": None,
         "max_session_bytes": 20971520,
         "silence_rms": 20,
+        "max_recording_seconds": 120,
     },
     "asr": {
         "backend": "funasr",
@@ -292,7 +294,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "vocabulary": {
             "enabled": False,
             "top_k": 5,
-            "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
             "build_timeout": 600,
             "auto_build": True,
             "build_provider": "",

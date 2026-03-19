@@ -219,9 +219,7 @@ The vocabulary supports both automatic and manual building:
 - **Auto build**: By default, vocabulary is automatically rebuilt in the background after every 10 corrections. A macOS notification shows the result. Toggle via Settings → AI tab → **Auto Build Vocabulary**
 - **Manual build**: Click Settings → AI tab → **Build Vocabulary...** to trigger a build on demand. Supports incremental builds — only new corrections since the last build are processed
 - **Toggle**: Enable/disable in the Settings panel (AI tab). The entry count is shown next to the toggle
-- Uses `fastembed` with a multilingual embedding model for local, offline semantic matching
-
-See [docs/vocabulary-embedding-retrieval.md](docs/vocabulary-embedding-retrieval.md) for detailed design and motivation.
+- Uses inverted index with pinyin fallback for fast, accurate matching of ASR misrecognitions
 
 ### Conversation History
 
@@ -350,7 +348,6 @@ src/wenzi/
 - [AI Enhancement Modes Guide](docs/enhance-modes.md) — how to customize and create enhancement modes
 - [Enhancement Mode Examples](docs/enhance-mode-examples.md) — ready-to-use mode templates for inspiration
 - [Prompt Optimization Workflow](docs/prompt-optimization-workflow.md) — how to use the Preview panel to systematically improve prompts
-- [Vocabulary Embedding Retrieval](docs/vocabulary-embedding-retrieval.md) — design and motivation of the vocabulary retrieval system
 - [Conversation History Enhancement](docs/conversation-history-enhancement.md) — how conversation history improves AI enhancement accuracy
 - [Scripting](docs/scripting.md) — Python-based scripting system with leader keys, hotkeys, and automation APIs
 

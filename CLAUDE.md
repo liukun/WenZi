@@ -111,6 +111,18 @@ All UI must support macOS dark mode. Follow these rules when writing UI code:
 - **Avoid deprecated `colorWithCalibratedRed_green_blue_alpha_`** — use `colorWithSRGBRed_green_blue_alpha_` or system semantic colors.
 - See `ui/result_window.py` for a good reference implementation of dark mode support.
 
+## LLM max_tokens Guard
+
+All `chat.completions.create` calls **must** include `max_tokens` to prevent runaway repetition (models sometimes loop the same tokens indefinitely). Current call sites and their limits:
+
+| Call site | `max_tokens` | Rationale |
+|-----------|-------------|-----------|
+| `enhancer.verify_provider` | `1` | Connectivity check only |
+| `enhancer._build_request_kwargs` | config `max_output_tokens` (default 4096) | Text enhancement — output ≈ input length |
+| `vocabulary_builder._extract_batch` | config `vocabulary.max_output_tokens` (default 4096) | Vocab extraction — ≤60 pipe-delimited lines |
+
+When adding a new LLM call, always set `max_tokens` to a reasonable upper bound for the expected output.
+
 ## Usage Statistics
 
 When adding new user-facing behaviors or interactions, always add corresponding tracking to `UsageStats` (`src/wenzi/usage_stats.py`):
@@ -153,7 +165,7 @@ This mirrors the CI pipeline in `.github/workflows/test.yml`.
 2. Review and update `WenZi.spec` — this step is critical to avoid runtime errors in the packaged app:
    - **`hiddenimports`**: sync with all current wenzi modules (scan `src/wenzi/` for new `.py` files) and any lazily/conditionally imported third-party packages
    - **`datas`**: ensure non-Python resource files referenced via `os.path.dirname(__file__)` are included (e.g. `src/wenzi/audio/sounds` → `wenzi/audio/sounds`). PyInstaller does NOT auto-bundle data files from source directories
-   - **`collect_all`**: use for third-party packages with native extensions or bundled data (e.g. `mlx`, `sherpa_onnx`, `librosa`, `fastembed`). Without this, native `.so/.dylib` or data files will be missing at runtime
+   - **`collect_all`**: use for third-party packages with native extensions or bundled data (e.g. `mlx`, `sherpa_onnx`, `librosa`). Without this, native `.so/.dylib` or data files will be missing at runtime
    - **Removed modules**: delete entries for modules that no longer exist in the codebase
 3. Update version in `pyproject.toml` (single source of truth — all other files read from it dynamically)
 4. Run `uv lock` to sync `uv.lock` with the new version — this is **required** because `uv.lock` records the package version and won't update until `uv lock` is explicitly run

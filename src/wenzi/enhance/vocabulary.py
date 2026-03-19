@@ -1,4 +1,4 @@
-"""Vocabulary index and retrieval using fastembed + numpy cosine similarity."""
+"""Vocabulary index and retrieval using inverted index + pinyin matching."""
 
 from __future__ import annotations
 
@@ -6,13 +6,14 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Set
 
-import numpy as np
-
-from wenzi.config import DEFAULT_CACHE_DIR, DEFAULT_DATA_DIR
+from wenzi.config import DEFAULT_DATA_DIR
 
 logger = logging.getLogger(__name__)
+
+# Minimum variant/term length to index (avoid noisy single-char matches)
+_MIN_INDEX_LENGTH = 2
 
 
 @dataclass
@@ -26,29 +27,36 @@ class VocabularyEntry:
     frequency: int = 1
 
 
+def _has_cjk(text: str) -> bool:
+    """Return True if *text* contains at least one CJK Unified Ideograph."""
+    return any("\u4e00" <= ch <= "\u9fff" for ch in text)
+
+
 class VocabularyIndex:
-    """Embedding-based vocabulary index for retrieval during text enhancement."""
+    """Inverted-index vocabulary lookup for retrieval during text enhancement.
+
+    Two retrieval layers:
+    1. **Exact** — sliding-window substring match on lowercased text.
+    2. **Pinyin** (fallback) — space-joined ``lazy_pinyin`` substring match,
+       only invoked when exact matches < *top_k*.
+    """
 
     def __init__(
         self,
-        config: Dict[str, Any],
+        config: dict,
         data_dir: str = DEFAULT_DATA_DIR,
-        cache_dir: str = DEFAULT_CACHE_DIR,
     ) -> None:
-        self._config = config
         self._data_dir = os.path.expanduser(data_dir)
-        self._cache_dir = os.path.expanduser(cache_dir)
         self._vocab_path = os.path.join(self._data_dir, "vocabulary.json")
-        self._index_path = os.path.join(self._cache_dir, "vocabulary_index.npz")
-        self._model_name = config.get(
-            "embedding_model", "paraphrase-multilingual-MiniLM-L12-v2"
-        )
 
         self._entries: List[VocabularyEntry] = []
-        # Each row in _vectors maps to _vector_entry_indices[row] -> index into _entries
-        self._vectors: Optional[np.ndarray] = None
-        self._vector_entry_indices: List[int] = []
-        self._model: Any = None
+
+        # Exact-match index: length → {lowercased_string → [entry_indices]}
+        self._variants_by_length: Dict[int, Dict[str, List[int]]] = {}
+
+        # Pinyin index: pinyin_string → [entry_indices]
+        self._pinyin_index: Dict[str, List[int]] = {}
+
         self._loaded = False
 
     @property
@@ -60,7 +68,7 @@ class VocabularyIndex:
         return len(self._entries)
 
     def load(self) -> bool:
-        """Load vocabulary.json and build/load the embedding index.
+        """Load vocabulary.json and build the inverted index.
 
         Returns True if loaded successfully.
         """
@@ -71,25 +79,13 @@ class VocabularyIndex:
                 return False
 
             self._entries = entries
-
-            if self._load_index():
-                self._loaded = True
-                logger.info(
-                    "Vocabulary loaded: %d entries, %d vectors",
-                    len(self._entries),
-                    len(self._vector_entry_indices),
-                )
-                return True
-
-            # Index missing or stale, rebuild
-            self._lazy_load_model()
-            self._build_index(self._entries)
-            self._save_index()
+            self._build_index()
             self._loaded = True
             logger.info(
-                "Vocabulary index built: %d entries, %d vectors",
+                "Vocabulary loaded: %d entries, %d exact keys, %d pinyin keys",
                 len(self._entries),
-                len(self._vector_entry_indices),
+                sum(len(b) for b in self._variants_by_length.values()),
+                len(self._pinyin_index),
             )
             return True
         except Exception as e:
@@ -100,26 +96,35 @@ class VocabularyIndex:
         """Reload vocabulary and rebuild index."""
         self._loaded = False
         self._entries = []
-        self._vectors = None
-        self._vector_entry_indices = []
+        self._variants_by_length = {}
+        self._pinyin_index = {}
         return self.load()
 
     def retrieve(self, text: str, top_k: int = 5) -> List[VocabularyEntry]:
-        """Retrieve top-K relevant vocabulary entries for the given text."""
-        if not self._loaded or self._vectors is None or not text.strip():
+        """Retrieve relevant vocabulary entries for *text*.
+
+        Layer 1 (exact substring match) runs first.  If it already yields
+        *top_k* or more results the pinyin layer is skipped entirely.
+        """
+        text = text.strip()
+        if not self._loaded or not text:
             return []
 
         try:
-            self._lazy_load_model()
-            query_vectors = list(self._model.embed([text.strip()]))
-            if not query_vectors:
-                return []
+            exact_indices = self._exact_search(text)
 
-            query_vec = np.array(query_vectors[0], dtype=np.float32)
-            return self._search(query_vec, top_k)
+            if len(exact_indices) >= top_k:
+                return self._rank(exact_indices, set(), top_k)
+
+            pinyin_indices = self._pinyin_search(text, exact_indices)
+            return self._rank(exact_indices, pinyin_indices, top_k)
         except Exception as e:
             logger.warning("Vocabulary retrieval failed: %s", e)
             return []
+
+    # ------------------------------------------------------------------
+    # Formatting (unchanged public API)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def format_entry_lines(entries: List["VocabularyEntry"]) -> str:
@@ -158,142 +163,123 @@ class VocabularyIndex:
         )
         return header + self.format_entry_lines(entries) + "\n---"
 
-    def _lazy_load_model(self) -> None:
-        """Load the embedding model on first use."""
-        if self._model is not None:
-            return
+    # ------------------------------------------------------------------
+    # Index construction
+    # ------------------------------------------------------------------
 
-        try:
-            from fastembed import TextEmbedding
-        except ImportError:
-            raise ImportError(
-                "fastembed is required for vocabulary features but could not be imported. "
-                "Try reinstalling with: uv sync"
-            )
+    def _build_index(self) -> None:
+        """Build inverted indices from *self._entries*."""
+        variants_by_length: Dict[int, Dict[str, List[int]]] = {}
+        pinyin_index: Dict[str, List[int]] = {}
+        seen_exact: set[tuple[str, int]] = set()
+        seen_pinyin: set[tuple[str, int]] = set()
 
-        model_id = f"sentence-transformers/{self._model_name}"
-        cache_dir = os.path.expanduser("~/.cache/fastembed")
-        self._model = TextEmbedding(model_id, cache_dir=cache_dir)
-        logger.info("Embedding model loaded: %s", model_id)
+        for i, entry in enumerate(self._entries):
+            strings = [entry.term] + entry.variants
+            for s in strings:
+                if len(s) < _MIN_INDEX_LENGTH:
+                    continue
 
-    def _build_index(self, entries: List[VocabularyEntry]) -> None:
-        """Build embedding vectors for all entries."""
-        texts: List[str] = []
-        entry_indices: List[int] = []
+                # Exact-match index (deduplicated)
+                key = s.lower()
+                exact_pair = (key, i)
+                if exact_pair not in seen_exact:
+                    seen_exact.add(exact_pair)
+                    bucket = variants_by_length.setdefault(len(key), {})
+                    bucket.setdefault(key, []).append(i)
 
-        for i, entry in enumerate(entries):
-            # Embed term
-            texts.append(entry.term)
-            entry_indices.append(i)
+                # Pinyin index (CJK only, deduplicated)
+                if _has_cjk(s):
+                    py = self._to_pinyin(s)
+                    if py:
+                        pinyin_pair = (py, i)
+                        if pinyin_pair not in seen_pinyin:
+                            seen_pinyin.add(pinyin_pair)
+                            pinyin_index.setdefault(py, []).append(i)
 
-            # Embed each variant
-            for variant in entry.variants:
-                texts.append(variant)
-                entry_indices.append(i)
+        self._variants_by_length = variants_by_length
+        self._pinyin_index = pinyin_index
 
-            # Embed context+term if context exists
-            if entry.context:
-                texts.append(f"{entry.context} {entry.term}")
-                entry_indices.append(i)
+    # ------------------------------------------------------------------
+    # Search layers
+    # ------------------------------------------------------------------
 
-        if not texts:
-            self._vectors = None
-            self._vector_entry_indices = []
-            return
+    def _exact_search(self, text: str) -> Set[int]:
+        """Sliding-window exact substring match, returns matched entry indices."""
+        text_lower = text.lower()
+        matched: Set[int] = set()
 
-        vectors = list(self._model.embed(texts))
-        self._vectors = np.array(vectors, dtype=np.float32)
-        self._vector_entry_indices = entry_indices
-
-    def _search(self, query_vec: np.ndarray, top_k: int) -> List[VocabularyEntry]:
-        """Search for similar vectors using cosine similarity, deduplicate by entry."""
-        if self._vectors is None or len(self._vectors) == 0:
-            return []
-
-        # Cosine similarity: dot(q, V^T) / (|q| * |V|)
-        query_norm = np.linalg.norm(query_vec)
-        if query_norm == 0:
-            return []
-
-        vec_norms = np.linalg.norm(self._vectors, axis=1)
-        # Avoid division by zero
-        nonzero_mask = vec_norms > 0
-        similarities = np.zeros(len(self._vectors), dtype=np.float32)
-        similarities[nonzero_mask] = (
-            np.dot(self._vectors[nonzero_mask], query_vec)
-            / (vec_norms[nonzero_mask] * query_norm)
-        )
-
-        # Sort by similarity descending
-        sorted_indices = np.argsort(-similarities)
-
-        # Deduplicate by entry index, take top_k
-        seen_entries: set = set()
-        results: List[VocabularyEntry] = []
-        for idx in sorted_indices:
-            entry_idx = self._vector_entry_indices[idx]
-            if entry_idx in seen_entries:
+        for length, bucket in self._variants_by_length.items():
+            if length > len(text_lower):
                 continue
-            seen_entries.add(entry_idx)
-            results.append(self._entries[entry_idx])
-            if len(results) >= top_k:
-                break
+            for i in range(len(text_lower) - length + 1):
+                substr = text_lower[i : i + length]
+                indices = bucket.get(substr)
+                if indices is not None:
+                    matched.update(indices)
 
-        return results
+        return matched
 
-    def _save_index(self) -> None:
-        """Save vectors and entry indices to npz file."""
-        if self._vectors is None:
-            return
+    def _pinyin_search(self, text: str, exclude: Set[int]) -> Set[int]:
+        """Pinyin substring match on *text*, excluding already-found indices."""
+        text_py = self._to_pinyin(text)
+        if not text_py:
+            return set()
 
-        os.makedirs(self._cache_dir, exist_ok=True)
-        np.savez_compressed(
-            self._index_path,
-            vectors=self._vectors,
-            entry_indices=np.array(self._vector_entry_indices, dtype=np.int32),
-        )
-        logger.info("Vocabulary index saved: %s", self._index_path)
+        matched: Set[int] = set()
+        for variant_py, entry_indices in self._pinyin_index.items():
+            if variant_py in text_py:
+                for idx in entry_indices:
+                    if idx not in exclude:
+                        matched.add(idx)
+        return matched
 
-    def _load_index(self) -> bool:
-        """Load cached index from npz file. Returns False if stale or missing."""
-        if not os.path.exists(self._index_path):
-            return False
+    # ------------------------------------------------------------------
+    # Ranking
+    # ------------------------------------------------------------------
 
-        if self._is_index_stale():
-            logger.info("Vocabulary index is stale, will rebuild")
-            return False
+    def _rank(
+        self,
+        exact_indices: Set[int],
+        pinyin_indices: Set[int],
+        top_k: int,
+    ) -> List[VocabularyEntry]:
+        """Merge and rank results: exact first, then pinyin, each by frequency desc."""
+        exact_sorted = sorted(exact_indices, key=lambda i: -self._entries[i].frequency)
+        pinyin_sorted = sorted(pinyin_indices, key=lambda i: -self._entries[i].frequency)
+        combined = exact_sorted + pinyin_sorted
+        return [self._entries[i] for i in combined[:top_k]]
 
+    # ------------------------------------------------------------------
+    # Pinyin helpers
+    # ------------------------------------------------------------------
+
+    # Cached reference to pypinyin.lazy_pinyin (lazily resolved on first use)
+    _lazy_pinyin_func = None
+
+    @staticmethod
+    def _to_pinyin(text: str) -> str:
+        """Convert *text* to space-joined toneless pinyin.
+
+        Returns empty string on failure.  ``pypinyin`` is lazily imported
+        so the dependency is only incurred when the pinyin layer is actually
+        used.
+        """
         try:
-            data = np.load(self._index_path)
-            self._vectors = data["vectors"].astype(np.float32)
-            self._vector_entry_indices = data["entry_indices"].tolist()
+            if VocabularyIndex._lazy_pinyin_func is None:
+                from pypinyin import lazy_pinyin
 
-            # Validate that entry indices are within range
-            if self._vector_entry_indices and max(self._vector_entry_indices) >= len(
-                self._entries
-            ):
-                logger.warning("Index entry indices out of range, will rebuild")
-                return False
+                VocabularyIndex._lazy_pinyin_func = lazy_pinyin
+            return " ".join(VocabularyIndex._lazy_pinyin_func(text))
+        except Exception:
+            return ""
 
-            return True
-        except Exception as e:
-            logger.warning("Failed to load vocabulary index: %s", e)
-            return False
-
-    def _is_index_stale(self) -> bool:
-        """Check if the npz index is older than vocabulary.json."""
-        try:
-            vocab_mtime = os.path.getmtime(self._vocab_path)
-            index_mtime = os.path.getmtime(self._index_path)
-            return index_mtime < vocab_mtime
-        except OSError:
-            return True
+    # ------------------------------------------------------------------
+    # Vocabulary I/O
+    # ------------------------------------------------------------------
 
     def _read_vocabulary(self) -> List[VocabularyEntry]:
         """Read vocabulary.json and parse entries."""
-        if not os.path.exists(self._vocab_path):
-            return []
-
         try:
             with open(self._vocab_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -315,14 +301,41 @@ class VocabularyIndex:
             return []
 
 
-def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
-    """Read the number of entries in vocabulary.json without loading the index."""
+def _read_raw_entries(data_dir: str = DEFAULT_DATA_DIR) -> List[dict]:
+    """Read raw entry dicts from vocabulary.json.
+
+    Shared I/O helper for :func:`load_hotwords` and :func:`get_vocab_entry_count`.
+    Returns an empty list on any error.
+    """
     vocab_path = os.path.join(os.path.expanduser(data_dir), "vocabulary.json")
-    if not os.path.exists(vocab_path):
-        return 0
     try:
         with open(vocab_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return len(data.get("entries", []))
+        return data.get("entries", [])
     except Exception:
-        return 0
+        return []
+
+
+def load_hotwords(
+    data_dir: str = DEFAULT_DATA_DIR,
+    min_frequency: int = 2,
+    max_count: int = 50,
+) -> List[str]:
+    """Load high-frequency vocabulary terms for ASR hotword injection.
+
+    Reads vocabulary.json, filters by frequency, and returns the top terms
+    sorted by frequency descending.
+
+    Returns an empty list on error or when no entries qualify.
+    """
+    entries = _read_raw_entries(data_dir)
+    filtered = [
+        e for e in entries if e.get("frequency", 1) >= min_frequency
+    ]
+    filtered.sort(key=lambda e: e.get("frequency", 1), reverse=True)
+    return [e["term"] for e in filtered[:max_count] if "term" in e]
+
+
+def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
+    """Read the number of entries in vocabulary.json without loading the index."""
+    return len(_read_raw_entries(data_dir))

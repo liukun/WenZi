@@ -33,9 +33,9 @@ def _sample_corrections():
     return [
         {
             "timestamp": "2026-01-01T10:00:00+00:00",
-            "asr_text": "派森编程语言",
-            "enhanced_text": "Python编程语言",
-            "final_text": "Python编程语言",
+            "asr_text": "pyobjectc编程框架",
+            "enhanced_text": "PyObjC编程框架",
+            "final_text": "PyObjC编程框架",
             "enhance_mode": "proofread",
             "user_corrected": True,
         },
@@ -60,13 +60,13 @@ def _sample_corrections():
 
 _PIPE_RESPONSE_TWO = (
     "term|category|variants|context\n"
-    "Python|tech|派森|编程语言\n"
+    "PyObjC|tech|pyobjectc|开发框架\n"
     "Kubernetes|tech|库伯尼特斯|容器编排"
 )
 
 _PIPE_RESPONSE_ONE = (
     "term|category|variants|context\n"
-    "Python|tech|派森|编程语言"
+    "PyObjC|tech|pyobjectc|开发框架"
 )
 
 _PIPE_RESPONSE_K8S = (
@@ -76,7 +76,7 @@ _PIPE_RESPONSE_K8S = (
 
 _PIPE_RESPONSE_TEST = (
     "term|category|variants|context\n"
-    "TestTerm|tech||test"
+    "TestTerm|tech|test variant|test"
 )
 
 
@@ -212,7 +212,7 @@ class TestExtractBatch:
         )
 
         assert len(entries) == 1
-        assert entries[0]["term"] == "Python"
+        assert entries[0]["term"] == "PyObjC"
         assert usage["total_tokens"] == 15
         assert usage["input_tokens"] == 10
         assert usage["output_tokens"] == 5
@@ -319,14 +319,12 @@ class TestExtractBatch:
                 builder._extract_batch(messages, user_prompt, client=mock_client)
             )
 
-    def test_messages_include_session_history(self):
-        """Verify that session history is passed to the API call."""
+    def test_messages_are_system_plus_user(self):
+        """Each batch sends only system prompt + user message (no session history)."""
         builder = VocabularyBuilder(_make_config())
-        user_prompt = "asr_text: 派森\nfinal_text: Python"
+        user_prompt = "[派森→PyObjC]编程框架"
         messages = [
             {"role": "system", "content": "system prompt"},
-            {"role": "user", "content": "previous batch"},
-            {"role": "assistant", "content": "previous response"},
         ]
 
         mock_response = MagicMock()
@@ -342,52 +340,125 @@ class TestExtractBatch:
             builder._extract_batch(messages, user_prompt, client=mock_client)
         )
 
-        # Verify 4 messages: system + prev user + prev assistant + new user
+        # Verify 2 messages: system + user (no session history)
         call_kwargs = mock_client.chat.completions.create.call_args
         sent_messages = call_kwargs.kwargs.get("messages", call_kwargs[1].get("messages"))
-        assert len(sent_messages) == 4
+        assert len(sent_messages) == 2
         assert sent_messages[0]["role"] == "system"
         assert sent_messages[1]["role"] == "user"
-        assert sent_messages[2]["role"] == "assistant"
-        assert sent_messages[3]["role"] == "user"
 
 
 class TestParseLLMResponse:
     def test_parse_pipe_text(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython|tech|派森|编程语言"
+        content = "term|category|variants|context\nPyObjC|tech|pyobjectc|开发框架"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
         assert result[0]["category"] == "tech"
-        assert result[0]["variants"] == ["派森"]
-        assert result[0]["context"] == "编程语言"
+        assert result[0]["variants"] == ["pyobjectc"]
+        assert result[0]["context"] == "开发框架"
 
     def test_parse_multiple_entries(self):
         builder = VocabularyBuilder(_make_config())
         content = (
             "term|category|variants|context\n"
-            "Python|tech|派森|编程语言\n"
+            "PyObjC|tech|pyobjectc|开发框架\n"
             "Kubernetes|tech|库伯尼特斯|容器编排"
         )
         result = builder._parse_llm_response(content)
         assert len(result) == 2
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
         assert result[1]["term"] == "Kubernetes"
 
     def test_parse_with_markdown_fences(self):
         builder = VocabularyBuilder(_make_config())
-        content = "```\nterm|category|variants|context\nPython|tech|派森|编程语言\n```"
+        content = "```\nterm|category|variants|context\nPyObjC|tech|pyobjectc|开发框架\n```"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
 
-    def test_parse_empty_variants(self):
+    def test_parse_empty_variants_filtered(self):
+        """Entries without variants are filtered out as low-value."""
         builder = VocabularyBuilder(_make_config())
         content = "term|category|variants|context\nPython|tech||编程语言"
         result = builder._parse_llm_response(content)
+        assert len(result) == 0
+
+    def test_parse_self_referencing_variant_removed(self):
+        """Variants matching the term (case-insensitive) are removed at parse time."""
+        builder = VocabularyBuilder(_make_config())
+        content = "term|category|variants|context\nFunASR|tech|FunASR,反ASR|语音识别"
+        result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["variants"] == []
+        assert result[0]["variants"] == ["反ASR"]
+
+    def test_parse_only_self_referencing_variant_filtered(self):
+        """Entry with only self-referencing variants is dropped entirely."""
+        builder = VocabularyBuilder(_make_config())
+        content = "term|category|variants|context\nAgent|tech|Agent|智能体"
+        result = builder._parse_llm_response(content)
+        assert len(result) == 0
+
+    def test_parse_filters_common_english_words(self):
+        """Common English words are filtered out — LLMs already know them."""
+        builder = VocabularyBuilder(_make_config())
+        builder._english_words = {"delete", "cache", "merge", "build"}
+        content = (
+            "term|category|variants|context\n"
+            "delete|tech|弟弟他|删除操作\n"
+            "cache|tech|开启|缓存\n"
+            "Kubernetes|tech|库伯尼特斯|容器编排"
+        )
+        result = builder._parse_llm_response(content)
+        # delete and cache are common English words → filtered
+        # Kubernetes is a proper noun → kept
+        assert len(result) == 1
+        assert result[0]["term"] == "Kubernetes"
+
+    def test_parse_keeps_proper_nouns(self):
+        """Proper nouns not in English dictionary are kept."""
+        builder = VocabularyBuilder(_make_config())
+        builder._english_words = {"delete", "cache", "merge", "build"}
+        content = (
+            "term|category|variants|context\n"
+            "PyObjC|tech|pyobjectc|开发框架\n"
+            "FunASR|tech|反ASR|语音识别\n"
+            "萍萍|name|平平|人名"
+        )
+        result = builder._parse_llm_response(content)
+        assert len(result) == 3
+
+    def test_parse_filters_common_chinese_words(self):
+        """Common Chinese words are filtered out."""
+        builder = VocabularyBuilder(_make_config())
+        builder._english_words = {"快捷键", "剪贴板", "配置文件"}
+        content = (
+            "term|category|variants|context\n"
+            "快捷键|tech|会计件|系统操作\n"
+            "剪贴板|tech|剪接版|系统组件\n"
+            "萍萍|name|平平|人名"
+        )
+        result = builder._parse_llm_response(content)
+        # 快捷键 and 剪贴板 are common Chinese words → filtered
+        # 萍萍 is a name not in dictionary → kept
+        assert len(result) == 1
+        assert result[0]["term"] == "萍萍"
+
+    def test_parse_filters_multi_word_terms(self):
+        """Multi-word terms (containing spaces) are filtered out."""
+        builder = VocabularyBuilder(_make_config())
+        content = (
+            "term|category|variants|context\n"
+            "git push|tech|GatePush|Git操作\n"
+            "Final Result|tech|find result|最终结果\n"
+            "GitHub Pages|tech|hub配置|网页托管\n"
+            "Kubernetes|tech|库伯尼特斯|容器编排"
+        )
+        result = builder._parse_llm_response(content)
+        # All multi-word terms filtered, only single-word kept
+        assert len(result) == 1
+        assert result[0]["term"] == "Kubernetes"
 
     def test_parse_multiple_variants(self):
         builder = VocabularyBuilder(_make_config())
@@ -398,10 +469,10 @@ class TestParseLLMResponse:
 
     def test_parse_skips_short_lines(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython|tech|派森|编程语言\nbadline|tech|only three"
+        content = "term|category|variants|context\nPyObjC|tech|pyobjectc|开发框架\nbadline|tech|only three"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
 
     def test_parse_empty_content(self):
         builder = VocabularyBuilder(_make_config())
@@ -415,21 +486,21 @@ class TestParseLLMResponse:
 
     def test_parse_default_category(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython||派森|编程语言"
+        content = "term|category|variants|context\nGroq||groke|AI平台"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
         assert result[0]["category"] == "other"
 
     def test_parse_skips_empty_term(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\n|tech|派森|编程语言\nPython|tech||编程语言"
+        content = "term|category|variants|context\n|tech|派森|编程语言\nFunASR|tech|反ASR|语音识别"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "FunASR"
 
     def test_parse_skips_blank_lines(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython|tech|派森|编程语言\n\nJava|tech|加瓦|编程语言"
+        content = "term|category|variants|context\nKubernetes|tech|库伯尼特斯|容器编排\n\nGroq|tech|groke|AI平台"
         result = builder._parse_llm_response(content)
         assert len(result) == 2
 
@@ -614,6 +685,117 @@ class TestMergeEntries:
         assert set(result[0]["variants"]) == {"派森", "拍森"}
 
 
+class TestCountFrequencies:
+    """Tests for _count_frequencies — actual correction counting."""
+
+    def _make_records(self, pairs):
+        """Create correction records from (asr_text, final_text) pairs."""
+        return [
+            {"asr_text": asr, "final_text": final, "user_corrected": True}
+            for asr, final in pairs
+        ]
+
+    def test_known_variant_in_asr(self):
+        """Condition 1: known variant in asr_text → counted."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Python", "variants": ["派森", "拍森"], "frequency": 1}]
+        records = self._make_records([
+            ("我用派森写代码", "我用Python写代码"),
+            ("这个拍森脚本有bug", "这个Python脚本有bug"),
+            ("今天天气很好", "今天天气很好"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["frequency"] == 2
+
+    def test_term_in_final_not_in_asr(self):
+        """Condition 2: term in final but not in asr → counted."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Kubernetes", "variants": ["库伯尼特斯"], "frequency": 1}]
+        records = self._make_records([
+            # Unknown variant — ASR produced something else entirely
+            ("我们用酷八来部署", "我们用Kubernetes来部署"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["frequency"] == 1
+
+    def test_term_in_both_asr_and_final_not_counted(self):
+        """ASR got it right — should NOT be counted."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Python", "variants": ["派森"], "frequency": 1}]
+        records = self._make_records([
+            ("我用Python写代码", "我用Python写代码很方便"),
+        ])
+        builder._count_frequencies(entries, records)
+        # No correction of this term, but min frequency is 1
+        assert entries[0]["frequency"] == 1
+
+    def test_minimum_frequency_one(self):
+        """Even with zero matches, frequency should be at least 1."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Rare", "variants": ["稀有"], "frequency": 5}]
+        records = self._make_records([
+            ("今天天气很好", "今天天气很好"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["frequency"] == 1
+
+    def test_no_variants_uses_condition_2(self):
+        """Entry with no variants can still be counted via condition 2."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Docker", "variants": [], "frequency": 1}]
+        records = self._make_records([
+            ("我用多可来部署", "我用Docker来部署"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["frequency"] == 1
+
+    def test_word_boundary_ascii(self):
+        """ASCII variant matching should respect word boundaries."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Git", "variants": ["给他"], "frequency": 1}]
+        records = self._make_records([
+            # "Git" inside "GitHub" should NOT match as term-in-final
+            ("我用给他hub", "我用GitHub"),
+        ])
+        builder._count_frequencies(entries, records)
+        # "给他" variant matches in asr_text → count = 1
+        assert entries[0]["frequency"] == 1
+
+    def test_multiple_entries(self):
+        """Frequencies counted independently per entry."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [
+            {"term": "Python", "variants": ["派森"], "frequency": 1},
+            {"term": "Kubernetes", "variants": ["库伯尼特斯"], "frequency": 1},
+        ]
+        records = self._make_records([
+            ("我用派森", "我用Python"),
+            ("我用派森和库伯尼特斯", "我用Python和Kubernetes"),
+            ("只有库伯尼特斯", "只有Kubernetes"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["frequency"] == 2  # records 0 and 1
+        assert entries[1]["frequency"] == 2  # records 1 and 2
+
+    def test_both_conditions_same_record(self):
+        """Both conditions true in one record — still counts once."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Python", "variants": ["派森"], "frequency": 1}]
+        records = self._make_records([
+            # variant in asr AND term in final but not in asr
+            ("我用派森写代码", "我用Python写代码"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["frequency"] == 1  # counted once, not twice
+
+    def test_empty_records(self):
+        """No records → minimum frequency preserved."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Python", "variants": ["派森"], "frequency": 10}]
+        builder._count_frequencies(entries, [])
+        assert entries[0]["frequency"] == 1
+
+
 class TestBuild:
     def test_build_no_records(self, tmp_path):
         builder = VocabularyBuilder(_make_config(), data_dir=str(tmp_path))
@@ -735,7 +917,7 @@ class TestBuildWithCancel:
             records.append({
                 "timestamp": f"2026-01-{day:02d}T{hour:02d}:00:00+00:00",
                 "asr_text": f"test{i}",
-                "final_text": f"test{i}",
+                "final_text": f"TestTerm test{i}",
                 "user_corrected": True,
             })
         with open(corrections_path, "w", encoding="utf-8") as f:
@@ -821,7 +1003,7 @@ class TestExtractBatchStreaming:
         user_prompt = "asr_text: test\nfinal_text: test"
         messages = _mock_messages()
 
-        pipe_parts = ["term|categ", "ory|variants|context\n", "Python|tech|派森|", "编程语言"]
+        pipe_parts = ["term|categ", "ory|variants|context\n", "PyObjC|tech|pyobjectc|", "开发框架"]
         "".join(pipe_parts)
 
         chunks = []
@@ -850,7 +1032,7 @@ class TestExtractBatchStreaming:
 
         assert collected_chunks == pipe_parts
         assert len(entries) == 1
-        assert entries[0]["term"] == "Python"
+        assert entries[0]["term"] == "PyObjC"
 
     def test_cancel_interrupts_streaming(self):
         """cancel_event should interrupt streaming and return empty results."""
@@ -858,7 +1040,7 @@ class TestExtractBatchStreaming:
         user_prompt = "asr_text: test\nfinal_text: test"
         messages = _mock_messages()
 
-        pipe_parts = ["term|categ", "ory|variants|context\n", "Python|tech|派森|", "编程语言"]
+        pipe_parts = ["term|categ", "ory|variants|context\n", "PyObjC|tech|pyobjectc|", "开发框架"]
 
         cancel_event = threading.Event()
         chunks_received = []
@@ -921,7 +1103,7 @@ class TestExtractBatchStreaming:
         assert "stream" not in call_kwargs
 
         assert len(entries) == 1
-        assert entries[0]["term"] == "Python"
+        assert entries[0]["term"] == "PyObjC"
 
 
 class TestBuildWithCallbacks:
@@ -972,39 +1154,81 @@ class TestBuildWithCallbacks:
 class TestBuildPrompts:
     def test_system_prompt_contains_instructions(self):
         builder = VocabularyBuilder(_make_config())
-        prompt = builder._build_system_prompt([])
+        prompt = builder._build_system_prompt()
         assert "term|category|variants|context" in prompt
-        assert "管道" in prompt
-        assert "已存在" not in prompt  # No existing terms section when empty
+        assert "必须有 variants" in prompt
+        assert "只提取专有名词" in prompt
 
-    def test_system_prompt_includes_existing_terms(self):
+    def test_system_prompt_is_static(self):
+        """System prompt should not contain existing terms (moved to user prompt)."""
         builder = VocabularyBuilder(_make_config())
-        prompt = builder._build_system_prompt(["Python", "Kubernetes"])
-        assert "已存在" in prompt
-        assert "Python" in prompt
-        assert "Kubernetes" in prompt
+        prompt = builder._build_system_prompt()
+        assert "已存在" not in prompt
 
-    def test_user_prompt_contains_records(self):
+    def test_system_prompt_explains_diff_format(self):
+        """System prompt should explain the inline diff notation."""
+        builder = VocabularyBuilder(_make_config())
+        prompt = builder._build_system_prompt()
+        assert "[旧文本→新文本]" in prompt
+        assert "方括号" in prompt
+
+    def test_user_prompt_includes_existing_terms(self):
+        """Existing terms dedup hint should be in user prompt, not system prompt."""
         batch = [
-            {"asr_text": "派森", "final_text": "Python"},
-            {"asr_text": "加瓦", "final_text": "Java"},
+            {"asr_text": "派森编程语言", "final_text": "Python编程语言"},
+        ]
+        prompt = VocabularyBuilder._build_user_prompt(
+            batch, existing_terms=["Kubernetes", "PyObjC"],
+        )
+        assert "已存在" in prompt
+        assert "Kubernetes" in prompt
+        assert "PyObjC" in prompt
+        assert "[派森→Python]" in prompt
+
+    def test_user_prompt_uses_diff_format(self):
+        """User prompt should use inline diff instead of arrow-separated format."""
+        batch = [
+            {"asr_text": "派森编程语言", "final_text": "Python编程语言"},
+            {"asr_text": "加瓦脚本", "final_text": "Java脚本"},
         ]
         prompt = VocabularyBuilder._build_user_prompt(batch)
-        assert "派森" in prompt
-        assert "Python" in prompt
-        assert "加瓦" in prompt
-        assert "Java" in prompt
+        assert "[派森→Python]" in prompt
+        assert "[加瓦→Java]" in prompt
+        # Unchanged parts should appear without brackets
+        assert "编程语言" in prompt
+        assert "脚本" in prompt
+
+    def test_user_prompt_skips_identical_texts(self):
+        """Records with no changes are skipped entirely."""
+        batch = [
+            {"asr_text": "没有变化", "final_text": "没有变化"},
+        ]
+        prompt = VocabularyBuilder._build_user_prompt(batch)
+        assert prompt == ""
+
+    def test_user_prompt_skips_insert_delete_only(self):
+        """Records with only insertions/deletions (no replacements) are skipped."""
+        batch = [
+            {"asr_text": "测试功能", "final_text": "测试一下功能"},  # insert only
+            {"asr_text": "删除这个的字", "final_text": "删除这个字"},  # delete only
+            {"asr_text": "派森编程语言", "final_text": "Python编程语言"},  # has replacement
+        ]
+        prompt = VocabularyBuilder._build_user_prompt(batch)
+        # Only the record with a replacement should appear
+        assert "[派森→Python]" in prompt
+        lines = [line for line in prompt.split("\n") if line.strip()]
+        assert len(lines) == 1
 
     def test_user_prompt_replaces_newlines(self):
-        """Newlines in text should be replaced with ⏎ to keep one record per line."""
+        """Newlines in text should be replaced with ⏎ before diffing."""
         batch = [
             {"asr_text": "第一行\n第二行", "final_text": "first\nsecond"},
         ]
         prompt = VocabularyBuilder._build_user_prompt(batch)
-        # Should be a single line with ⏎ instead of newlines
-        assert "\n" not in prompt.split("→")[0].replace("\n", "")  # no raw newline in asr part
         assert "⏎" in prompt
-        assert prompt == "第一行⏎第二行 → first⏎second"
+        # The entire content is a diff, no raw \n from original text
+        lines = prompt.split("\n")
+        assert len(lines) == 1  # single record = single line
 
 
 class TestSaveLoadVocabulary:
@@ -1026,7 +1250,7 @@ class TestSaveLoadVocabulary:
 
 
 class TestBuildRetryAndAbort:
-    def _write_corrections(self, tmp_path, count=80):
+    def _write_corrections(self, tmp_path, count=80, term="TestTerm"):
         corrections_path = tmp_path / "conversation_history.jsonl"
         records = []
         for i in range(count):
@@ -1035,7 +1259,7 @@ class TestBuildRetryAndAbort:
             records.append({
                 "timestamp": f"2026-01-{day:02d}T{hour:02d}:00:00+00:00",
                 "asr_text": f"test{i}",
-                "final_text": f"test{i}",
+                "final_text": f"{term} test{i}",
                 "user_corrected": True,
             })
         with open(corrections_path, "w", encoding="utf-8") as f:
@@ -1045,7 +1269,7 @@ class TestBuildRetryAndAbort:
 
     def test_retry_succeeds_on_second_attempt(self, tmp_path):
         """First attempt fails, retry succeeds — batch results are kept."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1075,7 +1299,7 @@ class TestBuildRetryAndAbort:
 
     def test_abort_after_two_failures(self, tmp_path):
         """Both attempts fail — build aborts, no entries saved."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         async def mock_create(**kwargs):
             raise ConnectionError("server down")
@@ -1096,7 +1320,7 @@ class TestBuildRetryAndAbort:
 
     def test_timestamp_not_advanced_on_abort(self, tmp_path):
         """Verify last_processed_timestamp is not advanced when build aborts."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         # Pre-existing vocabulary with old timestamp
         vocab_path = tmp_path / "vocabulary.json"
@@ -1124,7 +1348,7 @@ class TestBuildRetryAndAbort:
 
     def test_partial_progress_saved_on_abort(self, tmp_path):
         """First batch succeeds, second batch aborts — first batch is saved."""
-        self._write_corrections(tmp_path, count=80)  # 2 batches of 60+20
+        self._write_corrections(tmp_path, count=80, term="PyObjC")  # 2 batches of 60+20
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1161,7 +1385,7 @@ class TestBuildRetryAndAbort:
 
     def test_per_batch_save(self, tmp_path):
         """Each successful batch saves immediately to vocabulary.json."""
-        self._write_corrections(tmp_path, count=80)  # 2 batches
+        self._write_corrections(tmp_path, count=80, term="PyObjC")  # 2 batches
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1184,15 +1408,17 @@ class TestBuildRetryAndAbort:
              patch.object(VocabularyBuilder, "_save_vocabulary", tracking_save):
             asyncio.run(builder.build())
 
-        # Should have saved twice (once per batch)
-        assert len(save_timestamps) == 2
+        # Should have saved 3 times: once per batch + final frequency recount
+        assert len(save_timestamps) == 3
         # First save covers batch 1 (records 0-59), second covers batch 2 (records 60-79)
         assert save_timestamps[0] == "2026-01-03T11:00:00+00:00"
         assert save_timestamps[1] == "2026-01-04T07:00:00+00:00"
+        # Third save is the frequency recount (same timestamp as last batch)
+        assert save_timestamps[2] == "2026-01-04T07:00:00+00:00"
 
     def test_batch_retry_callback(self, tmp_path):
         """on_batch_retry callback is called before retry."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1309,3 +1535,5 @@ class TestBuildModelSelection:
         # Provider is openai (valid), but model falls back to first in list
         assert pcfg["base_url"] == "https://api.openai.com/v1"
         assert pcfg["model"] == "gpt-4o"
+
+

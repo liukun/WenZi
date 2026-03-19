@@ -517,7 +517,7 @@ models:
 
 当对话历史超过 **20,000 条记录** 时，闻字 会自动将较旧的记录归档到 `~/.config/WenZi/conversation_history_archives/YYYY-MM.jsonl` 月度文件中。主历史文件保留最近 20,000 条记录以确保快速访问，归档记录仍可通过历史浏览器搜索和查看。
 
-技术细节请参阅 [词汇嵌入检索](vocabulary-embedding-retrieval.md) 和 [对话历史增强](conversation-history-enhancement.md)。
+技术细节请参阅 [对话历史增强](conversation-history-enhancement.md)。
 
 ---
 

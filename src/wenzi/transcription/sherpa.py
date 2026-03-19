@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -14,6 +14,8 @@ from .base import BaseTranscriber
 logger = logging.getLogger(__name__)
 
 DECODE_INTERVAL = 0.05  # 50ms polling interval for decode thread
+_HOTWORD_BOOST = 1.5  # Boost score for hotword terms
+_HOTWORDS_FILENAME = "sherpa_hotwords.txt"
 
 # Pre-configured model definitions
 SHERPA_MODELS: Dict[str, Dict] = {
@@ -79,9 +81,11 @@ class SherpaOnnxTranscriber(BaseTranscriber):
         self,
         model: str = "zipformer-zh",
         language: Optional[str] = None,
+        hotwords: Optional[List[str]] = None,
     ) -> None:
         self._model_id = model
         self._language = language
+        self._hotwords = hotwords
         self._initialized = False
         self._recognizer = None
         self._stream = None
@@ -129,7 +133,7 @@ class SherpaOnnxTranscriber(BaseTranscriber):
         joiner = str(next(model_dir.glob("*joiner*.onnx")))
         tokens = str(next(model_dir.glob("tokens.txt")))
 
-        return sherpa_onnx.OnlineRecognizer.from_transducer(
+        kwargs = dict(
             encoder=encoder,
             decoder=decoder,
             joiner=joiner,
@@ -138,6 +142,34 @@ class SherpaOnnxTranscriber(BaseTranscriber):
             sample_rate=16000,
             feature_dim=80,
         )
+
+        if self._hotwords:
+            hotwords_path = self._write_hotwords_file()
+            if hotwords_path:
+                kwargs["hotwords_file"] = hotwords_path
+                kwargs["hotwords_score"] = _HOTWORD_BOOST
+                kwargs["decoding_method"] = "modified_beam_search"
+
+        return sherpa_onnx.OnlineRecognizer.from_transducer(**kwargs)
+
+    @staticmethod
+    def _hotwords_path() -> Path:
+        """Return the path for the sherpa hotwords cache file."""
+        from wenzi.config import resolve_cache_dir
+        return Path(resolve_cache_dir()) / _HOTWORDS_FILENAME
+
+    def _write_hotwords_file(self) -> Optional[str]:
+        """Write hotwords to a cache file. Returns the path or None on failure."""
+        hotwords_path = self._hotwords_path()
+        try:
+            hotwords_path.parent.mkdir(parents=True, exist_ok=True)
+            lines = [f"{term} :{_HOTWORD_BOOST}" for term in self._hotwords]
+            hotwords_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            logger.info("Wrote %d hotwords to %s", len(self._hotwords), hotwords_path)
+            return str(hotwords_path)
+        except Exception as e:
+            logger.warning("Failed to write hotwords file: %s", e)
+            return None
 
     def _create_paraformer_recognizer(self, sherpa_onnx, model_dir: Path):
         """Create a paraformer-based online recognizer."""
@@ -273,4 +305,9 @@ class SherpaOnnxTranscriber(BaseTranscriber):
             self.cancel_streaming()
         self._recognizer = None
         self._initialized = False
+        # Clean up hotwords file
+        try:
+            self._hotwords_path().unlink(missing_ok=True)
+        except Exception:
+            pass
         logger.info("Sherpa-ONNX recognizer cleaned up")

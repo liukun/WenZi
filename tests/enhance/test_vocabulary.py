@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
-from unittest.mock import MagicMock, patch
 
-import numpy as np
-
-from wenzi.enhance.vocabulary import VocabularyEntry, VocabularyIndex, get_vocab_entry_count
+from wenzi.enhance.vocabulary import (
+    VocabularyEntry,
+    VocabularyIndex,
+    get_vocab_entry_count,
+    load_hotwords,
+)
 
 
 # --- VocabularyEntry tests ---
@@ -36,7 +37,7 @@ class TestVocabularyEntry:
         assert entry.frequency == 5
 
 
-# --- VocabularyIndex tests ---
+# --- Helpers ---
 
 
 def _make_vocab_json(entries):
@@ -73,35 +74,34 @@ def _sample_entries():
     ]
 
 
+def _write_vocab(tmp_path, entries):
+    """Write vocabulary.json and return a loaded VocabularyIndex."""
+    vocab_path = tmp_path / "vocabulary.json"
+    vocab_path.write_text(
+        json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+    )
+    idx = VocabularyIndex({}, data_dir=str(tmp_path))
+    idx.load()
+    return idx
+
+
+# --- VocabularyIndex load tests ---
+
+
 class TestVocabularyIndexLoad:
     def test_load_success(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(_sample_entries())),
-            encoding="utf-8",
-        )
-
-        mock_model = MagicMock()
-        # Return dummy vectors for each text
-        def fake_embed(texts):
-            return [np.random.randn(384).astype(np.float32) for _ in texts]
-
-        mock_model.embed = fake_embed
-
-        with patch("wenzi.enhance.vocabulary.VocabularyIndex._lazy_load_model") as mock_load:
-            def set_model(self=None):
-                idx._model = mock_model
-
-            idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-            mock_load.side_effect = lambda: setattr(idx, "_model", mock_model)
-            result = idx.load()
-
-        assert result is True
+        idx = _write_vocab(tmp_path, _sample_entries())
         assert idx.is_loaded
-        assert len(idx._entries) == 3
+        assert idx.entry_count == 3
+
+    def test_load_builds_index(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        assert len(idx._variants_by_length) > 0
+        # "派森" is CJK so pinyin index should also be populated
+        assert len(idx._pinyin_index) > 0
 
     def test_load_no_vocabulary_file(self, tmp_path):
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
+        idx = VocabularyIndex({}, data_dir=str(tmp_path))
         result = idx.load()
         assert result is False
         assert not idx.is_loaded
@@ -111,156 +111,224 @@ class TestVocabularyIndexLoad:
         vocab_path.write_text(
             json.dumps(_make_vocab_json([])), encoding="utf-8"
         )
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
+        idx = VocabularyIndex({}, data_dir=str(tmp_path))
         result = idx.load()
         assert result is False
 
-    def test_load_uses_cached_index(self, tmp_path):
-        entries = _sample_entries()
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
-        )
 
-        # Create a cached npz
-        len(entries)
-        # Each entry has: term + variants + context = 3 vectors typically
-        n_vectors = sum(1 + len(e.get("variants", [])) + (1 if e.get("context") else 0) for e in entries)
-        vectors = np.random.randn(n_vectors, 384).astype(np.float32)
-        entry_indices = []
-        for i, e in enumerate(entries):
-            entry_indices.append(i)
-            for _ in e.get("variants", []):
-                entry_indices.append(i)
-            if e.get("context"):
-                entry_indices.append(i)
-
-        index_path = tmp_path / "vocabulary_index.npz"
-        np.savez_compressed(
-            str(index_path),
-            vectors=vectors,
-            entry_indices=np.array(entry_indices, dtype=np.int32),
-        )
-        # Make index newer than vocab
-        os.utime(str(index_path), (1e10, 1e10))
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        result = idx.load()
-        assert result is True
-        assert idx.is_loaded
-
-    def test_load_rebuilds_stale_index(self, tmp_path):
-        entries = _sample_entries()
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
-        )
-
-        # Create an old npz
-        index_path = tmp_path / "vocabulary_index.npz"
-        np.savez_compressed(
-            str(index_path),
-            vectors=np.random.randn(3, 384).astype(np.float32),
-            entry_indices=np.array([0, 1, 2], dtype=np.int32),
-        )
-        # Make vocab newer
-        os.utime(str(vocab_path), (1e10, 1e10))
-
-        mock_model = MagicMock()
-        mock_model.embed = lambda texts: [
-            np.random.randn(384).astype(np.float32) for _ in texts
-        ]
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        with patch.object(idx, "_lazy_load_model", lambda: setattr(idx, "_model", mock_model)):
-            result = idx.load()
-
-        assert result is True
-        assert idx.is_loaded
+# --- Exact search tests ---
 
 
-class TestVocabularyIndexRetrieve:
-    def _make_loaded_index(self, tmp_path):
-        """Create a loaded index with known vectors."""
-        entries = [
-            VocabularyEntry(term="Python", category="tech", variants=["派森"], context="编程语言"),
-            VocabularyEntry(term="Java", category="tech", variants=["加瓦"], context="编程语言"),
-            VocabularyEntry(term="北京", category="place", variants=[], context="中国首都"),
-        ]
-
-        # Create distinct vectors for each entry
-        # Python-related vectors point in similar direction
-        py_vec = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-        py_variant = np.array([0.9, 0.1, 0.0], dtype=np.float32)
-        py_ctx = np.array([0.8, 0.2, 0.0], dtype=np.float32)
-
-        java_vec = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-        java_variant = np.array([0.1, 0.9, 0.0], dtype=np.float32)
-        java_ctx = np.array([0.2, 0.8, 0.0], dtype=np.float32)
-
-        beijing_vec = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-        beijing_ctx = np.array([0.0, 0.1, 0.9], dtype=np.float32)
-
-        vectors = np.array([
-            py_vec, py_variant, py_ctx,
-            java_vec, java_variant, java_ctx,
-            beijing_vec, beijing_ctx,
-        ])
-        entry_indices = [0, 0, 0, 1, 1, 1, 2, 2]
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        idx._entries = entries
-        idx._vectors = vectors
-        idx._vector_entry_indices = entry_indices
-        idx._loaded = True
-
-        # Mock model to return specific vectors
-        mock_model = MagicMock()
-        idx._model = mock_model
-        return idx, mock_model
-
-    def test_retrieve_returns_matching_entries(self, tmp_path):
-        idx, mock_model = self._make_loaded_index(tmp_path)
-        # Query similar to Python
-        mock_model.embed.return_value = [np.array([0.95, 0.05, 0.0], dtype=np.float32)]
-
-        results = idx.retrieve("Python编程", top_k=2)
-        assert len(results) == 2
-        assert results[0].term == "Python"
-
-    def test_retrieve_deduplicates(self, tmp_path):
-        idx, mock_model = self._make_loaded_index(tmp_path)
-        mock_model.embed.return_value = [np.array([0.9, 0.1, 0.0], dtype=np.float32)]
-
-        results = idx.retrieve("Python", top_k=5)
+class TestExactSearch:
+    def test_variant_in_text(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.retrieve("我用派森写代码")
         terms = [r.term for r in results]
-        # No duplicates
-        assert len(terms) == len(set(terms))
+        assert "Python" in terms
 
-    def test_retrieve_respects_top_k(self, tmp_path):
-        idx, mock_model = self._make_loaded_index(tmp_path)
-        mock_model.embed.return_value = [np.array([0.5, 0.5, 0.0], dtype=np.float32)]
+    def test_term_in_text(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.retrieve("I use Python for coding")
+        terms = [r.term for r in results]
+        assert "Python" in terms
 
-        results = idx.retrieve("编程", top_k=1)
-        assert len(results) == 1
+    def test_case_insensitive(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.retrieve("i use python for coding")
+        terms = [r.term for r in results]
+        assert "Python" in terms
 
-    def test_retrieve_empty_text(self, tmp_path):
-        idx, mock_model = self._make_loaded_index(tmp_path)
-        results = idx.retrieve("", top_k=5)
+    def test_min_length_filtering(self, tmp_path):
+        """Single-character variants are not indexed."""
+        entries = [
+            {"term": "AI", "variants": ["A"], "frequency": 1},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        # "A" (1 char) should not be indexed, but "AI" (2 chars) should
+        results = idx.retrieve("I like AI")
+        terms = [r.term for r in results]
+        assert "AI" in terms
+
+        # Single-char variant should NOT match
+        results2 = idx.retrieve("I got an A on my test")
+        # "AI" should not appear since "A" is too short to index
+        # and "AI" does not appear in text
+        terms2 = [r.term for r in results2]
+        assert "AI" not in terms2
+
+    def test_no_match(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.retrieve("今天天气很好")
         assert results == []
 
-    def test_retrieve_not_loaded(self, tmp_path):
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        results = idx.retrieve("Python", top_k=5)
-        assert results == []
+    def test_multiple_matches(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.retrieve("我用派森和库伯尼特斯部署服务")
+        terms = [r.term for r in results]
+        assert "Python" in terms
+        assert "Kubernetes" in terms
 
-    def test_retrieve_exception_returns_empty(self, tmp_path):
-        idx, mock_model = self._make_loaded_index(tmp_path)
-        mock_model.embed.side_effect = RuntimeError("model error")
 
-        results = idx.retrieve("Python", top_k=5)
-        assert results == []
+# --- Pinyin search tests ---
+
+
+class TestPinyinSearch:
+    def test_homophone_match(self, tmp_path):
+        """Unseen variant with same pinyin should match via pinyin layer."""
+        entries = [
+            {"term": "Python", "variants": ["派森"], "context": "编程语言", "frequency": 3},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        # "排森" has same pinyin as "派森" (pai sen) but different characters
+        results = idx.retrieve("我用排森写代码")
+        terms = [r.term for r in results]
+        assert "Python" in terms
+
+    def test_non_cjk_not_in_pinyin_index(self, tmp_path):
+        """Pure ASCII terms/variants should NOT be in the pinyin index."""
+        entries = [
+            {"term": "Python", "variants": ["PyThon"], "frequency": 1},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        # Pinyin index should be empty — no CJK strings
+        assert len(idx._pinyin_index) == 0
+
+    def test_pinyin_no_cross_boundary_match(self, tmp_path):
+        """Pinyin matching should not match across character boundaries."""
+        entries = [
+            {"term": "Python", "variants": ["拍森"], "frequency": 1},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        # "拍了一张森林的照片" — "拍" and "森" are not adjacent
+        results = idx.retrieve("拍了一张森林的照片")
+        terms = [r.term for r in results]
+        assert "Python" not in terms
+
+
+# --- Retrieve integration tests ---
+
+
+class TestRetrieve:
+    def test_frequency_ranking(self, tmp_path):
+        entries = [
+            {"term": "LowTerm", "variants": ["罗特"], "frequency": 1},
+            {"term": "HighTerm", "variants": ["嗨特"], "frequency": 10},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        results = idx.retrieve("他说嗨特然后打了个电话给罗特", top_k=5)
+        assert len(results) == 2
+        # Higher frequency should come first (both are exact matches)
+        assert results[0].term == "HighTerm"
+        assert results[1].term == "LowTerm"
+
+    def test_exact_before_pinyin(self, tmp_path):
+        """Exact matches should rank before pinyin-only matches."""
+        entries = [
+            {"term": "A_Term", "variants": ["阿特"], "frequency": 1},
+            {"term": "B_Term", "variants": ["贝特"], "frequency": 10},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        # "阿特" is exact match, "倍特" is pinyin match for "贝特" (bei te)
+        results = idx.retrieve("我找阿特和倍特", top_k=5)
+        terms = [r.term for r in results]
+        if "A_Term" in terms and "B_Term" in terms:
+            assert terms.index("A_Term") < terms.index("B_Term")
+
+    def test_top_k_limiting(self, tmp_path):
+        entries = [
+            {"term": f"Term{i}", "variants": [f"变体{i}号"], "frequency": i}
+            for i in range(10)
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        text = "".join(f"变体{i}号" for i in range(10))
+        results = idx.retrieve(text, top_k=3)
+        assert len(results) == 3
+
+    def test_empty_text(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        assert idx.retrieve("") == []
+        assert idx.retrieve("   ") == []
+
+    def test_not_loaded(self, tmp_path):
+        idx = VocabularyIndex({}, data_dir=str(tmp_path))
+        assert idx.retrieve("Python") == []
+
+    def test_deduplication(self, tmp_path):
+        """Same entry matched by both exact and pinyin should appear only once."""
+        entries = [
+            {"term": "Python", "variants": ["派森"], "context": "编程语言", "frequency": 3},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        results = idx.retrieve("我用派森写代码", top_k=5)
+        terms = [r.term for r in results]
+        assert terms.count("Python") == 1
+
+    def test_early_termination_skips_pinyin(self, tmp_path):
+        """When exact matches >= top_k, pinyin layer should be skipped."""
+        entries = [
+            {"term": f"Term{i}", "variants": [f"变体{i}号"], "frequency": i + 1}
+            for i in range(5)
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        text = "".join(f"变体{i}号" for i in range(5))
+        # top_k=3, and we have 5 exact matches, so pinyin should be skipped
+        results = idx.retrieve(text, top_k=3)
+        assert len(results) == 3
+        # Should be sorted by frequency desc
+        assert results[0].frequency >= results[1].frequency >= results[2].frequency
+
+    def test_entries_without_variants(self, tmp_path):
+        """Entries with no variants can still be matched by term."""
+        entries = [
+            {"term": "Docker", "variants": [], "context": "容器", "frequency": 2},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        results = idx.retrieve("I use Docker for deployment")
+        terms = [r.term for r in results]
+        assert "Docker" in terms
+
+
+# --- Reload tests ---
+
+
+class TestVocabularyIndexReload:
+    def test_reload_resets_state(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        assert idx.is_loaded
+
+        idx.reload()
+        assert idx.is_loaded
+        assert idx.entry_count == 3
+
+    def test_reload_picks_up_new_entries(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        assert idx.entry_count == 3
+
+        entries = _sample_entries() + [
+            {"term": "Docker", "variants": [], "context": "", "frequency": 1}
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        idx.reload()
+        assert idx.entry_count == 4
+
+
+# --- Entry count tests ---
+
+
+class TestEntryCount:
+    def test_entry_count_after_load(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        assert idx.entry_count == 3
+
+    def test_entry_count_zero_before_load(self, tmp_path):
+        idx = VocabularyIndex({}, data_dir=str(tmp_path))
+        assert idx.entry_count == 0
+
+
+# --- Format tests ---
 
 
 class TestVocabularyIndexFormatForPrompt:
@@ -338,115 +406,7 @@ class TestVocabularyFormatEntryLines:
         assert entry_lines in full_prompt
 
 
-class TestVocabularyIndexStaleness:
-    def test_stale_when_vocab_newer(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        index_path = tmp_path / "vocabulary_index.npz"
-
-        vocab_path.write_text("{}", encoding="utf-8")
-        np.savez_compressed(str(index_path), vectors=np.array([]))
-
-        # Make vocab newer
-        os.utime(str(vocab_path), (1e10, 1e10))
-        os.utime(str(index_path), (1e9, 1e9))
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        assert idx._is_index_stale() is True
-
-    def test_not_stale_when_index_newer(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        index_path = tmp_path / "vocabulary_index.npz"
-
-        vocab_path.write_text("{}", encoding="utf-8")
-        np.savez_compressed(str(index_path), vectors=np.array([]))
-
-        os.utime(str(vocab_path), (1e9, 1e9))
-        os.utime(str(index_path), (1e10, 1e10))
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        assert idx._is_index_stale() is False
-
-    def test_stale_when_no_index(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text("{}", encoding="utf-8")
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        assert idx._is_index_stale() is True
-
-
-class TestVocabularyIndexReload:
-    def test_reload_resets_state(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(_sample_entries())),
-            encoding="utf-8",
-        )
-
-        mock_model = MagicMock()
-        mock_model.embed = lambda texts: [
-            np.random.randn(384).astype(np.float32) for _ in texts
-        ]
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        idx._model = mock_model
-        with patch.object(idx, "_lazy_load_model"):
-            idx.load()
-        assert idx.is_loaded
-
-        with patch.object(idx, "_lazy_load_model"):
-            idx.reload()
-        assert idx.is_loaded
-
-
-class TestEntryCount:
-    def test_entry_count_after_load(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(_sample_entries())),
-            encoding="utf-8",
-        )
-
-        mock_model = MagicMock()
-        mock_model.embed = lambda texts: [
-            np.random.randn(384).astype(np.float32) for _ in texts
-        ]
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        assert idx.entry_count == 0
-
-        idx._model = mock_model
-        with patch.object(idx, "_lazy_load_model"):
-            idx.load()
-        assert idx.entry_count == 3
-
-    def test_entry_count_after_reload(self, tmp_path):
-        vocab_path = tmp_path / "vocabulary.json"
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(_sample_entries())),
-            encoding="utf-8",
-        )
-
-        mock_model = MagicMock()
-        mock_model.embed = lambda texts: [
-            np.random.randn(384).astype(np.float32) for _ in texts
-        ]
-
-        idx = VocabularyIndex({}, data_dir=str(tmp_path), cache_dir=str(tmp_path))
-        idx._model = mock_model
-        with patch.object(idx, "_lazy_load_model"):
-            idx.load()
-
-        # Add one more entry and reload
-        entries = _sample_entries() + [
-            {"term": "Docker", "category": "tech", "variants": [], "context": "", "frequency": 1}
-        ]
-        vocab_path.write_text(
-            json.dumps(_make_vocab_json(entries)),
-            encoding="utf-8",
-        )
-        with patch.object(idx, "_lazy_load_model"):
-            idx.reload()
-        assert idx.entry_count == 4
+# --- get_vocab_entry_count tests ---
 
 
 class TestGetVocabEntryCount:
@@ -473,3 +433,65 @@ class TestGetVocabEntryCount:
         vocab_path = tmp_path / "vocabulary.json"
         vocab_path.write_text("not json", encoding="utf-8")
         assert get_vocab_entry_count(str(tmp_path)) == 0
+
+
+# --- load_hotwords tests ---
+
+
+class TestLoadHotwords:
+    def test_filters_by_frequency(self, tmp_path):
+        entries = [
+            {"term": "HighFreq", "frequency": 5},
+            {"term": "LowFreq", "frequency": 1},
+            {"term": "MidFreq", "frequency": 2},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=2)
+        assert "HighFreq" in result
+        assert "MidFreq" in result
+        assert "LowFreq" not in result
+
+    def test_sorts_by_frequency_desc(self, tmp_path):
+        entries = [
+            {"term": "Low", "frequency": 2},
+            {"term": "High", "frequency": 10},
+            {"term": "Mid", "frequency": 5},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=1)
+        assert result == ["High", "Mid", "Low"]
+
+    def test_respects_max_count(self, tmp_path):
+        entries = [
+            {"term": f"Term{i}", "frequency": 10 - i}
+            for i in range(10)
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=1, max_count=3)
+        assert len(result) == 3
+        assert result[0] == "Term0"
+
+    def test_no_file_returns_empty(self, tmp_path):
+        result = load_hotwords(data_dir=str(tmp_path))
+        assert result == []
+
+    def test_all_low_frequency_returns_empty(self, tmp_path):
+        entries = [
+            {"term": "A", "frequency": 1},
+            {"term": "B", "frequency": 1},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=2)
+        assert result == []

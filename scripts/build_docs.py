@@ -124,17 +124,6 @@ DOC_REGISTRY: list[dict] = [
         "nav_order": 7,
     },
     {
-        "slug": "vocabulary-embedding-retrieval",
-        "src_en": "vocabulary-embedding-retrieval.md",
-        "src_zh": "vocabulary-embedding-retrieval-zh.md",
-        "title_en": "Vocabulary & Embedding Retrieval",
-        "title_zh": "词汇表与向量检索",
-        "desc_en": "Personal vocabulary index for better correction.",
-        "desc_zh": "个人词汇索引以改善纠错。",
-        "icon": "&#128218;",
-        "nav_order": 8,
-    },
-    {
         "slug": "conversation-history-enhancement",
         "src_en": "conversation-history-enhancement.md",
         "src_zh": "conversation-history-enhancement-zh.md",

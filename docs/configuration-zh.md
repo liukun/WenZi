@@ -61,7 +61,6 @@
     "vocabulary": {
       "enabled": false,
       "top_k": 5,
-      "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
       "build_timeout": 600,
       "auto_build": true,
       "auto_build_threshold": 10
@@ -157,7 +156,6 @@
 |-----|---------|-------------|
 | `ai_enhance.vocabulary.enabled` | `false` | 在增强过程中启用基于词汇表的检索 |
 | `ai_enhance.vocabulary.top_k` | `5` | 每次查询检索的词汇条目数 |
-| `ai_enhance.vocabulary.embedding_model` | `"paraphrase-multilingual-MiniLM-L12-v2"` | 词汇索引使用的嵌入模型 |
 | `ai_enhance.vocabulary.build_timeout` | `600` | 词汇构建时每批次的 LLM 超时时间（秒） |
 | `ai_enhance.vocabulary.auto_build` | `true` | 当纠正累积到一定数量时自动构建词汇表 |
 | `ai_enhance.vocabulary.auto_build_threshold` | `10` | 触发自动构建的纠正次数 |

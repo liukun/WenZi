@@ -517,7 +517,7 @@ Menubar → **Browse History...** opens a full-featured history browser with:
 
 When conversation history exceeds **20,000 records**, 闻字 automatically archives older records into monthly files under `~/.config/WenZi/conversation_history_archives/YYYY-MM.jsonl`. The main history file keeps the most recent 20,000 records for fast access, while archived records remain searchable through the history browser.
 
-See [Vocabulary Embedding Retrieval](vocabulary-embedding-retrieval.md) and [Conversation History Enhancement](conversation-history-enhancement.md) for technical details.
+See [Conversation History Enhancement](conversation-history-enhancement.md) for technical details.
 
 ---
 

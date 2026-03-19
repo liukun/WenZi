@@ -22,18 +22,18 @@ block_cipher = None
 # Collect native extensions (.so, .dylib, .metallib) and data files
 mlx_datas, mlx_binaries, mlx_hiddenimports = collect_all('mlx')
 mlx_whisper_datas, mlx_whisper_binaries, mlx_whisper_hiddenimports = collect_all('mlx_whisper')
-fastembed_datas, fastembed_binaries, fastembed_hiddenimports = collect_all('fastembed')
 sherpa_datas, sherpa_binaries, sherpa_hiddenimports = collect_all('sherpa_onnx')
 librosa_datas, librosa_binaries, librosa_hiddenimports = collect_all('librosa')
 
 a = Analysis(
     ['src/wenzi/__main__.py'],
     pathex=['src'],
-    binaries=mlx_binaries + mlx_whisper_binaries + fastembed_binaries + sherpa_binaries + librosa_binaries,
-    datas=mlx_datas + mlx_whisper_datas + fastembed_datas + sherpa_datas + librosa_datas + [
+    binaries=mlx_binaries + mlx_whisper_binaries + sherpa_binaries + librosa_binaries,
+    datas=mlx_datas + mlx_whisper_datas + sherpa_datas + librosa_datas + [
         (os.path.join(_spec_dir, 'src/wenzi/audio/sounds'), 'wenzi/audio/sounds'),
+        (os.path.join(_spec_dir, 'src/wenzi/enhance/data'), 'wenzi/enhance/data'),
     ],
-    hiddenimports=mlx_hiddenimports + mlx_whisper_hiddenimports + fastembed_hiddenimports + sherpa_hiddenimports + librosa_hiddenimports + [
+    hiddenimports=mlx_hiddenimports + mlx_whisper_hiddenimports + sherpa_hiddenimports + librosa_hiddenimports + [
         # wenzi core
         'wenzi',
         'wenzi._build_info',
@@ -65,6 +65,7 @@ a = Analysis(
         'wenzi.enhance.enhancer',
         'wenzi.enhance.vocabulary',
         'wenzi.enhance.vocabulary_builder',
+        'wenzi.enhance.repetition',
         'wenzi.enhance.auto_vocab_builder',
         'wenzi.enhance.conversation_history',
         'wenzi.enhance.preview_history',

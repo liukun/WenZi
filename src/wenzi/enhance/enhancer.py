@@ -17,6 +17,7 @@ from .mode_loader import (
     load_modes,
 )
 from .conversation_history import ConversationHistory
+from .repetition import detect_repetition, truncate_repeated
 from .vocabulary import VocabularyIndex
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,7 @@ class TextEnhancer:
         self._timeout = config.get("timeout", 30)
         self._connection_timeout = config.get("connection_timeout", 10)
         self._max_retries = config.get("max_retries", 2)
+        self._max_output_tokens = config.get("max_output_tokens", 4096)
         self._thinking = config.get("thinking", False)
         self._config_dir = config_dir
         self._data_dir = data_dir
@@ -256,8 +258,6 @@ class TextEnhancer:
             kwargs: Dict[str, Any] = {}
             if data_dir:
                 kwargs["data_dir"] = data_dir
-            if cache_dir:
-                kwargs["cache_dir"] = cache_dir
             self._vocab_index = VocabularyIndex(vocab_cfg, **kwargs)
 
         # Conversation history
@@ -386,8 +386,6 @@ class TextEnhancer:
             kwargs: Dict[str, Any] = {}
             if self._data_dir:
                 kwargs["data_dir"] = self._data_dir
-            if self._cache_dir:
-                kwargs["cache_dir"] = self._cache_dir
             self._vocab_index = VocabularyIndex(vocab_cfg, **kwargs)
         logger.info("Vocabulary changed to: %s", value)
 
@@ -835,8 +833,8 @@ class TextEnhancer:
 
         Returns just the joined entry lines, e.g.::
 
-            - asr_1 → final_1
-            - asr_2 → final_2
+            - 我试着说一句话，看有没有[热慈→热词]被导入
+            - 这是一条无纠错的记录
 
         The combined context header and footer are managed by
         :meth:`_build_context_section`.
@@ -860,8 +858,7 @@ class TextEnhancer:
         if self._history_enabled:
             lines.append(
                 "- 对话记录（优先参考）：反映用户真实的纠错偏好和话题上下文，"
-                "若 ASR 识别与最终确认不同则用→分隔（识别→确认），"
-                "相同则表示无需纠错。"
+                "差异部分以[误→正]标注，无标注表示该部分无需纠错。"
             )
 
         if self._vocab_enabled:
@@ -887,6 +884,7 @@ class TextEnhancer:
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": text.strip()},
             ],
+            "max_tokens": self._max_output_tokens,
             **extra_kwargs,
         }
         if extra_body:
@@ -1043,6 +1041,8 @@ class TextEnhancer:
             collected = []
             usage = None
             think_parser = ThinkTagParser()
+            chars_since_check = 0
+            repetition_aborted = False
             # Timeout applies between chunks: resets on each received chunk
             aiter = stream.__aiter__()
             try:
@@ -1082,6 +1082,12 @@ class TextEnhancer:
                                     else:
                                         collected.append(segment)
                                         yield segment, None, False
+                                chars_since_check += len(delta.content)
+                                if chars_since_check >= 200:
+                                    chars_since_check = 0
+                                    if detect_repetition("".join(collected)):
+                                        repetition_aborted = True
+                                        break
             finally:
                 self._active_stream = None
                 if hasattr(stream, 'close'):
@@ -1091,6 +1097,8 @@ class TextEnhancer:
                         pass
 
             full_text = "".join(collected).strip()
+            if repetition_aborted:
+                full_text = truncate_repeated(full_text).strip()
             if not full_text:
                 logger.warning("LLM stream returned empty text, using original")
                 yield text, usage, False

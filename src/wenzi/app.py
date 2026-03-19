@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 import sys
 import threading
 from pathlib import Path
@@ -14,6 +15,7 @@ from CoreFoundation import kCFBooleanTrue
 
 from .enhance.auto_vocab_builder import AutoVocabBuilder
 from .config import (
+    DEFAULT_LOG_DIR,
     load_config,
     migrate_legacy_paths,
     migrate_xdg_paths,
@@ -65,7 +67,7 @@ from .ui_helpers import (
 logger = logging.getLogger(__name__)
 
 
-LOG_DIR = Path.home() / "Library" / "Logs" / "WenZi"
+LOG_DIR = Path(os.path.expanduser(DEFAULT_LOG_DIR))
 LOG_FILE = LOG_DIR / "wenzi.log"
 
 # Map status strings to SF Symbol names for menu bar icons
@@ -179,6 +181,9 @@ class WenZiApp(StatusBarApp):
         default_provider = asr_cfg.get("default_provider")
         default_model = asr_cfg.get("default_model")
 
+        # Load vocabulary hotwords for ASR injection
+        hotwords = self._load_hotwords()
+
         if default_provider and default_model:
             # Start with remote model
             providers = asr_cfg.get("providers", {})
@@ -192,6 +197,7 @@ class WenZiApp(StatusBarApp):
                     model=default_model,
                     language=asr_cfg.get("language"),
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=hotwords,
                 )
             else:
                 # Provider/model not found, fall back to local
@@ -202,6 +208,7 @@ class WenZiApp(StatusBarApp):
                     language=asr_cfg.get("language"),
                     model=asr_cfg.get("model"),
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=hotwords,
                 )
         else:
             self._transcriber = create_transcriber(
@@ -211,6 +218,7 @@ class WenZiApp(StatusBarApp):
                 language=asr_cfg.get("language"),
                 model=asr_cfg.get("model"),
                 temperature=asr_cfg.get("temperature"),
+                hotwords=hotwords,
             )
 
         self._output_method = self._config["output"]["method"]
@@ -528,6 +536,18 @@ class WenZiApp(StatusBarApp):
             return img
         except Exception:
             return None
+
+    def _load_hotwords(self):
+        """Load vocabulary hotwords if vocabulary is enabled."""
+        vocab_cfg = self._config.get("ai_enhance", {}).get("vocabulary", {})
+        if not vocab_cfg.get("enabled", False):
+            return None
+        from wenzi.enhance.vocabulary import load_hotwords
+        words = load_hotwords(data_dir=self._data_dir) or None
+        if words:
+            logger.info("Loaded %d hotwords for ASR injection", len(words))
+            logger.debug("Hotwords: %s", ", ".join(words))
+        return words
 
     def _set_status(self, text: str) -> None:
         """Update menu bar icon/title and status menu item (thread-safe)."""
@@ -1075,6 +1095,7 @@ class WenZiApp(StatusBarApp):
                     language=preset.language or asr_cfg.get("language"),
                     model=preset.model,
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=self._load_hotwords(),
                 )
                 self._transcriber.initialize()
                 stop_event.set()
@@ -1135,6 +1156,7 @@ class WenZiApp(StatusBarApp):
                                 or asr_cfg.get("language"),
                                 model=fallback.model,
                                 temperature=asr_cfg.get("temperature"),
+                                hotwords=self._load_hotwords(),
                             )
                             self._current_preset_id = fallback.id
                             self._menu_builder.update_model_checkmarks()
