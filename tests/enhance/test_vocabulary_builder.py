@@ -60,13 +60,13 @@ def _sample_corrections():
 
 _PIPE_RESPONSE_TWO = (
     "term|category|variants|context\n"
-    "Python|tech|派森|编程语言\n"
+    "PyObjC|tech|pyobjectc|开发框架\n"
     "Kubernetes|tech|库伯尼特斯|容器编排"
 )
 
 _PIPE_RESPONSE_ONE = (
     "term|category|variants|context\n"
-    "Python|tech|派森|编程语言"
+    "PyObjC|tech|pyobjectc|开发框架"
 )
 
 _PIPE_RESPONSE_K8S = (
@@ -212,7 +212,7 @@ class TestExtractBatch:
         )
 
         assert len(entries) == 1
-        assert entries[0]["term"] == "Python"
+        assert entries[0]["term"] == "PyObjC"
         assert usage["total_tokens"] == 15
         assert usage["input_tokens"] == 10
         assert usage["output_tokens"] == 5
@@ -355,32 +355,32 @@ class TestExtractBatch:
 class TestParseLLMResponse:
     def test_parse_pipe_text(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython|tech|派森|编程语言"
+        content = "term|category|variants|context\nPyObjC|tech|pyobjectc|开发框架"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
         assert result[0]["category"] == "tech"
-        assert result[0]["variants"] == ["派森"]
-        assert result[0]["context"] == "编程语言"
+        assert result[0]["variants"] == ["pyobjectc"]
+        assert result[0]["context"] == "开发框架"
 
     def test_parse_multiple_entries(self):
         builder = VocabularyBuilder(_make_config())
         content = (
             "term|category|variants|context\n"
-            "Python|tech|派森|编程语言\n"
+            "PyObjC|tech|pyobjectc|开发框架\n"
             "Kubernetes|tech|库伯尼特斯|容器编排"
         )
         result = builder._parse_llm_response(content)
         assert len(result) == 2
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
         assert result[1]["term"] == "Kubernetes"
 
     def test_parse_with_markdown_fences(self):
         builder = VocabularyBuilder(_make_config())
-        content = "```\nterm|category|variants|context\nPython|tech|派森|编程语言\n```"
+        content = "```\nterm|category|variants|context\nPyObjC|tech|pyobjectc|开发框架\n```"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
 
     def test_parse_empty_variants_filtered(self):
         """Entries without variants are filtered out as low-value."""
@@ -388,6 +388,54 @@ class TestParseLLMResponse:
         content = "term|category|variants|context\nPython|tech||编程语言"
         result = builder._parse_llm_response(content)
         assert len(result) == 0
+
+    def test_parse_self_referencing_variant_removed(self):
+        """Variants matching the term (case-insensitive) are removed at parse time."""
+        builder = VocabularyBuilder(_make_config())
+        content = "term|category|variants|context\nFunASR|tech|FunASR,反ASR|语音识别"
+        result = builder._parse_llm_response(content)
+        assert len(result) == 1
+        assert result[0]["variants"] == ["反ASR"]
+
+    def test_parse_only_self_referencing_variant_filtered(self):
+        """Entry with only self-referencing variants is dropped entirely."""
+        builder = VocabularyBuilder(_make_config())
+        content = "term|category|variants|context\nAgent|tech|Agent|智能体"
+        result = builder._parse_llm_response(content)
+        assert len(result) == 0
+
+    def test_parse_filters_common_english_words(self):
+        """Common English words are filtered out — LLMs already know them."""
+        from wenzi.enhance.vocabulary_builder import _load_english_words
+
+        builder = VocabularyBuilder(_make_config())
+        builder._english_words = _load_english_words()
+        content = (
+            "term|category|variants|context\n"
+            "delete|tech|弟弟他|删除操作\n"
+            "cache|tech|开启|缓存\n"
+            "Kubernetes|tech|库伯尼特斯|容器编排"
+        )
+        result = builder._parse_llm_response(content)
+        # delete and cache are common English words → filtered
+        # Kubernetes is a proper noun → kept
+        assert len(result) == 1
+        assert result[0]["term"] == "Kubernetes"
+
+    def test_parse_keeps_proper_nouns(self):
+        """Proper nouns not in English dictionary are kept."""
+        from wenzi.enhance.vocabulary_builder import _load_english_words
+
+        builder = VocabularyBuilder(_make_config())
+        builder._english_words = _load_english_words()
+        content = (
+            "term|category|variants|context\n"
+            "PyObjC|tech|pyobjectc|开发框架\n"
+            "FunASR|tech|反ASR|语音识别\n"
+            "萍萍|name|平平|人名"
+        )
+        result = builder._parse_llm_response(content)
+        assert len(result) == 3
 
     def test_parse_multiple_variants(self):
         builder = VocabularyBuilder(_make_config())
@@ -398,10 +446,10 @@ class TestParseLLMResponse:
 
     def test_parse_skips_short_lines(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython|tech|派森|编程语言\nbadline|tech|only three"
+        content = "term|category|variants|context\nPyObjC|tech|pyobjectc|开发框架\nbadline|tech|only three"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "PyObjC"
 
     def test_parse_empty_content(self):
         builder = VocabularyBuilder(_make_config())
@@ -415,21 +463,21 @@ class TestParseLLMResponse:
 
     def test_parse_default_category(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython||派森|编程语言"
+        content = "term|category|variants|context\nGroq||groke|AI平台"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
         assert result[0]["category"] == "other"
 
     def test_parse_skips_empty_term(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\n|tech|派森|编程语言\nPython|tech|派森|编程语言"
+        content = "term|category|variants|context\n|tech|派森|编程语言\nFunASR|tech|反ASR|语音识别"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
-        assert result[0]["term"] == "Python"
+        assert result[0]["term"] == "FunASR"
 
     def test_parse_skips_blank_lines(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\nPython|tech|派森|编程语言\n\nJava|tech|加瓦|编程语言"
+        content = "term|category|variants|context\nKubernetes|tech|库伯尼特斯|容器编排\n\nGroq|tech|groke|AI平台"
         result = builder._parse_llm_response(content)
         assert len(result) == 2
 
@@ -821,7 +869,7 @@ class TestExtractBatchStreaming:
         user_prompt = "asr_text: test\nfinal_text: test"
         messages = _mock_messages()
 
-        pipe_parts = ["term|categ", "ory|variants|context\n", "Python|tech|派森|", "编程语言"]
+        pipe_parts = ["term|categ", "ory|variants|context\n", "PyObjC|tech|pyobjectc|", "开发框架"]
         "".join(pipe_parts)
 
         chunks = []
@@ -850,7 +898,7 @@ class TestExtractBatchStreaming:
 
         assert collected_chunks == pipe_parts
         assert len(entries) == 1
-        assert entries[0]["term"] == "Python"
+        assert entries[0]["term"] == "PyObjC"
 
     def test_cancel_interrupts_streaming(self):
         """cancel_event should interrupt streaming and return empty results."""
@@ -858,7 +906,7 @@ class TestExtractBatchStreaming:
         user_prompt = "asr_text: test\nfinal_text: test"
         messages = _mock_messages()
 
-        pipe_parts = ["term|categ", "ory|variants|context\n", "Python|tech|派森|", "编程语言"]
+        pipe_parts = ["term|categ", "ory|variants|context\n", "PyObjC|tech|pyobjectc|", "开发框架"]
 
         cancel_event = threading.Event()
         chunks_received = []
@@ -921,7 +969,7 @@ class TestExtractBatchStreaming:
         assert "stream" not in call_kwargs
 
         assert len(entries) == 1
-        assert entries[0]["term"] == "Python"
+        assert entries[0]["term"] == "PyObjC"
 
 
 class TestBuildWithCallbacks:

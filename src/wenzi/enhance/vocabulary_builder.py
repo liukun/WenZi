@@ -22,6 +22,21 @@ from .repetition import detect_repetition, truncate_repeated
 
 logger = logging.getLogger(__name__)
 
+# Standard English dictionary for filtering common words.
+_DICT_PATH = "/usr/share/dict/words"
+
+
+def _load_english_words() -> set[str]:
+    """Load the macOS system dictionary. Caller is responsible for releasing."""
+    try:
+        with open(_DICT_PATH, encoding="utf-8", errors="ignore") as f:
+            words = {line.strip().lower() for line in f if line.strip()}
+        logger.debug("Loaded %d English words from %s", len(words), _DICT_PATH)
+        return words
+    except OSError:
+        logger.warning("English dictionary not found at %s, skipping common-word filter", _DICT_PATH)
+        return set()
+
 
 @dataclass
 class BuildCallbacks:
@@ -50,6 +65,7 @@ class VocabularyBuilder:
         self._vocab_path = os.path.join(self._data_dir, "vocabulary.json")
         self._batch_size = config.get("vocabulary", {}).get("batch_size", 60)
         self._batch_timeout = config.get("vocabulary", {}).get("build_timeout", 600)
+        self._english_words: set[str] = set()
 
     async def build(
         self,
@@ -79,6 +95,7 @@ class VocabularyBuilder:
                 callbacks=callbacks,
             )
         finally:
+            self._english_words = set()
             self._teardown_build_log(file_handler)
 
     def _setup_build_log(self) -> Optional[logging.FileHandler]:
@@ -114,6 +131,7 @@ class VocabularyBuilder:
         callbacks: Optional[BuildCallbacks] = None,
     ) -> Dict[str, Any]:
         """Core build logic, wrapped by :meth:`build` for log management."""
+        self._english_words = _load_english_words()
         logger.info(
             "Starting vocabulary build (full_rebuild=%s)",
             full_rebuild,
@@ -662,6 +680,7 @@ class VocabularyBuilder:
             start = 1
 
         valid: List[Dict[str, Any]] = []
+        english = self._english_words
         for line in lines[start:]:
             line = line.strip()
             if not line:
@@ -681,8 +700,17 @@ class VocabularyBuilder:
             variants = [v.strip() for v in variants_raw.split(",") if v.strip()] if variants_raw else []
             context = parts[3].strip()
 
+            # Remove self-referencing variants (term == variant, case-insensitive)
+            term_lower = term.lower()
+            variants = [v for v in variants if v.lower().strip() != term_lower]
+
             if not variants:
                 logger.debug("Skipping entry without variants: %s", term)
+                continue
+
+            # Filter common English words — LLMs already know these
+            if english and term_lower in english:
+                logger.debug("Skipping common English word: %s", term)
                 continue
 
             valid.append({
