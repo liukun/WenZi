@@ -33,9 +33,9 @@ def _sample_corrections():
     return [
         {
             "timestamp": "2026-01-01T10:00:00+00:00",
-            "asr_text": "派森编程语言",
-            "enhanced_text": "Python编程语言",
-            "final_text": "Python编程语言",
+            "asr_text": "pyobjectc编程框架",
+            "enhanced_text": "PyObjC编程框架",
+            "final_text": "PyObjC编程框架",
             "enhance_mode": "proofread",
             "user_corrected": True,
         },
@@ -812,7 +812,7 @@ class TestBuildWithCancel:
             records.append({
                 "timestamp": f"2026-01-{day:02d}T{hour:02d}:00:00+00:00",
                 "asr_text": f"test{i}",
-                "final_text": f"test{i}",
+                "final_text": f"TestTerm test{i}",
                 "user_corrected": True,
             })
         with open(corrections_path, "w", encoding="utf-8") as f:
@@ -1145,7 +1145,7 @@ class TestSaveLoadVocabulary:
 
 
 class TestBuildRetryAndAbort:
-    def _write_corrections(self, tmp_path, count=80):
+    def _write_corrections(self, tmp_path, count=80, term="TestTerm"):
         corrections_path = tmp_path / "conversation_history.jsonl"
         records = []
         for i in range(count):
@@ -1154,7 +1154,7 @@ class TestBuildRetryAndAbort:
             records.append({
                 "timestamp": f"2026-01-{day:02d}T{hour:02d}:00:00+00:00",
                 "asr_text": f"test{i}",
-                "final_text": f"test{i}",
+                "final_text": f"{term} test{i}",
                 "user_corrected": True,
             })
         with open(corrections_path, "w", encoding="utf-8") as f:
@@ -1164,7 +1164,7 @@ class TestBuildRetryAndAbort:
 
     def test_retry_succeeds_on_second_attempt(self, tmp_path):
         """First attempt fails, retry succeeds — batch results are kept."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1194,7 +1194,7 @@ class TestBuildRetryAndAbort:
 
     def test_abort_after_two_failures(self, tmp_path):
         """Both attempts fail — build aborts, no entries saved."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         async def mock_create(**kwargs):
             raise ConnectionError("server down")
@@ -1215,7 +1215,7 @@ class TestBuildRetryAndAbort:
 
     def test_timestamp_not_advanced_on_abort(self, tmp_path):
         """Verify last_processed_timestamp is not advanced when build aborts."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         # Pre-existing vocabulary with old timestamp
         vocab_path = tmp_path / "vocabulary.json"
@@ -1243,7 +1243,7 @@ class TestBuildRetryAndAbort:
 
     def test_partial_progress_saved_on_abort(self, tmp_path):
         """First batch succeeds, second batch aborts — first batch is saved."""
-        self._write_corrections(tmp_path, count=80)  # 2 batches of 60+20
+        self._write_corrections(tmp_path, count=80, term="PyObjC")  # 2 batches of 60+20
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1280,7 +1280,7 @@ class TestBuildRetryAndAbort:
 
     def test_per_batch_save(self, tmp_path):
         """Each successful batch saves immediately to vocabulary.json."""
-        self._write_corrections(tmp_path, count=80)  # 2 batches
+        self._write_corrections(tmp_path, count=80, term="PyObjC")  # 2 batches
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1311,7 +1311,7 @@ class TestBuildRetryAndAbort:
 
     def test_batch_retry_callback(self, tmp_path):
         """on_batch_retry callback is called before retry."""
-        self._write_corrections(tmp_path, count=5)
+        self._write_corrections(tmp_path, count=5, term="PyObjC")
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]

@@ -257,6 +257,24 @@ class VocabularyBuilder:
                     cancelled = True
                     break
 
+                # Cross-validate: term must appear in corrected texts
+                # (right side of diffs).  Terms only found on the ASR
+                # side are misrecognitions, not real vocabulary entries.
+                final_texts = " ".join(
+                    r.get("final_text", "") for r in batch
+                ).lower()
+                before_count = len(extracted)
+                extracted = [
+                    e for e in extracted
+                    if e["term"].lower() in final_texts
+                ]
+                dropped = before_count - len(extracted)
+                if dropped:
+                    logger.debug(
+                        "Cross-validation dropped %d entries not found in corrected texts",
+                        dropped,
+                    )
+
                 # Batch succeeded — accumulate results
                 for key in total_usage:
                     total_usage[key] += batch_usage.get(key, 0)
