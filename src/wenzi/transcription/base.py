@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 
@@ -88,6 +88,7 @@ def create_transcriber(
     temperature: Optional[float] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    hotwords: Optional[List[str]] = None,
 ) -> BaseTranscriber:
     """Create a transcriber for the given backend.
 
@@ -100,6 +101,7 @@ def create_transcriber(
         temperature: Decoding temperature (mlx-whisper / whisper-api).
         base_url: API base URL (whisper-api only).
         api_key: API key (whisper-api only).
+        hotwords: Vocabulary terms for ASR boosting (sherpa-onnx / whisper-api only).
     """
     backend = backend.lower().replace("_", "-")
 
@@ -118,6 +120,7 @@ def create_transcriber(
         return WhisperAPITranscriber(
             base_url=base_url, api_key=api_key, model=model,
             language=language, temperature=temperature,
+            hotwords=hotwords,
         )
 
     if backend in ("apple-speech", "apple"):
@@ -132,6 +135,7 @@ def create_transcriber(
         return SherpaOnnxTranscriber(
             model=model or "zipformer-zh",
             language=language,
+            hotwords=hotwords,
         )
 
     raise ValueError(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from openai import OpenAI
 
@@ -24,12 +24,14 @@ class WhisperAPITranscriber(BaseTranscriber):
         model: str,
         language: Optional[str] = None,
         temperature: Optional[float] = None,
+        hotwords: Optional[List[str]] = None,
     ) -> None:
         self._base_url = base_url
         self._api_key = api_key
         self._model = model
         self._language = language
         self._temperature = temperature if temperature is not None else 0.0
+        self._hotwords = hotwords
         self._client: Optional[OpenAI] = None
         self._initialized = False
 
@@ -73,6 +75,8 @@ class WhisperAPITranscriber(BaseTranscriber):
         }
         if self._language:
             kwargs["language"] = self._language
+        if self._hotwords:
+            kwargs["prompt"] = ", ".join(self._hotwords)
 
         response = self._client.audio.transcriptions.create(**kwargs)
         text = response.text.strip()

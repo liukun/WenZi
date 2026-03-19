@@ -309,3 +309,45 @@ class TestVerifyProvider:
 
         _, kwargs = mock_client.audio.transcriptions.create.call_args
         assert kwargs["model"] == "distil-whisper"
+
+
+# ---------------------------------------------------------------------------
+# Hotwords
+# ---------------------------------------------------------------------------
+
+class TestHotwords:
+    def test_hotwords_stored(self):
+        t = _make_transcriber(hotwords=["Python", "Kubernetes"])
+        assert t._hotwords == ["Python", "Kubernetes"]
+
+    def test_hotwords_default_none(self):
+        t = _make_transcriber()
+        assert t._hotwords is None
+
+    def test_transcribe_with_hotwords_adds_prompt(self):
+        t = _make_transcriber(hotwords=["Python", "Kubernetes"])
+        t._initialized = True
+        mock_response = MagicMock()
+        mock_response.text = "hello"
+        mock_client = MagicMock()
+        mock_client.audio.transcriptions.create.return_value = mock_response
+        t._client = mock_client
+
+        t.transcribe(_make_wav())
+
+        _, kwargs = mock_client.audio.transcriptions.create.call_args
+        assert kwargs["prompt"] == "Python, Kubernetes"
+
+    def test_transcribe_without_hotwords_no_prompt(self):
+        t = _make_transcriber()
+        t._initialized = True
+        mock_response = MagicMock()
+        mock_response.text = "hello"
+        mock_client = MagicMock()
+        mock_client.audio.transcriptions.create.return_value = mock_response
+        t._client = mock_client
+
+        t.transcribe(_make_wav())
+
+        _, kwargs = mock_client.audio.transcriptions.create.call_args
+        assert "prompt" not in kwargs

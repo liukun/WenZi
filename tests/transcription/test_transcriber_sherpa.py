@@ -181,3 +181,92 @@ class TestSherpaFactory:
 
         t = create_transcriber(backend="sherpa", model="paraformer-zh")
         assert t._model_id == "paraformer-zh"
+
+    def test_create_sherpa_with_hotwords(self):
+        from wenzi.transcription.base import create_transcriber
+
+        t = create_transcriber(backend="sherpa", hotwords=["Python", "Kubernetes"])
+        assert t._hotwords == ["Python", "Kubernetes"]
+
+
+class TestSherpaHotwords:
+    def test_hotwords_stored(self):
+        from wenzi.transcription.sherpa import SherpaOnnxTranscriber
+
+        t = SherpaOnnxTranscriber(hotwords=["Python", "Kubernetes"])
+        assert t._hotwords == ["Python", "Kubernetes"]
+
+    def test_hotwords_default_none(self):
+        from wenzi.transcription.sherpa import SherpaOnnxTranscriber
+
+        t = SherpaOnnxTranscriber()
+        assert t._hotwords is None
+
+    def test_zipformer_with_hotwords(self, _mock_sherpa, tmp_path):
+        from wenzi.transcription.sherpa import SherpaOnnxTranscriber
+
+        t = SherpaOnnxTranscriber(model="zipformer-zh", hotwords=["Python", "测试"])
+
+        # Create fake model files in tmp_path
+        (tmp_path / "encoder.onnx").touch()
+        (tmp_path / "decoder.onnx").touch()
+        (tmp_path / "joiner.onnx").touch()
+        (tmp_path / "tokens.txt").touch()
+
+        t._create_zipformer_recognizer(_mock_sherpa, tmp_path)
+
+        call_kwargs = _mock_sherpa.OnlineRecognizer.from_transducer.call_args[1]
+        assert "hotwords_file" in call_kwargs
+        assert call_kwargs["hotwords_score"] == 1.5
+        assert call_kwargs["decoding_method"] == "modified_beam_search"
+
+        # Verify the hotwords file content
+        hotwords_content = Path(call_kwargs["hotwords_file"]).read_text(encoding="utf-8")
+        assert "Python :1.5" in hotwords_content
+        assert "测试 :1.5" in hotwords_content
+
+        # Cleanup the hotwords file
+        Path(call_kwargs["hotwords_file"]).unlink(missing_ok=True)
+
+    def test_zipformer_without_hotwords(self, _mock_sherpa, tmp_path):
+        from wenzi.transcription.sherpa import SherpaOnnxTranscriber
+
+        t = SherpaOnnxTranscriber(model="zipformer-zh")
+
+        (tmp_path / "encoder.onnx").touch()
+        (tmp_path / "decoder.onnx").touch()
+        (tmp_path / "joiner.onnx").touch()
+        (tmp_path / "tokens.txt").touch()
+
+        t._create_zipformer_recognizer(_mock_sherpa, tmp_path)
+
+        call_kwargs = _mock_sherpa.OnlineRecognizer.from_transducer.call_args[1]
+        assert "hotwords_file" not in call_kwargs
+        assert "decoding_method" not in call_kwargs
+
+    def test_paraformer_ignores_hotwords(self, _mock_sherpa, tmp_path):
+        from wenzi.transcription.sherpa import SherpaOnnxTranscriber
+
+        t = SherpaOnnxTranscriber(model="paraformer-zh", hotwords=["Python"])
+
+        (tmp_path / "encoder.onnx").touch()
+        (tmp_path / "decoder.onnx").touch()
+        (tmp_path / "tokens.txt").touch()
+
+        t._create_paraformer_recognizer(_mock_sherpa, tmp_path)
+
+        call_kwargs = _mock_sherpa.OnlineRecognizer.from_paraformer.call_args[1]
+        assert "hotwords_file" not in call_kwargs
+
+    def test_cleanup_removes_hotwords_file(self):
+        from wenzi.transcription.sherpa import SherpaOnnxTranscriber
+
+        t = SherpaOnnxTranscriber(hotwords=["Python"])
+        hotwords_path = t._hotwords_path()
+        hotwords_path.parent.mkdir(parents=True, exist_ok=True)
+        hotwords_path.write_text("Python :1.5\n", encoding="utf-8")
+        assert hotwords_path.exists()
+
+        t.cleanup()
+
+        assert not hotwords_path.exists()

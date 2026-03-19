@@ -301,12 +301,41 @@ class VocabularyIndex:
             return []
 
 
-def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
-    """Read the number of entries in vocabulary.json without loading the index."""
+def _read_raw_entries(data_dir: str = DEFAULT_DATA_DIR) -> List[dict]:
+    """Read raw entry dicts from vocabulary.json.
+
+    Shared I/O helper for :func:`load_hotwords` and :func:`get_vocab_entry_count`.
+    Returns an empty list on any error.
+    """
     vocab_path = os.path.join(os.path.expanduser(data_dir), "vocabulary.json")
     try:
         with open(vocab_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return len(data.get("entries", []))
+        return data.get("entries", [])
     except Exception:
-        return 0
+        return []
+
+
+def load_hotwords(
+    data_dir: str = DEFAULT_DATA_DIR,
+    min_frequency: int = 2,
+    max_count: int = 50,
+) -> List[str]:
+    """Load high-frequency vocabulary terms for ASR hotword injection.
+
+    Reads vocabulary.json, filters by frequency, and returns the top terms
+    sorted by frequency descending.
+
+    Returns an empty list on error or when no entries qualify.
+    """
+    entries = _read_raw_entries(data_dir)
+    filtered = [
+        e for e in entries if e.get("frequency", 1) >= min_frequency
+    ]
+    filtered.sort(key=lambda e: e.get("frequency", 1), reverse=True)
+    return [e["term"] for e in filtered[:max_count]]
+
+
+def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
+    """Read the number of entries in vocabulary.json without loading the index."""
+    return len(_read_raw_entries(data_dir))

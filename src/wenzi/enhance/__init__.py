@@ -5,7 +5,7 @@ from .conversation_history import ConversationHistory
 from .enhancer import MODE_OFF, TextEnhancer, create_enhancer
 from .mode_loader import ModeDefinition, get_sorted_modes, load_modes
 from .preview_history import PreviewHistoryStore, PreviewRecord
-from .vocabulary import VocabularyEntry, VocabularyIndex, get_vocab_entry_count
+from .vocabulary import VocabularyEntry, VocabularyIndex, get_vocab_entry_count, load_hotwords
 from .vocabulary_builder import BuildCallbacks, VocabularyBuilder
 
 __all__ = [
@@ -23,5 +23,6 @@ __all__ = [
     "create_enhancer",
     "get_sorted_modes",
     "get_vocab_entry_count",
+    "load_hotwords",
     "load_modes",
 ]

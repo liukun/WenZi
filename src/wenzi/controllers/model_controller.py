@@ -374,6 +374,7 @@ models:
                     language=preset.language or asr_cfg.get("language"),
                     model=preset.model,
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=self._app._load_hotwords(),
                 )
                 new_transcriber.initialize()
 
@@ -540,6 +541,7 @@ models:
                 language=old_preset.language or asr_cfg.get("language"),
                 model=old_preset.model,
                 temperature=asr_cfg.get("temperature"),
+                hotwords=self._app._load_hotwords(),
             )
             restored.initialize()
             app._transcriber = restored
@@ -578,6 +580,7 @@ models:
                 language=preset.language or asr_cfg.get("language"),
                 model=preset.model,
                 temperature=asr_cfg.get("temperature"),
+                hotwords=self._app._load_hotwords(),
             )
             new_transcriber.initialize()
 
@@ -659,6 +662,7 @@ models:
                     model=rm.model,
                     language=asr_cfg.get("language"),
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=self._app._load_hotwords(),
                 )
                 new_transcriber.initialize()
 
@@ -862,6 +866,7 @@ models:
                     language=asr_cfg.get("language"),
                     model=asr_cfg.get("model"),
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=self._app._load_hotwords(),
                 )
                 app._current_remote_asr = None
                 app._current_preset_id = resolve_preset_from_config(

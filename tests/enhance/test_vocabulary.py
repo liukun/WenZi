@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 
-from wenzi.enhance.vocabulary import VocabularyEntry, VocabularyIndex, get_vocab_entry_count
+from wenzi.enhance.vocabulary import (
+    VocabularyEntry,
+    VocabularyIndex,
+    get_vocab_entry_count,
+    load_hotwords,
+)
 
 
 # --- VocabularyEntry tests ---
@@ -428,3 +433,65 @@ class TestGetVocabEntryCount:
         vocab_path = tmp_path / "vocabulary.json"
         vocab_path.write_text("not json", encoding="utf-8")
         assert get_vocab_entry_count(str(tmp_path)) == 0
+
+
+# --- load_hotwords tests ---
+
+
+class TestLoadHotwords:
+    def test_filters_by_frequency(self, tmp_path):
+        entries = [
+            {"term": "HighFreq", "frequency": 5},
+            {"term": "LowFreq", "frequency": 1},
+            {"term": "MidFreq", "frequency": 2},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=2)
+        assert "HighFreq" in result
+        assert "MidFreq" in result
+        assert "LowFreq" not in result
+
+    def test_sorts_by_frequency_desc(self, tmp_path):
+        entries = [
+            {"term": "Low", "frequency": 2},
+            {"term": "High", "frequency": 10},
+            {"term": "Mid", "frequency": 5},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=1)
+        assert result == ["High", "Mid", "Low"]
+
+    def test_respects_max_count(self, tmp_path):
+        entries = [
+            {"term": f"Term{i}", "frequency": 10 - i}
+            for i in range(10)
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=1, max_count=3)
+        assert len(result) == 3
+        assert result[0] == "Term0"
+
+    def test_no_file_returns_empty(self, tmp_path):
+        result = load_hotwords(data_dir=str(tmp_path))
+        assert result == []
+
+    def test_all_low_frequency_returns_empty(self, tmp_path):
+        entries = [
+            {"term": "A", "frequency": 1},
+            {"term": "B", "frequency": 1},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=2)
+        assert result == []
