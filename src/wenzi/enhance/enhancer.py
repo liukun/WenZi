@@ -17,6 +17,7 @@ from .mode_loader import (
     load_modes,
 )
 from .conversation_history import ConversationHistory
+from .repetition import detect_repetition, truncate_repeated
 from .vocabulary import VocabularyIndex
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,7 @@ class TextEnhancer:
         self._timeout = config.get("timeout", 30)
         self._connection_timeout = config.get("connection_timeout", 10)
         self._max_retries = config.get("max_retries", 2)
+        self._max_output_tokens = config.get("max_output_tokens", 4096)
         self._thinking = config.get("thinking", False)
         self._config_dir = config_dir
         self._data_dir = data_dir
@@ -887,6 +889,7 @@ class TextEnhancer:
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": text.strip()},
             ],
+            "max_tokens": self._max_output_tokens,
             **extra_kwargs,
         }
         if extra_body:
@@ -1043,6 +1046,8 @@ class TextEnhancer:
             collected = []
             usage = None
             think_parser = ThinkTagParser()
+            chars_since_check = 0
+            repetition_aborted = False
             # Timeout applies between chunks: resets on each received chunk
             aiter = stream.__aiter__()
             try:
@@ -1082,6 +1087,12 @@ class TextEnhancer:
                                     else:
                                         collected.append(segment)
                                         yield segment, None, False
+                                chars_since_check += len(delta.content)
+                                if chars_since_check >= 200:
+                                    chars_since_check = 0
+                                    if detect_repetition("".join(collected)):
+                                        repetition_aborted = True
+                                        break
             finally:
                 self._active_stream = None
                 if hasattr(stream, 'close'):
@@ -1091,6 +1102,8 @@ class TextEnhancer:
                         pass
 
             full_text = "".join(collected).strip()
+            if repetition_aborted:
+                full_text = truncate_repeated(full_text).strip()
             if not full_text:
                 logger.warning("LLM stream returned empty text, using original")
                 yield text, usage, False
