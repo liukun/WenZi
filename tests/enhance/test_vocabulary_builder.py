@@ -76,7 +76,7 @@ _PIPE_RESPONSE_K8S = (
 
 _PIPE_RESPONSE_TEST = (
     "term|category|variants|context\n"
-    "TestTerm|tech||test"
+    "TestTerm|tech|test variant|test"
 )
 
 
@@ -382,12 +382,12 @@ class TestParseLLMResponse:
         assert len(result) == 1
         assert result[0]["term"] == "Python"
 
-    def test_parse_empty_variants(self):
+    def test_parse_empty_variants_filtered(self):
+        """Entries without variants are filtered out as low-value."""
         builder = VocabularyBuilder(_make_config())
         content = "term|category|variants|context\nPython|tech||编程语言"
         result = builder._parse_llm_response(content)
-        assert len(result) == 1
-        assert result[0]["variants"] == []
+        assert len(result) == 0
 
     def test_parse_multiple_variants(self):
         builder = VocabularyBuilder(_make_config())
@@ -422,7 +422,7 @@ class TestParseLLMResponse:
 
     def test_parse_skips_empty_term(self):
         builder = VocabularyBuilder(_make_config())
-        content = "term|category|variants|context\n|tech|派森|编程语言\nPython|tech||编程语言"
+        content = "term|category|variants|context\n|tech|派森|编程语言\nPython|tech|派森|编程语言"
         result = builder._parse_llm_response(content)
         assert len(result) == 1
         assert result[0]["term"] == "Python"
@@ -974,7 +974,8 @@ class TestBuildPrompts:
         builder = VocabularyBuilder(_make_config())
         prompt = builder._build_system_prompt([])
         assert "term|category|variants|context" in prompt
-        assert "管道" in prompt
+        assert "必须有 variants" in prompt
+        assert "只提取专有名词" in prompt
         assert "已存在" not in prompt  # No existing terms section when empty
 
     def test_system_prompt_includes_existing_terms(self):
@@ -984,27 +985,45 @@ class TestBuildPrompts:
         assert "Python" in prompt
         assert "Kubernetes" in prompt
 
-    def test_user_prompt_contains_records(self):
+    def test_system_prompt_explains_diff_format(self):
+        """System prompt should explain the inline diff notation."""
+        builder = VocabularyBuilder(_make_config())
+        prompt = builder._build_system_prompt([])
+        assert "[旧文本→新文本]" in prompt
+        assert "方括号" in prompt
+
+    def test_user_prompt_uses_diff_format(self):
+        """User prompt should use inline diff instead of arrow-separated format."""
         batch = [
-            {"asr_text": "派森", "final_text": "Python"},
-            {"asr_text": "加瓦", "final_text": "Java"},
+            {"asr_text": "派森编程语言", "final_text": "Python编程语言"},
+            {"asr_text": "加瓦脚本", "final_text": "Java脚本"},
         ]
         prompt = VocabularyBuilder._build_user_prompt(batch)
-        assert "派森" in prompt
-        assert "Python" in prompt
-        assert "加瓦" in prompt
-        assert "Java" in prompt
+        assert "[派森→Python]" in prompt
+        assert "[加瓦→Java]" in prompt
+        # Unchanged parts should appear without brackets
+        assert "编程语言" in prompt
+        assert "脚本" in prompt
+
+    def test_user_prompt_identical_texts(self):
+        """Identical ASR and final text should appear as-is without diff markers."""
+        batch = [
+            {"asr_text": "没有变化", "final_text": "没有变化"},
+        ]
+        prompt = VocabularyBuilder._build_user_prompt(batch)
+        assert prompt == "没有变化"
+        assert "[" not in prompt
 
     def test_user_prompt_replaces_newlines(self):
-        """Newlines in text should be replaced with ⏎ to keep one record per line."""
+        """Newlines in text should be replaced with ⏎ before diffing."""
         batch = [
             {"asr_text": "第一行\n第二行", "final_text": "first\nsecond"},
         ]
         prompt = VocabularyBuilder._build_user_prompt(batch)
-        # Should be a single line with ⏎ instead of newlines
-        assert "\n" not in prompt.split("→")[0].replace("\n", "")  # no raw newline in asr part
         assert "⏎" in prompt
-        assert prompt == "第一行⏎第二行 → first⏎second"
+        # The entire content is a diff, no raw \n from original text
+        lines = prompt.split("\n")
+        assert len(lines) == 1  # single record = single line
 
 
 class TestSaveLoadVocabulary:
@@ -1309,3 +1328,91 @@ class TestBuildModelSelection:
         # Provider is openai (valid), but model falls back to first in list
         assert pcfg["base_url"] == "https://api.openai.com/v1"
         assert pcfg["model"] == "gpt-4o"
+
+
+class TestTokenize:
+    def test_english_word_stays_whole(self):
+        tokens = VocabularyBuilder._tokenize("cloud")
+        assert tokens == ["cloud"]
+
+    def test_chinese_chars_split(self):
+        tokens = VocabularyBuilder._tokenize("派森")
+        assert tokens == ["派", "森"]
+
+    def test_mixed_chinese_english(self):
+        tokens = VocabularyBuilder._tokenize("我想用cloud来写代码")
+        assert tokens == ["我", "想", "用", "cloud", "来", "写", "代", "码"]
+
+    def test_space_preserved(self):
+        tokens = VocabularyBuilder._tokenize("gate tag")
+        assert tokens == ["gate", " ", "tag"]
+
+    def test_punctuation_separate(self):
+        tokens = VocabularyBuilder._tokenize("好的，OK。")
+        assert tokens == ["好", "的", "，", "OK", "。"]
+
+    def test_empty_string(self):
+        assert VocabularyBuilder._tokenize("") == []
+
+    def test_numbers_with_letters(self):
+        tokens = VocabularyBuilder._tokenize("Python3")
+        assert tokens == ["Python3"]
+
+
+class TestDiffTexts:
+    def test_identical_texts(self):
+        assert VocabularyBuilder._diff_texts("没有变化", "没有变化") == "没有变化"
+
+    def test_chinese_to_english_replacement(self):
+        result = VocabularyBuilder._diff_texts("派森编程语言", "Python编程语言")
+        assert "[派森→Python]" in result
+        assert "编程语言" in result
+
+    def test_english_word_replacement(self):
+        result = VocabularyBuilder._diff_texts("我想用cloud来写", "我想用Claude来写")
+        assert "[cloud→Claude]" in result
+        assert "我想用" in result
+        assert "来写" in result
+
+    def test_multiple_replacements(self):
+        result = VocabularyBuilder._diff_texts(
+            "把这个gate tag删掉", "把这个Git Tag删掉"
+        )
+        assert "[gate→Git]" in result
+        assert "[tag→Tag]" in result
+        assert "把这个" in result
+
+    def test_chinese_name_correction(self):
+        result = VocabularyBuilder._diff_texts("平平来了", "萍萍来了")
+        assert "[平平→萍萍]" in result
+        assert "来了" in result
+
+    def test_two_separate_chinese_corrections(self):
+        result = VocabularyBuilder._diff_texts("平平和珊珊来了", "萍萍和杉杉来了")
+        assert "[平平→萍萍]" in result
+        assert "[珊珊→杉杉]" in result
+        assert "和" in result
+        assert "来了" in result
+
+    def test_deletion(self):
+        result = VocabularyBuilder._diff_texts("多余的文字好", "好")
+        assert "→]" in result
+
+    def test_insertion(self):
+        result = VocabularyBuilder._diff_texts("好", "非常好")
+        assert "[→" in result
+
+    def test_empty_strings(self):
+        assert VocabularyBuilder._diff_texts("", "") == ""
+        assert "[→" in VocabularyBuilder._diff_texts("", "新文本")
+        assert "→]" in VocabularyBuilder._diff_texts("旧文本", "")
+
+    def test_full_sentence_replacement(self):
+        """Multi-word replacement should still produce readable diff."""
+        result = VocabularyBuilder._diff_texts(
+            "这个磨叽很慢用流逝来处理",
+            "这个Merge很慢用Stream来处理",
+        )
+        assert "[磨叽→Merge]" in result
+        assert "[流逝→Stream]" in result
+        assert "很慢用" in result

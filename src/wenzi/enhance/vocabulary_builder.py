@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -269,20 +271,40 @@ class VocabularyBuilder:
     def _build_system_prompt(self, existing_terms: List[str]) -> str:
         """Build the system prompt (shared across all batches for KV cache)."""
         prompt = (
-            "你是一个词汇提取助手。请从语音识别纠错记录中提取有价值的词汇。\n\n"
-            "每条纠错记录格式为 ASR原文 → 正确文本，一行一条。\n\n"
-            "请提取专有名词、技术术语、常用短语，以及ASR容易识别错误的词汇。\n"
-            "以管道符分隔的文本格式输出，第一行为表头，之后每行一个词条。\n"
-            "字段：term|category|variants|context\n"
+            "你是一个词汇提取助手。从语音识别(ASR)纠错记录中提取ASR容易误识别的专有名词。\n\n"
+            "每条纠错记录以 inline diff 格式给出，方括号标注了实际变化的部分：\n"
+            "- [旧文本→新文本] 表示替换\n"
+            "- [→新文本] 表示插入\n"
+            "- [旧文本→] 表示删除\n"
+            "- 方括号外的文本未发生变化\n\n"
+            "## 提取规则（严格遵守）\n\n"
+            "1. **必须有 variants**：只提取在方括号左侧（旧文本）中出现了误识别形式的词汇。"
+            "variants 必须是方括号左侧实际出现的错误写法，不要自己编造同音字。"
+            "没有明确误识别证据的词汇一律不提取。\n"
+            "2. **只提取专有名词**：人名、产品名、工具名、项目名、领域专业术语等。"
+            "不要提取通用英文词汇（如 Off, Low, Help, Plan, Random, Feature, "
+            "Command, Label, Config, Delete, Copy, Cancel 等），"
+            "这些词不需要词库辅助即可正确处理。\n"
+            "3. **不要提取版本号或过于具体的短语**："
+            "如 \"Python 3.13.5\"、\"v0.0.6\"、\"Default 50\"。"
+            "只提取核心术语（如 Python），版本信息不属于词库范畴。\n"
+            "4. **合并同一词汇的不同形式**：单复数（Snippet/Snippets）、"
+            "带前缀（.gitignore/gitignore）视为同一个词条，只提取一次。\n"
+            "5. **避免 variant 歧义**：如果同一个ASR误识别文本在不同记录中对应不同词汇，"
+            "只为最可能的那个词汇添加此 variant。\n\n"
+            "## 输出格式\n\n"
+            "以管道符分隔的文本，第一行为表头，之后每行一个词条：\n"
+            "term|category|variants|context\n"
             "- category 取值：tech, name, place, domain, other\n"
-            "- variants 多个值用逗号分隔，无则留空\n"
-            "- context 为简短语境说明\n"
+            "- variants 多个值用逗号分隔（不可留空，这是必填字段）\n"
+            "- context 为简短语境说明（2-4个字）\n"
             "- 字段内容中不要包含管道符\n\n"
             "示例：\n"
             "term|category|variants|context\n"
-            "Python|tech|派森|编程语言\n"
-            "Kubernetes|tech|库伯尼特斯,酷伯|容器编排\n\n"
+            "Kubernetes|tech|库伯尼特斯,酷伯|容器编排\n"
+            "Claude|tech|cloud,克劳德|AI模型\n\n"
             "只输出表头和数据行，不要输出其他内容。\n"
+            "如果当前批次中没有值得提取的词汇，只输出表头行即可。\n"
         )
 
         if existing_terms:
@@ -294,14 +316,52 @@ class VocabularyBuilder:
 
         return prompt
 
+    # Token pattern: ASCII words as whole units, each non-ASCII char individually,
+    # whitespace runs, or any other single character.
+    _TOKEN_RE = re.compile(r"[a-zA-Z0-9]+|[^\x00-\x7f]|\s+|.")
+
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        """Split text into diff-friendly tokens.
+
+        English/number sequences stay as whole tokens; each CJK character
+        becomes its own token.  This gives a good granularity for diffing
+        mixed Chinese-English ASR text.
+        """
+        return VocabularyBuilder._TOKEN_RE.findall(text)
+
+    @staticmethod
+    def _diff_texts(asr: str, final: str) -> str:
+        """Produce an inline diff between ASR text and corrected text.
+
+        Unchanged parts are emitted as-is.  Changed parts are wrapped in
+        ``[old→new]``, ``[old→]`` (deletion), or ``[→new]`` (insertion).
+        """
+        if asr == final:
+            return asr
+
+        asr_tokens = VocabularyBuilder._tokenize(asr)
+        final_tokens = VocabularyBuilder._tokenize(final)
+        matcher = difflib.SequenceMatcher(None, asr_tokens, final_tokens)
+
+        parts: List[str] = []
+        for op, i1, i2, j1, j2 in matcher.get_opcodes():
+            if op == "equal":
+                parts.append("".join(asr_tokens[i1:i2]))
+            else:
+                old = "".join(asr_tokens[i1:i2])
+                new = "".join(final_tokens[j1:j2])
+                parts.append(f"[{old}→{new}]")
+        return "".join(parts)
+
     @staticmethod
     def _build_user_prompt(batch: List[Dict[str, Any]]) -> str:
-        """Build the user prompt with correction records for a single batch."""
+        """Build the user prompt with inline-diff correction records."""
         lines = []
         for r in batch:
             asr = r.get("asr_text", "").replace("\n", "\u23ce")
             final = r.get("final_text", "").replace("\n", "\u23ce")
-            lines.append(f"{asr} → {final}")
+            lines.append(VocabularyBuilder._diff_texts(asr, final))
         return "\n".join(lines)
 
     @staticmethod
@@ -508,6 +568,10 @@ class VocabularyBuilder:
             variants_raw = parts[2].strip()
             variants = [v.strip() for v in variants_raw.split(",") if v.strip()] if variants_raw else []
             context = parts[3].strip()
+
+            if not variants:
+                logger.debug("Skipping entry without variants: %s", term)
+                continue
 
             valid.append({
                 "term": term,
