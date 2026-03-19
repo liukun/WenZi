@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 _logger = logging.getLogger(__name__)
 
@@ -174,3 +174,28 @@ def _chars_in_order(query: str, text: str) -> bool:
     """Check if all chars of *query* appear in *text* in order."""
     it = iter(text)
     return all(ch in it for ch in query)
+
+
+def fuzzy_match_fields(query: str, fields: Sequence[str]) -> Tuple[bool, int]:
+    """Multi-term AND fuzzy match across multiple fields.
+
+    Splits *query* on whitespace.  Each term must fuzzy-match at least one
+    field.  Returns ``(matched, avg_score)``.  A single-term query degrades
+    to the same behaviour as calling :func:`fuzzy_match` on each field and
+    taking the best score.
+    """
+    terms = query.split()
+    if not terms:
+        return False, 0
+
+    total_score = 0
+    for term in terms:
+        best = 0
+        for fval in fields:
+            matched, score = fuzzy_match(term, fval)
+            if matched and score > best:
+                best = score
+        if best == 0:
+            return False, 0
+        total_score += best
+    return True, total_score // len(terms)

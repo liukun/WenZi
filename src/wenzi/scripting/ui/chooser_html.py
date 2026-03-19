@@ -565,8 +565,7 @@ function _checkPanelResize() {
     }
 }
 
-// --- Input handling (with debounce for longer queries) ---
-var _debounceTimer = null;
+// --- Input handling ---
 searchInput.addEventListener('input', function() {
     if (_settingHistoryValue) return;
     if (inHistoryMode) {
@@ -574,17 +573,7 @@ searchInput.addEventListener('input', function() {
         post('exitHistory');
     }
     _checkPanelResize();
-    var query = searchInput.value;
-    if (_debounceTimer) { clearTimeout(_debounceTimer); _debounceTimer = null; }
-    // Short queries (<=3 chars): search immediately (prefix activation like "f ")
-    if (query.length <= 3) {
-        post('search', { query: query });
-    } else {
-        _debounceTimer = setTimeout(function() {
-            _debounceTimer = null;
-            post('search', { query: query });
-        }, 150);
-    }
+    post('search', { query: searchInput.value });
 });
 
 // --- Keyboard navigation ---

@@ -178,6 +178,7 @@ class SettingsController:
             "on_launcher_source_toggle": self.launcher_source_toggle,
             "on_launcher_prefix_change": self.launcher_prefix_change,
             "on_launcher_usage_learning_toggle": self.launcher_usage_learning_toggle,
+            "on_launcher_switch_english_toggle": self.launcher_switch_english_toggle,
             "on_launcher_refresh_icons": self.launcher_refresh_icons,
             "on_launcher_source_hotkey_record": self.launcher_source_hotkey_record,
             "on_launcher_source_hotkey_clear": self.launcher_source_hotkey_clear,
@@ -922,6 +923,7 @@ class SettingsController:
                 "bookmarks": "",
             }),
             "new_snippet_hotkey": chooser_cfg.get("new_snippet_hotkey", ""),
+            "switch_to_english": chooser_cfg.get("switch_to_english", True),
         }
 
     def launcher_toggle(self, enabled: bool) -> None:
@@ -1173,3 +1175,18 @@ class SettingsController:
             engine.set_usage_learning(enabled)
 
         logger.info("Launcher usage learning set to: %s", enabled)
+
+    def launcher_switch_english_toggle(self, enabled: bool) -> None:
+        """Handle launcher switch-to-English toggle from Settings panel."""
+        app = self._app
+        chooser_cfg = app._config.setdefault("scripting", {}).setdefault(
+            "chooser", {}
+        )
+        chooser_cfg["switch_to_english"] = enabled
+        self._save_and_reload()
+
+        engine = getattr(app, "_script_engine", None)
+        if engine is not None:
+            engine.wz.chooser._get_panel()._switch_english = enabled
+
+        logger.info("Launcher switch-to-English set to: %s", enabled)

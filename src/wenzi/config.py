@@ -350,6 +350,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "bookmarks": "",
             },
             "new_snippet_hotkey": "",
+            "switch_to_english": True,
         },
     },
 }
@@ -523,6 +524,8 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
         ("feedback.cancel_key", str,
          lambda v: v in _VALID_MODIFIER_KEYS,
          DEFAULT_CONFIG["feedback"]["cancel_key"]),
+        ("scripting.chooser.switch_to_english", bool, None,
+         DEFAULT_CONFIG["scripting"]["chooser"]["switch_to_english"]),
     ]
 
     for path, expected_type, constraint, default in rules:

@@ -362,6 +362,10 @@ class ScriptEngine:
         # Command source (always registered when chooser is enabled)
         self._wz.chooser._ensure_command_source()
 
+        # Switch-to-English setting
+        panel = self._wz.chooser._get_panel()
+        panel._switch_english = chooser_config.get("switch_to_english", True)
+
         # Usage learning tracker
         if chooser_config.get("usage_learning", True):
             try:

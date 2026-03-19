@@ -13,7 +13,7 @@ import subprocess
 from typing import Dict, List, Optional
 
 from wenzi.config import DEFAULT_ICON_CACHE_DIR as _CFG_ICON_CACHE_DIR
-from wenzi.scripting.sources import ChooserItem, ChooserSource, fuzzy_match
+from wenzi.scripting.sources import ChooserItem, ChooserSource, fuzzy_match_fields
 
 logger = logging.getLogger(__name__)
 
@@ -497,8 +497,6 @@ class BookmarkSource:
             # Show recent bookmarks (first 20) when no query
             return self._to_items(self._bookmarks[:20])
 
-        terms = q.split()
-
         results: list[tuple[int, Bookmark]] = []
         for bm in self._bookmarks:
             fields = (
@@ -507,22 +505,9 @@ class BookmarkSource:
                 bm.folder_path,
                 _BROWSER_LABELS.get(bm.browser, ""),
             )
-            total_score = 0
-            all_matched = True
-            for term in terms:
-                best = 0
-                for field in fields:
-                    matched, score = fuzzy_match(term, field)
-                    if matched and score > best:
-                        best = score
-                if best == 0:
-                    all_matched = False
-                    break
-                total_score += best
-            if all_matched:
-                # Average score across terms
-                avg_score = total_score // len(terms)
-                results.append((avg_score, bm))
+            matched, score = fuzzy_match_fields(q, fields)
+            if matched:
+                results.append((score, bm))
 
         results.sort(key=lambda x: (-x[0], x[1].name.lower()))
         return self._to_items([bm for _, bm in results[:50]])

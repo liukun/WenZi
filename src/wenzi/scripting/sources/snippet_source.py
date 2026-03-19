@@ -53,7 +53,7 @@ from typing import Dict, List, Optional, Tuple
 from wenzi.config import DEFAULT_SNIPPETS_DIR as _CFG_SNIPPETS_DIR
 from wenzi.scripting.sources import (
     ChooserItem, ChooserSource, ModifierAction,
-    copy_to_clipboard, fuzzy_match, paste_text,
+    copy_to_clipboard, fuzzy_match_fields, paste_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -701,13 +701,9 @@ class SnippetSource:
                 results.append((50, s))
                 continue
 
-            best_score = 0
-            for field_val in (name, keyword, content, category):
-                matched, score = fuzzy_match(q, field_val)
-                if matched and score > best_score:
-                    best_score = score
-            if best_score > 0:
-                results.append((best_score, s))
+            matched, score = fuzzy_match_fields(q, (name, keyword, content, category))
+            if matched:
+                results.append((score, s))
 
         results.sort(key=lambda x: (-x[0], x[1].get("name", "")))
 

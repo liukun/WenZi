@@ -1301,6 +1301,17 @@ class SettingsPanel:
             pad + 12, y, content_w - 24, doc_view,
         )
 
+        y -= (self._CONTROL_HEIGHT + self._ROW_GAP)
+        self._launcher_switch_english_check = self._make_switch(
+            "Switch to English when open", pad + 12, y, content_w - 24,
+            launcher_state.get("switch_to_english", True), small_font,
+            b"launcherSwitchEnglishToggled:", doc_view,
+        )
+        y = self._add_hint(
+            "Auto-switch to English input on open, restore previous IME on close",
+            pad + 12, y, content_w - 24, doc_view,
+        )
+
         y -= self._SECTION_GAP
 
         # --- Maintenance section ---
@@ -1335,6 +1346,7 @@ class SettingsPanel:
         all_launcher_controls = [
             self._launcher_enabled_check,
             self._launcher_hotkey_btn,
+            self._launcher_switch_english_check,
             refresh_btn,
         ]
         for check in self._launcher_source_checks.values():
@@ -1799,6 +1811,10 @@ class SettingsPanel:
     def launcherUsageLearningToggled_(self, sender):
         enabled = sender.state() == 1
         self._call("on_launcher_usage_learning_toggle", enabled)
+
+    def launcherSwitchEnglishToggled_(self, sender):
+        enabled = sender.state() == 1
+        self._call("on_launcher_switch_english_toggle", enabled)
 
     def newSnippetHotkeyRecord_(self, sender):
         self._call("on_new_snippet_hotkey_record")

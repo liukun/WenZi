@@ -195,6 +195,8 @@ class ChooserPanel:
         self._esc_source = None  # CFRunLoopSource for ESC tap
         self._is_expanded: bool = False  # Panel height state
         self._show_preview: bool = False  # Preview panel visibility
+        self._switch_english: bool = True
+        self._saved_input_source: Optional[str] = None
         self._compact_results: bool = False  # Compact height for calc-only results
         self._active_source: Optional[ChooserSource] = None  # currently prefix-activated source
 
@@ -495,6 +497,20 @@ class ChooserPanel:
         if self._snippet_expander is not None:
             self._snippet_expander.suppress()
 
+        if self._switch_english:
+            from wenzi.input_source import (
+                get_current_input_source,
+                is_english_input_source,
+                select_english_input_source,
+            )
+
+            current = get_current_input_source()
+            if current and not is_english_input_source(current):
+                self._saved_input_source = current
+                select_english_input_source()
+            else:
+                self._saved_input_source = None
+
         self._fire_event("open")
 
     def close(self) -> None:
@@ -543,6 +559,12 @@ class ChooserPanel:
         self._show_preview = False
         self._compact_results = False
         self._closing = False
+
+        if self._saved_input_source is not None:
+            from wenzi.input_source import select_input_source
+
+            select_input_source(self._saved_input_source)
+            self._saved_input_source = None
 
         # Reactivate the previous app's focused window, then restore accessory mode.
         # Order matters: activate first (without AllWindows) so macOS doesn't
