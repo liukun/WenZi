@@ -6,14 +6,17 @@ import json
 from datetime import datetime, timezone, timedelta
 
 from wenzi.enhance.vocabulary import (
+    HotwordDetail,
     VocabularyEntry,
     VocabularyIndex,
     _parse_timestamp,
     _recency_bonus,
     build_hotword_list,
+    build_hotword_list_detailed,
     get_vocab_entry_count,
     hotword_score,
     load_hotwords,
+    load_hotwords_detailed,
 )
 
 
@@ -809,3 +812,204 @@ class TestBuildHotwordList:
         base = ["Python", "Docker"]
         result = build_hotword_list(idx, history, base)
         assert result == ["Python", "Docker"]
+
+
+# --- HotwordDetail tests ---
+
+
+class TestHotwordDetail:
+    def test_defaults(self):
+        d = HotwordDetail(term="API", layer="base")
+        assert d.term == "API"
+        assert d.layer == "base"
+        assert d.category == "other"
+        assert d.variants == []
+        assert d.context == ""
+        assert d.frequency == 1
+        assert d.last_seen == ""
+        assert d.score == 0.0
+        assert d.recency_bonus == 0
+
+    def test_full_fields(self):
+        d = HotwordDetail(
+            term="Kubernetes",
+            layer="context",
+            category="tech",
+            variants=["k8s"],
+            context="container orchestration",
+            frequency=12,
+            last_seen="2026-03-20T10:00:00+00:00",
+            score=15.0,
+            recency_bonus=3,
+        )
+        assert d.term == "Kubernetes"
+        assert d.layer == "context"
+        assert d.score == 15.0
+        assert d.recency_bonus == 3
+        assert d.variants == ["k8s"]
+
+
+# --- load_hotwords_detailed tests ---
+
+
+class TestLoadHotwordsDetailed:
+    def test_returns_hotword_detail_objects(self, tmp_path):
+        entries = [
+            {"term": "API", "frequency": 5, "category": "tech",
+             "variants": ["api"], "context": "interface"},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords_detailed(data_dir=str(tmp_path), min_frequency=1)
+        assert len(result) == 1
+        assert isinstance(result[0], HotwordDetail)
+        assert result[0].term == "API"
+        assert result[0].layer == "base"
+        assert result[0].category == "tech"
+        assert result[0].variants == ["api"]
+        assert result[0].context == "interface"
+        assert result[0].frequency == 5
+
+    def test_filters_by_frequency(self, tmp_path):
+        entries = [
+            {"term": "High", "frequency": 5},
+            {"term": "Low", "frequency": 1},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords_detailed(data_dir=str(tmp_path), min_frequency=2)
+        assert len(result) == 1
+        assert result[0].term == "High"
+
+    def test_sorts_by_score_desc(self, tmp_path):
+        entries = [
+            {"term": "Low", "frequency": 2},
+            {"term": "High", "frequency": 10},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords_detailed(data_dir=str(tmp_path), min_frequency=1)
+        assert result[0].term == "High"
+        assert result[1].term == "Low"
+
+    def test_recency_bonus_computed(self, tmp_path):
+        now = datetime.now(timezone.utc)
+        recent = (now - timedelta(hours=1)).isoformat()
+        entries = [
+            {"term": "Recent", "frequency": 2, "last_seen": recent},
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords_detailed(data_dir=str(tmp_path), min_frequency=1)
+        assert result[0].recency_bonus == 3  # < 24h
+        assert result[0].score == 5.0  # freq 2 + bonus 3
+
+    def test_max_count(self, tmp_path):
+        entries = [
+            {"term": f"T{i}", "frequency": 10 - i} for i in range(10)
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords_detailed(
+            data_dir=str(tmp_path), min_frequency=1, max_count=3,
+        )
+        assert len(result) == 3
+
+    def test_no_file_returns_empty(self, tmp_path):
+        result = load_hotwords_detailed(data_dir=str(tmp_path))
+        assert result == []
+
+
+# --- build_hotword_list_detailed tests ---
+
+
+class TestBuildHotwordListDetailed:
+    def test_context_layer_marked(self, tmp_path):
+        now = datetime.now(timezone.utc)
+        entries = [
+            {"term": "Python", "category": "tech", "variants": ["派森"],
+             "context": "language", "frequency": 3},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        history = _make_mock_history([
+            {"final_text": "I use Python for data analysis",
+             "timestamp": now.isoformat()},
+        ])
+        result = build_hotword_list_detailed(idx, history, None)
+        assert len(result) == 1
+        assert result[0].layer == "context"
+        assert result[0].term == "Python"
+        assert result[0].category == "tech"
+        assert result[0].frequency == 3
+
+    def test_base_layer_marked(self):
+        base = [
+            HotwordDetail(term="Docker", layer="base", frequency=5, score=5.0),
+        ]
+        result = build_hotword_list_detailed(None, None, base)
+        assert len(result) == 1
+        assert result[0].layer == "base"
+        assert result[0].term == "Docker"
+
+    def test_context_before_base(self, tmp_path):
+        now = datetime.now(timezone.utc)
+        entries = [
+            {"term": "Python", "category": "tech", "variants": ["派森"],
+             "context": "", "frequency": 2},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        history = _make_mock_history([
+            {"final_text": "Python is great",
+             "timestamp": now.isoformat()},
+        ])
+        base = [
+            HotwordDetail(term="Docker", layer="base", frequency=10, score=10.0),
+        ]
+        result = build_hotword_list_detailed(idx, history, base)
+        terms = [d.term for d in result]
+        assert terms.index("Python") < terms.index("Docker")
+
+    def test_deduplication(self, tmp_path):
+        now = datetime.now(timezone.utc)
+        entries = [
+            {"term": "Python", "frequency": 3, "variants": ["派森"]},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        history = _make_mock_history([
+            {"final_text": "Python rocks",
+             "timestamp": now.isoformat()},
+        ])
+        base = [
+            HotwordDetail(term="Python", layer="base", frequency=3, score=3.0),
+        ]
+        result = build_hotword_list_detailed(idx, history, base)
+        assert sum(1 for d in result if d.term == "Python") == 1
+        assert result[0].layer == "context"  # context wins
+
+    def test_all_none_returns_empty(self):
+        result = build_hotword_list_detailed(None, None, None)
+        assert result == []
+
+    def test_max_count(self, tmp_path):
+        now = datetime.now(timezone.utc)
+        entries = [
+            {"term": f"Term{i}", "frequency": 2, "variants": [f"term{i}"]}
+            for i in range(10)
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        history = _make_mock_history([
+            {"final_text": " ".join(f"term{i}" for i in range(10)),
+             "timestamp": now.isoformat()},
+        ])
+        result = build_hotword_list_detailed(idx, history, None, max_count=3)
+        assert len(result) == 3

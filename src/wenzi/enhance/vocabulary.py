@@ -33,6 +33,25 @@ class VocabularyEntry:
     last_seen_ts: float = 0.0  # Epoch seconds (derived at load time, not persisted)
 
 
+LAYER_CONTEXT = "context"
+LAYER_BASE = "base"
+
+
+@dataclass
+class HotwordDetail:
+    """A hotword entry with full metadata for display in the preview panel."""
+
+    term: str
+    layer: str  # LAYER_CONTEXT | LAYER_BASE
+    category: str = "other"
+    variants: List[str] = field(default_factory=list)
+    context: str = ""
+    frequency: int = 1
+    last_seen: str = ""
+    score: float = 0.0
+    recency_bonus: int = 0
+
+
 # Recency tier thresholds: (max_age_seconds, bonus_points)
 _RECENCY_TIERS = (
     (86400.0, 3),  # < 24h → +3
@@ -387,30 +406,57 @@ def _read_raw_entries(data_dir: str = DEFAULT_DATA_DIR) -> List[dict]:
 
 def load_hotwords(
     data_dir: str = DEFAULT_DATA_DIR,
-    min_frequency: int = 2,
+    min_frequency: int = 1,
     max_count: int = 50,
 ) -> List[str]:
     """Load high-frequency vocabulary terms for ASR hotword injection.
 
-    Reads vocabulary.json, filters by frequency, and returns the top terms
-    sorted by frequency descending.
+    Thin wrapper around :func:`load_hotwords_detailed` that returns
+    term strings only.
+    """
+    return [
+        d.term for d in load_hotwords_detailed(data_dir, min_frequency, max_count)
+    ]
 
-    Returns an empty list on error or when no entries qualify.
+
+def load_hotwords_detailed(
+    data_dir: str = DEFAULT_DATA_DIR,
+    min_frequency: int = 1,
+    max_count: int = 50,
+) -> List[HotwordDetail]:
+    """Load high-frequency vocabulary terms with full metadata.
+
+    Reads vocabulary.json, filters by *min_frequency*, scores by
+    ``frequency + recency_bonus``, and returns the top *max_count*
+    entries as :class:`HotwordDetail` with ``layer=LAYER_BASE``.
     """
     entries = _read_raw_entries(data_dir)
-    filtered = [
-        e for e in entries if e.get("frequency", 1) >= min_frequency
-    ]
+    filtered = [e for e in entries if e.get("frequency", 1) >= min_frequency]
     now = datetime.now(timezone.utc).timestamp()
 
-    def _score(e: dict) -> float:
+    details: List[HotwordDetail] = []
+    for e in filtered:
+        if "term" not in e:
+            continue
         ls = e.get("last_seen", "")
         ts = _parse_timestamp(ls) if ls else None
         ls_ts = ts.timestamp() if ts else 0.0
-        return hotword_score(e.get("frequency", 1), ls_ts, now)
+        bonus = _recency_bonus(ls_ts, now)
+        freq = e.get("frequency", 1)
+        details.append(HotwordDetail(
+            term=e["term"],
+            layer=LAYER_BASE,
+            category=e.get("category", "other"),
+            variants=e.get("variants", []),
+            context=e.get("context", ""),
+            frequency=freq,
+            last_seen=ls,
+            score=freq + bonus,
+            recency_bonus=bonus,
+        ))
 
-    filtered.sort(key=_score, reverse=True)
-    return [e["term"] for e in filtered[:max_count] if "term" in e]
+    details.sort(key=lambda d: -d.score)
+    return details[:max_count]
 
 
 def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
@@ -432,9 +478,38 @@ def _parse_timestamp(ts: str) -> Optional[datetime]:
         return None
 
 
+def _extract_context_entries(
+    vocab_index: VocabularyIndex,
+    conversation_history: "ConversationHistory",
+    max_recent: int,
+    max_age_hours: float,
+) -> List[VocabularyEntry]:
+    """Extract vocabulary entries matching recent conversation text.
+
+    Shared helper for :func:`build_hotword_list_detailed`.
+    """
+    records = conversation_history.get_recent(n=max_recent)
+    now_dt = datetime.now(timezone.utc)
+    texts: List[str] = []
+    for record in records:
+        ts_str = record.get("timestamp", "")
+        ts = _parse_timestamp(ts_str)
+        if ts is not None:
+            age_hours = (now_dt - ts).total_seconds() / 3600.0
+            if age_hours > max_age_hours:
+                continue
+        final = record.get("final_text", "")
+        if final:
+            texts.append(final)
+
+    if not texts:
+        return []
+    return vocab_index.find_terms_in_text(" ".join(texts))
+
+
 def build_hotword_list(
     vocab_index: Optional[VocabularyIndex],
-    conversation_history: Optional[ConversationHistory],
+    conversation_history: Optional["ConversationHistory"],
     base_hotwords: Optional[List[str]],
     *,
     max_count: int = 50,
@@ -443,45 +518,69 @@ def build_hotword_list(
 ) -> Optional[List[str]]:
     """Build a two-layer hotword list for ASR injection.
 
-    Layer 1 (context): Extract terms from recent conversation history.
-    Layer 2 (base): Static high-frequency hotwords from ``load_hotwords()``.
+    Thin wrapper around :func:`build_hotword_list_detailed` that returns
+    term strings only.  Returns None when no hotwords are available.
+    """
+    # Convert base strings to HotwordDetail for the detailed builder
+    base_detail: Optional[List[HotwordDetail]] = None
+    if base_hotwords:
+        base_detail = [HotwordDetail(term=t, layer=LAYER_BASE) for t in base_hotwords]
+
+    details = build_hotword_list_detailed(
+        vocab_index, conversation_history, base_detail,
+        max_count=max_count, max_recent=max_recent, max_age_hours=max_age_hours,
+    )
+    return [d.term for d in details] if details else None
+
+
+def build_hotword_list_detailed(
+    vocab_index: Optional[VocabularyIndex],
+    conversation_history: Optional["ConversationHistory"],
+    base_hotwords_detail: Optional[List[HotwordDetail]],
+    *,
+    max_count: int = 50,
+    max_recent: int = 15,
+    max_age_hours: float = 2.0,
+) -> List[HotwordDetail]:
+    """Build a two-layer hotword list with full metadata for display.
+
+    Layer 1 (context): terms from recent conversation history.
+    Layer 2 (base): static high-frequency hotwords.
 
     Context-layer terms are placed first; base-layer terms fill remaining
-    slots (deduplicated).  Returns None when no hotwords are available.
+    slots (deduplicated).
     """
-    context_terms: List[str] = []
+    context_details: List[HotwordDetail] = []
+    now = datetime.now(timezone.utc).timestamp()
 
-    # Context layer: extract terms from recent conversation final_text
     if vocab_index is not None and vocab_index.is_loaded and conversation_history is not None:
         try:
-            records = conversation_history.get_recent(n=max_recent)
-            now = datetime.now(timezone.utc)
-            texts: List[str] = []
-            for record in records:
-                ts_str = record.get("timestamp", "")
-                ts = _parse_timestamp(ts_str)
-                if ts is not None:
-                    age_hours = (now - ts).total_seconds() / 3600.0
-                    if age_hours > max_age_hours:
-                        continue
-                final = record.get("final_text", "")
-                if final:
-                    texts.append(final)
-
-            if texts:
-                combined = " ".join(texts)
-                entries = vocab_index.find_terms_in_text(combined)
-                context_terms = [e.term for e in entries]
+            entries = _extract_context_entries(
+                vocab_index, conversation_history, max_recent, max_age_hours,
+            )
+            for entry in entries:
+                bonus = _recency_bonus(entry.last_seen_ts, now)
+                context_details.append(HotwordDetail(
+                    term=entry.term,
+                    layer=LAYER_CONTEXT,
+                    category=entry.category,
+                    variants=entry.variants,
+                    context=entry.context,
+                    frequency=entry.frequency,
+                    last_seen=entry.last_seen,
+                    score=entry.frequency + bonus,
+                    recency_bonus=bonus,
+                ))
         except Exception as e:
-            logger.warning("Failed to build context hotwords: %s", e)
+            logger.warning("Failed to build context hotword details: %s", e)
 
     # Merge: context first, base fills remaining slots (deduplicated)
     seen: set[str] = set()
-    result: List[str] = []
-    for term in [*context_terms, *(base_hotwords or ())]:
-        lower = term.lower()
+    result: List[HotwordDetail] = []
+    for detail in [*context_details, *(base_hotwords_detail or ())]:
+        lower = detail.term.lower()
         if lower not in seen and len(result) < max_count:
             seen.add(lower)
-            result.append(term)
+            result.append(detail)
 
-    return result if result else None
+    return result

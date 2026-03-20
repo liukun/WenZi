@@ -540,7 +540,7 @@ class PreviewController:
                 app._transcriber.skip_punc = bool(
                     app._enhancer and app._enhancer.is_active
                 )
-                hotwords = app._build_dynamic_hotwords()
+                hotwords, hotwords_detail = app._build_dynamic_hotwords()
                 text = app._transcriber.transcribe(wav_data, hotwords=hotwords)
                 if text and text.strip():
                     stt_text = text.strip()
@@ -563,6 +563,7 @@ class PreviewController:
                 new_asr_info = "  ".join(parts)
 
                 def _on_stt_done():
+                    app._preview_panel.set_hotwords(hotwords_detail)
                     app._preview_panel.set_asr_result(
                         stt_text, asr_info=new_asr_info, request_id=0,
                     )
@@ -1103,8 +1104,15 @@ class PreviewController:
                 new_transcriber.skip_punc = bool(
                     app._enhancer and app._enhancer.is_active
                 )
-                hotwords = app._build_dynamic_hotwords()
-                new_text = new_transcriber.transcribe(wav_data, hotwords=hotwords)
+                # Reuse cached hotwords — same audio, context unchanged
+                cached_detail = app._preview_panel.hotwords_detail
+                hotword_terms = (
+                    [d.term for d in cached_detail]
+                    if cached_detail else None
+                )
+                new_text = new_transcriber.transcribe(
+                    wav_data, hotwords=hotword_terms,
+                )
 
                 # Build new ASR info (duration only since model is in popup)
                 audio_duration = getattr(app, "_preview_audio_duration", 0.0)
