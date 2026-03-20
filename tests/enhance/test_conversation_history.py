@@ -353,7 +353,7 @@ class TestConversationHistoryFormatEntryLine:
     def test_different_asr_and_final(self):
         entry = {"asr_text": "hello", "final_text": "Hello!"}
         result = ConversationHistory.format_entry_line(entry)
-        assert result == "- [hello→Hello!]"
+        assert result == "- [hello→Hello]!"
 
     def test_newlines_replaced(self):
         entry = {"asr_text": "a\nb", "final_text": "a\nc"}

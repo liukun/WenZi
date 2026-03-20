@@ -29,6 +29,85 @@ def _is_punctuation_only(text: str) -> bool:
     )
 
 
+def _strip_boundary_punctuation(text: str) -> tuple[str, str, str]:
+    """Strip leading/trailing punctuation from *text*.
+
+    Returns ``(leading_punc, core, trailing_punc)``.
+    """
+    start = 0
+    while start < len(text) and unicodedata.category(text[start])[0] in ("P", "S"):
+        start += 1
+    end = len(text)
+    while end > start and unicodedata.category(text[end - 1])[0] in ("P", "S"):
+        end -= 1
+    return text[:start], text[start:end], text[end:]
+
+
+def _merge_adjacent_opcodes(
+    opcodes: List[tuple],
+    asr_tokens: List[str],
+    final_tokens: List[str],
+) -> List[tuple]:
+    """Merge a delete immediately followed by a replace (or vice versa).
+
+    When SequenceMatcher produces ``delete + equal(whitespace/punc) + replace``
+    or ``delete + replace``, the delete portion is semantically part of the
+    same user correction.  Merge them into a single replace so the deleted
+    text is not silently lost.  Same logic applies for ``replace + equal + delete``
+    and ``replace + delete``.
+    """
+    merged: List[tuple] = list(opcodes)
+    changed = True
+    while changed:
+        changed = False
+        new: List[tuple] = []
+        i = 0
+        while i < len(merged):
+            op, i1, i2, j1, j2 = merged[i]
+
+            if i + 1 < len(merged):
+                nop, ni1, ni2, nj1, nj2 = merged[i + 1]
+
+                # delete + replace → single replace
+                if op == "delete" and nop == "replace":
+                    new.append(("replace", i1, ni2, j1, nj2))
+                    i += 2
+                    changed = True
+                    continue
+
+                # replace + delete → single replace
+                if op == "replace" and nop == "delete":
+                    new.append(("replace", i1, ni2, j1, nj2))
+                    i += 2
+                    changed = True
+                    continue
+
+                # delete + equal(punc/whitespace only) + replace → single replace
+                if op == "delete" and nop == "equal" and i + 2 < len(merged):
+                    nnop, nni1, nni2, nnj1, nnj2 = merged[i + 2]
+                    gap = "".join(asr_tokens[ni1:ni2])
+                    if nnop == "replace" and _is_punctuation_only(gap):
+                        new.append(("replace", i1, nni2, j1, nnj2))
+                        i += 3
+                        changed = True
+                        continue
+
+                # replace + equal(punc/whitespace only) + delete → single replace
+                if op == "replace" and nop == "equal" and i + 2 < len(merged):
+                    nnop, nni1, nni2, nnj1, nnj2 = merged[i + 2]
+                    gap = "".join(asr_tokens[ni1:ni2])
+                    if nnop == "delete" and _is_punctuation_only(gap):
+                        new.append(("replace", i1, nni2, j1, nnj2))
+                        i += 3
+                        changed = True
+                        continue
+
+            new.append(merged[i])
+            i += 1
+        merged = new
+    return merged
+
+
 def inline_diff(asr: str, final: str) -> str:
     """Produce an inline diff between ASR text and corrected text.
 
@@ -37,9 +116,13 @@ def inline_diff(asr: str, final: str) -> str:
     omitted) since they carry no ASR-misrecognition information
     useful for vocabulary extraction.
 
+    Adjacent delete + replace sequences are merged into a single
+    replacement so that deleted tokens are not silently lost.
+
     Punctuation-only replacements (e.g. half-width to full-width
     ``[,→，]``) are also applied silently — they are ASR/input-method
-    artifacts, not meaningful corrections.
+    artifacts, not meaningful corrections.  Boundary punctuation on
+    replacement content is stripped outside the brackets.
     """
     if asr == final:
         return asr
@@ -47,9 +130,12 @@ def inline_diff(asr: str, final: str) -> str:
     asr_tokens = tokenize_for_diff(asr)
     final_tokens = tokenize_for_diff(final)
     matcher = difflib.SequenceMatcher(None, asr_tokens, final_tokens)
+    opcodes = _merge_adjacent_opcodes(
+        matcher.get_opcodes(), asr_tokens, final_tokens,
+    )
 
     parts: List[str] = []
-    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+    for op, i1, i2, j1, j2 in opcodes:
         if op == "equal":
             parts.append("".join(asr_tokens[i1:i2]))
         elif op == "replace":
@@ -58,11 +144,24 @@ def inline_diff(asr: str, final: str) -> str:
             if _is_punctuation_only(old_raw) and _is_punctuation_only(new_raw):
                 parts.append(new_raw)
             else:
-                old = old_raw.strip()
-                new = new_raw.strip()
+                # Strip whitespace
+                old_ws = old_raw.strip()
+                new_ws = new_raw.strip()
                 leading = new_raw[: len(new_raw) - len(new_raw.lstrip())]
                 trailing = new_raw[len(new_raw.rstrip()) :]
-                parts.append(f"{leading}[{old}→{new}]{trailing}")
+                # Strip boundary punctuation from old/new
+                old_lead_p, old, old_trail_p = _strip_boundary_punctuation(old_ws)
+                new_lead_p, new, new_trail_p = _strip_boundary_punctuation(new_ws)
+                if not old and not new:
+                    # Both sides are punctuation-only after stripping
+                    parts.append(f"{leading}{new_ws}{trailing}")
+                elif not old:
+                    # Old side became empty — treat as insertion
+                    parts.append(f"{leading}{new_ws}{trailing}")
+                else:
+                    parts.append(
+                        f"{leading}{old_lead_p}[{old}→{new}]{new_trail_p}{trailing}"
+                    )
         elif op == "insert":
             parts.append("".join(final_tokens[j1:j2]))
         # delete: omit old text silently

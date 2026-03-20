@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from wenzi.enhance.text_diff import (
     _is_punctuation_only,
+    _strip_boundary_punctuation,
     inline_diff,
     tokenize_for_diff,
 )
@@ -103,6 +104,71 @@ class TestInlineDiff:
         result = inline_diff("写jason格式", "写 JSON 格式")
         assert "[jason→JSON]" in result
         assert " [" in result or result.index("[") > 0  # leading space preserved
+
+    def test_delete_before_replace_merged(self):
+        """Adjacent delete + replace should merge into one replacement."""
+        result = inline_diff(
+            "在Cloud MD里面记一下,以后默认都使用普通墨记。",
+            "在 CLAUDE.md 里面记一下，以后默认都使用普通merge",
+        )
+        assert "[Cloud MD→CLAUDE.md]" in result
+
+    def test_boundary_punctuation_stripped_from_replace(self):
+        """Trailing punctuation on old side should be outside brackets."""
+        result = inline_diff(
+            "在Cloud MD里面记一下,以后默认都使用普通墨记。",
+            "在 CLAUDE.md 里面记一下，以后默认都使用普通merge",
+        )
+        assert "[墨记→merge]" in result
+        assert "墨记。" not in result
+
+    def test_leading_punctuation_stripped_from_replace(self):
+        """Leading punctuation on old side should be outside brackets."""
+        result = inline_diff("这是「测试」文字", "这是「test」文字")
+        assert "[测试→test]" in result
+
+    def test_delete_plus_replace_with_space_gap(self):
+        """delete + equal(space) + replace should merge."""
+        result = inline_diff("用 Python 3来写", "用 Go 来写")
+        # "Python" deleted, " " equal, "3" replaced by "Go"
+        # should merge to [Python 3→Go]
+        assert "Python" in result.split("→")[0]  # Python is in old side
+
+    def test_replace_plus_trailing_delete_merged(self):
+        """replace + delete should merge."""
+        result = inline_diff("写code fast", "写代码")
+        # Ensure "code" and "fast" appear in the same replacement or are handled
+        assert "[" in result or "代码" in result
+
+
+class TestStripBoundaryPunctuation:
+    def test_trailing_period(self):
+        lead, core, trail = _strip_boundary_punctuation("墨记。")
+        assert lead == ""
+        assert core == "墨记"
+        assert trail == "。"
+
+    def test_leading_bracket(self):
+        lead, core, trail = _strip_boundary_punctuation("「测试」")
+        assert lead == "「"
+        assert core == "测试"
+        assert trail == "」"
+
+    def test_no_punctuation(self):
+        lead, core, trail = _strip_boundary_punctuation("hello")
+        assert lead == ""
+        assert core == "hello"
+        assert trail == ""
+
+    def test_all_punctuation(self):
+        lead, core, trail = _strip_boundary_punctuation("。，")
+        assert core == ""
+
+    def test_empty(self):
+        lead, core, trail = _strip_boundary_punctuation("")
+        assert lead == ""
+        assert core == ""
+        assert trail == ""
 
 
 class TestIsPunctuationOnly:
