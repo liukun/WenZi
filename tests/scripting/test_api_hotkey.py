@@ -1,7 +1,8 @@
-"""Tests for vt.hotkey API — leader-key logic."""
+"""Tests for wz.hotkey API — leader-key logic and custom key registration."""
 
 from unittest.mock import patch, MagicMock
 
+from wenzi.hotkey import _SPECIAL_VK, _VK_TO_NAME, _ALL_KEY_NAMES, unregister_custom_keys
 from wenzi.scripting.registry import LeaderMapping, ScriptingRegistry
 from wenzi.scripting.api.hotkey import HotkeyAPI
 
@@ -107,3 +108,44 @@ class TestHotkeyAPI:
         api._leader_alert = MagicMock()
         api.stop()
         mock_call_after.assert_called_with(api._leader_alert.close)
+
+
+class TestDefineKeys:
+    """Tests for HotkeyAPI.define_key / define_keys."""
+
+    def setup_method(self):
+        unregister_custom_keys()
+
+    def teardown_method(self):
+        unregister_custom_keys()
+
+    def test_define_key(self):
+        reg = ScriptingRegistry()
+        api = HotkeyAPI(reg)
+        api.define_key("kp+", 69)
+        assert _SPECIAL_VK["kp+"] == 69
+        assert _VK_TO_NAME[69] == "kp+"
+        assert "kp+" in _ALL_KEY_NAMES
+
+    def test_define_keys_batch(self):
+        reg = ScriptingRegistry()
+        api = HotkeyAPI(reg)
+        api.define_keys({"kp-": 78, "kp*": 67, "kp/": 75})
+        assert _SPECIAL_VK["kp-"] == 78
+        assert _SPECIAL_VK["kp*"] == 67
+        assert _SPECIAL_VK["kp/"] == 75
+
+    @patch.object(HotkeyAPI, "_execute_mapping")
+    @patch("wenzi.scripting.api.hotkey.AppHelper", create=True)
+    def test_leader_with_custom_key(self, mock_helper, mock_exec):
+        """Custom keys should work in leader mappings."""
+        reg = ScriptingRegistry()
+        api = HotkeyAPI(reg)
+        api.define_key("kp+", 69)
+        reg.register_leader("cmd_r", [
+            LeaderMapping(key="kp+", desc="plus", func=lambda: None),
+        ])
+        api._on_press("cmd_r")
+        result = api._on_press("kp+")
+        assert result is True
+        assert api._leader_triggered is True

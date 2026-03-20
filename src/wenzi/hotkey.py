@@ -30,9 +30,18 @@ _SPECIAL_VK = {
     "f1": 122, "f2": 120, "f3": 99, "f4": 118,
     "f5": 96, "f6": 97, "f7": 98, "f8": 100,
     "f9": 101, "f10": 109, "f11": 103, "f12": 111,
+    "f13": 105, "f14": 107, "f15": 113, "f16": 106,
+    "f17": 64, "f18": 79, "f19": 80, "f20": 90,
     "fn": 63, "esc": 53, "space": 49,
     "return": 36, "delete": 51, "tab": 48,
     "up": 126, "down": 125, "left": 123, "right": 124,
+    "printscreen": 105,  # PC keyboards map PrintScreen to F13
+    # Keypad (kp = keypad, distinguishes from main keyboard keys)
+    "kp0": 82, "kp1": 83, "kp2": 84, "kp3": 85,
+    "kp4": 86, "kp5": 87, "kp6": 88, "kp7": 89,
+    "kp8": 91, "kp9": 92,
+    "kp.": 65, "kp*": 67, "kp+": 69, "kp-": 78,
+    "kp/": 75, "kp_enter": 76, "kp=": 81, "kp_clear": 71,
 }
 
 # Modifier key virtual keycodes and their CGEventFlags bitmask
@@ -52,6 +61,11 @@ _VK_TO_NAME.update({vk: name for name, (vk, _flag) in _MOD_VK.items()})
 # All known key names (for validation)
 _ALL_KEY_NAMES = set(_KEYCODE_MAP) | set(_SPECIAL_VK) | set(_MOD_VK) | {"option", "command"}
 
+# Snapshot built-in maps so script-registered keys can be cleanly reverted
+_BUILTIN_SPECIAL_VK = dict(_SPECIAL_VK)
+_BUILTIN_VK_TO_NAME = dict(_VK_TO_NAME)
+_BUILTIN_ALL_KEY_NAMES = set(_ALL_KEY_NAMES)
+
 # Modifier key names (for combo hotkey recording)
 MODIFIER_KEY_NAMES = set(_MOD_VK.keys())  # {"cmd", "cmd_r", "ctrl", ...}
 
@@ -65,6 +79,24 @@ _MOD_FLAGS = {
 _MOD_MASK = 0x100000 | 0x040000 | 0x080000 | 0x020000
 _FN_FLAG = 0x800000  # NSEventModifierFlagFunction
 _FN_KEYCODE = 63
+
+
+def register_custom_key(name: str, keycode: int) -> None:
+    """Register a custom key name → virtual keycode mapping (for user scripts)."""
+    name = name.strip().lower()
+    _SPECIAL_VK[name] = keycode
+    _VK_TO_NAME[keycode] = name
+    _ALL_KEY_NAMES.add(name)
+
+
+def unregister_custom_keys() -> None:
+    """Remove all script-registered keys and restore built-in maps."""
+    _SPECIAL_VK.clear()
+    _SPECIAL_VK.update(_BUILTIN_SPECIAL_VK)
+    _VK_TO_NAME.clear()
+    _VK_TO_NAME.update(_BUILTIN_VK_TO_NAME)
+    _ALL_KEY_NAMES.clear()
+    _ALL_KEY_NAMES.update(_BUILTIN_ALL_KEY_NAMES)
 
 
 def _name_to_vk(name: str) -> int:
@@ -87,9 +119,17 @@ def _is_fn_key(name: str) -> bool:
     return name.strip().lower() == "fn"
 
 
+_MODIFIER_VKS = frozenset(vk for vk, _flag in _MOD_VK.values())
+
+
 def _is_modifier_vk(vk: int) -> bool:
     """Check if a virtual keycode is a modifier key."""
-    return any(vk == mod_vk for mod_vk, _flag in _MOD_VK.values())
+    return vk in _MODIFIER_VKS
+
+
+def _is_modifier_like_vk(vk: int) -> bool:
+    """Check if a virtual keycode is a modifier or fn (no character output)."""
+    return vk in _MODIFIER_VKS or vk == _FN_KEYCODE
 
 
 def _parse_hotkey_for_quartz(hotkey_str: str) -> tuple[int, int]:
@@ -551,6 +591,7 @@ class MultiHotkeyListener:
         self._record_timeout_cb: Optional[Callable[[], None]] = None
         self._record_timer: Optional[threading.Timer] = None
 
+        self._has_non_modifier_trigger = False
         for name in key_names:
             n = name.strip().lower()
             if n == "option":
@@ -560,11 +601,16 @@ class MultiHotkeyListener:
             vk = _name_to_vk(n)
             self._target_vks[vk] = n
             self._enabled_names.add(n)
+            if not _is_modifier_like_vk(vk):
+                self._has_non_modifier_trigger = True
 
     def start(self) -> None:
-        # Use active tap when callbacks need to swallow keys
+        # Use active tap when callbacks need to swallow keys, or when
+        # a trigger key is a non-modifier (e.g. numpad) that must be
+        # intercepted to prevent it from reaching the focused app.
         listen_only = (
-            self._on_restart is None
+            not self._has_non_modifier_trigger
+            and self._on_restart is None
             and self._on_cancel is None
             and self._on_preview_history is None
             and self._on_mode_prev is None
@@ -726,6 +772,10 @@ class MultiHotkeyListener:
                 if name in self._enabled_names and name not in self._held:
                     self._held.add(name)
                     action = "press"
+                elif name in self._held:
+                    # Key repeat of already-held trigger — swallow to
+                    # prevent characters leaking into the focused app.
+                    return True
                 elif self._on_restart and self._held and name == self._restart_key:
                     action = "restart"
                 elif self._on_cancel and self._held and name == self._cancel_key:
@@ -761,6 +811,12 @@ class MultiHotkeyListener:
                     except Exception as e:
                         logger.error("on_press callback error: %s", e)
                 threading.Thread(target=_run_press, daemon=True).start()
+                # Swallow non-modifier trigger keys to prevent input
+                # reaching the focused app (e.g. numpad keys).
+                if self._has_non_modifier_trigger:
+                    vk = _name_to_vk(name)
+                    if not _is_modifier_like_vk(vk):
+                        return True
             elif action == "restart":
                 # Dispatch to background thread (same rationale as press)
                 def _run_restart():

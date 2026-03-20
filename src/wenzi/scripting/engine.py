@@ -86,6 +86,10 @@ class ScriptEngine:
             logger.info("Reloading scripts...")
             self.stop()
             self._purge_user_modules()
+            # Restore built-in key maps before scripts re-register custom keys
+            from wenzi.hotkey import unregister_custom_keys
+
+            unregister_custom_keys()
             # Reset APIs so they create fresh instances
             self._wz._hotkey_api = None
             self._wz._chooser_api = None

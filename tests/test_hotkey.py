@@ -9,9 +9,13 @@ from wenzi.hotkey import (
     _is_fn_key,
     _name_to_vk,
     _parse_hotkey_for_quartz,
+    _ALL_KEY_NAMES,
     _KEYCODE_MAP,
     _MOD_FLAGS,
+    _SPECIAL_VK,
     _VK_TO_NAME,
+    register_custom_key,
+    unregister_custom_keys,
     HoldHotkeyListener,
     TapHotkeyListener,
     MultiHotkeyListener,
@@ -56,6 +60,68 @@ class TestIsFnKey:
     def test_non_fn(self):
         assert _is_fn_key("f2") is False
         assert _is_fn_key("cmd") is False
+
+
+class TestCustomKeyRegistration:
+    """Tests for register_custom_key / unregister_custom_keys."""
+
+    def setup_method(self):
+        # Ensure clean state before each test
+        unregister_custom_keys()
+
+    def teardown_method(self):
+        # Restore built-in maps after each test
+        unregister_custom_keys()
+
+    def test_register_new_key(self):
+        register_custom_key("kp+", 69)
+        assert _name_to_vk("kp+") == 69
+        assert _VK_TO_NAME[69] == "kp+"
+        assert "kp+" in _ALL_KEY_NAMES
+
+    def test_register_multiple_keys(self):
+        register_custom_key("kp-", 78)
+        register_custom_key("kp*", 67)
+        assert _name_to_vk("kp-") == 78
+        assert _name_to_vk("kp*") == 67
+
+    def test_unregister_removes_custom_keys(self):
+        register_custom_key("mykey", 200)
+        assert "mykey" in _ALL_KEY_NAMES
+        unregister_custom_keys()
+        assert "mykey" not in _ALL_KEY_NAMES
+        assert 200 not in _VK_TO_NAME
+        assert "mykey" not in _SPECIAL_VK
+
+    def test_unregister_restores_overwritten_builtin(self):
+        original_vk = _SPECIAL_VK["space"]
+        register_custom_key("space", 999)
+        assert _SPECIAL_VK["space"] == 999
+        assert _VK_TO_NAME[999] == "space"
+        unregister_custom_keys()
+        assert _SPECIAL_VK["space"] == original_vk
+        assert _VK_TO_NAME[original_vk] == "space"
+        assert 999 not in _VK_TO_NAME
+
+    def test_unregister_restores_overwritten_reverse_mapping(self):
+        # keycode 49 is "space" — register a custom key with the same keycode
+        assert _VK_TO_NAME[49] == "space"
+        register_custom_key("my_key", 49)
+        assert _VK_TO_NAME[49] == "my_key"
+        unregister_custom_keys()
+        assert _VK_TO_NAME[49] == "space"
+        assert "my_key" not in _ALL_KEY_NAMES
+
+    def test_name_normalized_lowercase(self):
+        register_custom_key("  KP_Enter  ", 76)
+        assert _name_to_vk("kp_enter") == 76
+
+    def test_idempotent_unregister(self):
+        """Calling unregister twice should be safe."""
+        register_custom_key("mykey", 200)
+        unregister_custom_keys()
+        unregister_custom_keys()
+        assert "mykey" not in _ALL_KEY_NAMES
 
 
 class TestVkToName:

@@ -23,6 +23,17 @@ class HotkeyAPI:
         self._leader_triggered: bool = False
         self._lock = threading.Lock()
 
+    def define_key(self, name: str, keycode: int) -> None:
+        """Define a custom key mapping for use in hotkeys and leader keys."""
+        from wenzi.hotkey import register_custom_key
+
+        register_custom_key(name, keycode)
+
+    def define_keys(self, mapping: dict[str, int]) -> None:
+        """Define multiple custom key mappings at once."""
+        for name, keycode in mapping.items():
+            self.define_key(name, keycode)
+
     def bind(self, hotkey_str: str, callback: Callable) -> None:
         """Bind a hotkey combination (e.g. "ctrl+cmd+v")."""
         self._registry.register_hotkey(hotkey_str, callback)
@@ -125,7 +136,11 @@ class HotkeyAPI:
                     )
                 except Exception:
                     pass
-                return False  # Don't swallow the modifier FlagsChanged
+                # Swallow non-modifier trigger keys to prevent input;
+                # modifier keys (FlagsChanged) should not be swallowed.
+                from wenzi.hotkey import _is_modifier_like_vk, _name_to_vk
+
+                return not _is_modifier_like_vk(_name_to_vk(name))
 
         return False
 
