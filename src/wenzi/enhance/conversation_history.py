@@ -205,6 +205,7 @@ class ConversationHistory:
         llm_model: str = "",
         user_corrected: bool = False,
         audio_duration: float = 0.0,
+        input_context: Any = None,
     ) -> str:
         """Write a single conversation record to the JSONL file.
 
@@ -226,6 +227,9 @@ class ConversationHistory:
             "user_corrected": user_corrected,
             "audio_duration": round(audio_duration, 1),
         }
+
+        if input_context is not None:
+            record["input_context"] = input_context.to_dict()
 
         with open(self._history_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -697,7 +701,7 @@ class ConversationHistory:
     _MAX_PROMPT_CHARS = 2000
 
     @staticmethod
-    def format_entry_line(entry: Dict[str, Any]) -> str:
+    def format_entry_line(entry: Dict[str, Any], context_level: str = "off") -> str:
         """Format a single history entry as a prompt line.
 
         Uses inline diff notation: unchanged text appears as-is, and
@@ -706,7 +710,17 @@ class ConversationHistory:
         """
         asr = entry.get("asr_text", "").replace("\n", "\u23ce")
         final = entry.get("final_text", "").replace("\n", "\u23ce")
-        return f"- {inline_diff(asr, final)}"
+        line = f"- {inline_diff(asr, final)}"
+        if context_level != "off":
+            ic_data = entry.get("input_context")
+            if ic_data:
+                from wenzi.input_context import InputContext
+                ic = InputContext.from_dict(ic_data)
+                if ic:
+                    tag = ic.format_for_history_tag(context_level)
+                    if tag:
+                        line = f"{line} ({tag})"
+        return line
 
     def format_for_prompt(
         self, entries: List[Dict[str, Any]], max_chars: int = 0
