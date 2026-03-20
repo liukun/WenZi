@@ -684,16 +684,54 @@ class TestMergeEntries:
         assert " " not in result[0]["variants"]
         assert set(result[0]["variants"]) == {"派森", "拍森"}
 
+    def test_merge_keeps_newer_last_seen(self):
+        """Merging should keep the more recent last_seen."""
+        builder = VocabularyBuilder(_make_config())
+        existing = [
+            {"term": "Python", "variants": ["派森"], "frequency": 2, "last_seen": "2026-01-01T00:00:00+00:00"}
+        ]
+        new = [
+            {"term": "Python", "variants": [], "last_seen": "2026-02-01T00:00:00+00:00"}
+        ]
+        result = builder._merge_entries(existing, new)
+        assert result[0]["last_seen"] == "2026-02-01T00:00:00+00:00"
+
+    def test_merge_keeps_existing_last_seen_when_newer(self):
+        """Existing last_seen should be kept if it's newer."""
+        builder = VocabularyBuilder(_make_config())
+        existing = [
+            {"term": "Python", "variants": [], "frequency": 2, "last_seen": "2026-03-01T00:00:00+00:00"}
+        ]
+        new = [
+            {"term": "Python", "variants": [], "last_seen": "2026-01-01T00:00:00+00:00"}
+        ]
+        result = builder._merge_entries(existing, new)
+        assert result[0]["last_seen"] == "2026-03-01T00:00:00+00:00"
+
+    def test_merge_new_entry_preserves_last_seen(self):
+        """New entries should preserve their last_seen field."""
+        builder = VocabularyBuilder(_make_config())
+        new = [
+            {"term": "Python", "variants": ["派森"], "last_seen": "2026-01-15T00:00:00+00:00"}
+        ]
+        result = builder._merge_entries([], new)
+        assert result[0]["last_seen"] == "2026-01-15T00:00:00+00:00"
+
 
 class TestCountFrequencies:
     """Tests for _count_frequencies — actual correction counting."""
 
     def _make_records(self, pairs):
-        """Create correction records from (asr_text, final_text) pairs."""
-        return [
-            {"asr_text": asr, "final_text": final, "user_corrected": True}
-            for asr, final in pairs
-        ]
+        """Create correction records from (asr_text, final_text[, timestamp]) tuples."""
+        result = []
+        for item in pairs:
+            if len(item) == 3:
+                asr, final, ts = item
+            else:
+                asr, final = item
+                ts = ""
+            result.append({"asr_text": asr, "final_text": final, "timestamp": ts, "user_corrected": True})
+        return result
 
     def test_known_variant_in_asr(self):
         """Condition 1: known variant in asr_text → counted."""
@@ -794,6 +832,40 @@ class TestCountFrequencies:
         entries = [{"term": "Python", "variants": ["派森"], "frequency": 10}]
         builder._count_frequencies(entries, [])
         assert entries[0]["frequency"] == 1
+
+    def test_last_seen_tracks_latest_timestamp(self):
+        """last_seen should be set to the latest matching record's timestamp."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Python", "variants": ["派森"], "frequency": 1}]
+        records = self._make_records([
+            ("我用派森写代码", "我用Python写代码", "2026-01-01T10:00:00+00:00"),
+            ("这个派森脚本", "这个Python脚本", "2026-01-03T12:00:00+00:00"),
+            ("又用派森了", "又用Python了", "2026-01-02T08:00:00+00:00"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["last_seen"] == "2026-01-03T12:00:00+00:00"
+        assert entries[0]["frequency"] == 3
+
+    def test_last_seen_empty_when_no_match(self):
+        """last_seen should remain empty when no records match."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Rare", "variants": ["稀有"], "frequency": 5}]
+        records = self._make_records([
+            ("今天天气很好", "今天天气很好", "2026-01-01T10:00:00+00:00"),
+        ])
+        builder._count_frequencies(entries, records)
+        assert entries[0]["last_seen"] == ""
+
+    def test_last_seen_preserves_existing(self):
+        """Existing last_seen is kept if no newer match is found."""
+        builder = VocabularyBuilder(_make_config())
+        entries = [{"term": "Python", "variants": ["派森"], "frequency": 1, "last_seen": "2026-02-01T00:00:00+00:00"}]
+        records = self._make_records([
+            ("我用派森", "我用Python", "2026-01-15T00:00:00+00:00"),
+        ])
+        builder._count_frequencies(entries, records)
+        # Existing last_seen (Feb 1) is newer than record (Jan 15), so it stays
+        assert entries[0]["last_seen"] == "2026-02-01T00:00:00+00:00"
 
 
 class TestBuild:

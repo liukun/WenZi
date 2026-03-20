@@ -531,7 +531,8 @@ class RecordingController:
                     app._transcriber.skip_punc = bool(
                         app._enhancer and app._enhancer.is_active
                     )
-                    text = app._transcriber.transcribe(wav_data)
+                    hotwords, _ = app._build_dynamic_hotwords()
+                    text = app._transcriber.transcribe(wav_data, hotwords=hotwords)
                     if direct_cancel.is_set():
                         logger.info("Transcription cancelled via ESC (after transcribe)")
                         return

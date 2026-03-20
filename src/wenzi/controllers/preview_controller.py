@@ -174,6 +174,7 @@ class PreviewController:
             system_prompt=result_holder.get("system_prompt", ""),
             thinking_text=result_holder.get("thinking_text", ""),
             token_usage=result_holder.get("token_usage"),
+            hotwords_detail=list(app._preview_panel.hotwords_detail),
         )
         self._preview_history.add(record)
 
@@ -235,6 +236,7 @@ class PreviewController:
         if record.audio_duration > 0:
             asr_info = f"{record.audio_duration:.1f}s"
 
+        app._preview_panel.set_hotwords(record.hotwords_detail)
         app._preview_panel.load_history_record(
             asr_text=record.asr_text,
             enhanced_text=record.enhanced_text,
@@ -540,7 +542,8 @@ class PreviewController:
                 app._transcriber.skip_punc = bool(
                     app._enhancer and app._enhancer.is_active
                 )
-                text = app._transcriber.transcribe(wav_data)
+                hotwords, hotwords_detail = app._build_dynamic_hotwords()
+                text = app._transcriber.transcribe(wav_data, hotwords=hotwords)
                 if text and text.strip():
                     stt_text = text.strip()
                 else:
@@ -562,6 +565,7 @@ class PreviewController:
                 new_asr_info = "  ".join(parts)
 
                 def _on_stt_done():
+                    app._preview_panel.set_hotwords(hotwords_detail)
                     app._preview_panel.set_asr_result(
                         stt_text, asr_info=new_asr_info, request_id=0,
                     )
@@ -1080,6 +1084,7 @@ class PreviewController:
                         language=preset.language or asr_cfg.get("language"),
                         model=preset.model,
                         temperature=asr_cfg.get("temperature"),
+                        hotwords=app._load_hotwords(),
                     )
                 else:
                     prov, mod = key_value
@@ -1092,6 +1097,7 @@ class PreviewController:
                         model=mod,
                         language=asr_cfg.get("language"),
                         temperature=asr_cfg.get("temperature"),
+                        hotwords=app._load_hotwords(),
                     )
 
                 new_transcriber.initialize()
@@ -1100,7 +1106,15 @@ class PreviewController:
                 new_transcriber.skip_punc = bool(
                     app._enhancer and app._enhancer.is_active
                 )
-                new_text = new_transcriber.transcribe(wav_data)
+                # Reuse cached hotwords — same audio, context unchanged
+                cached_detail = app._preview_panel.hotwords_detail
+                hotword_terms = (
+                    [d.term for d in cached_detail]
+                    if cached_detail else None
+                )
+                new_text = new_transcriber.transcribe(
+                    wav_data, hotwords=hotword_terms,
+                )
 
                 # Build new ASR info (duration only since model is in popup)
                 audio_duration = getattr(app, "_preview_audio_duration", 0.0)

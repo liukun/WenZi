@@ -6,7 +6,7 @@ import logging
 import tempfile
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 
@@ -274,7 +274,7 @@ class AppleSpeechTranscriber(BaseTranscriber):
         self._initialized = True
         logger.info("Apple Speech recognizer ready (locale=%s)", self._locale_id)
 
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, hotwords: Optional[List[str]] = None) -> str:
         """Transcribe WAV audio bytes using SFSpeechRecognizer."""
         if not self._initialized:
             self.initialize()

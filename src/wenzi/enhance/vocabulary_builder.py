@@ -841,6 +841,12 @@ class VocabularyBuilder:
                 existing_entry.get("frequency", 1) + entry.get("frequency", 1)
             )
 
+            # Keep the more recent last_seen
+            existing_ls = existing_entry.get("last_seen", "")
+            new_ls = entry.get("last_seen", "")
+            if new_ls > existing_ls:
+                existing_entry["last_seen"] = new_ls
+
             # Update context if new one is non-empty and existing is empty
             if entry.get("context") and not existing_entry.get("context"):
                 existing_entry["context"] = entry["context"]
@@ -851,6 +857,7 @@ class VocabularyBuilder:
                 "variants": [v.strip() for v in entry.get("variants", []) if v.strip()],
                 "context": entry.get("context", ""),
                 "frequency": entry.get("frequency", 1),
+                "last_seen": entry.get("last_seen", ""),
             }
 
     def _count_frequencies(
@@ -865,11 +872,11 @@ class VocabularyBuilder:
         2. The term appears in ``final_text`` but NOT in ``asr_text``
            (unknown misrecognition or ASR omission).
 
-        Mutates each entry's ``"frequency"`` in place.
+        Mutates each entry's ``"frequency"`` and ``"last_seen"`` in place.
         """
-        # Pre-compute lowercased texts once (avoids redundant .lower() per entry)
-        record_texts = [
-            (r.get("asr_text", "").lower(), r.get("final_text", "").lower())
+        # Pre-compute lowercased texts + timestamp once
+        record_data = [
+            (r.get("asr_text", "").lower(), r.get("final_text", "").lower(), r.get("timestamp", ""))
             for r in records
         ]
 
@@ -882,20 +889,26 @@ class VocabularyBuilder:
             ]
 
             count = 0
-            for asr, final in record_texts:
+            latest_ts = entry.get("last_seen", "")
+            for asr, final, ts in record_data:
+                matched = False
                 # Condition 1: known variant in ASR text
                 if any(self._term_in_texts(v, asr) for v in variant_lowers):
-                    count += 1
-                    continue
-
+                    matched = True
                 # Condition 2: term in final but not in ASR (unknown misrecognition)
-                if (
+                elif (
                     self._term_in_texts(term_lower, final)
                     and not self._term_in_texts(term_lower, asr)
                 ):
+                    matched = True
+
+                if matched:
                     count += 1
+                    if ts > latest_ts:
+                        latest_ts = ts
 
             entry["frequency"] = max(count, 1)
+            entry["last_seen"] = latest_ts
 
     def _load_existing_vocabulary(self) -> Dict[str, Any]:
         """Load existing vocabulary.json if it exists."""

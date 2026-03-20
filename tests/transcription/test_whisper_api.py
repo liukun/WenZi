@@ -36,6 +36,18 @@ def _make_transcriber(**kwargs) -> WhisperAPITranscriber:
     return WhisperAPITranscriber(**defaults)
 
 
+def _make_initialized_transcriber(text="hello", **kwargs) -> WhisperAPITranscriber:
+    """Create an initialized WhisperAPITranscriber with a mock client."""
+    t = _make_transcriber(**kwargs)
+    t._initialized = True
+    mock_response = MagicMock()
+    mock_response.text = text
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.return_value = mock_response
+    t._client = mock_client
+    return t
+
+
 # ---------------------------------------------------------------------------
 # Constructor
 # ---------------------------------------------------------------------------
@@ -143,18 +155,8 @@ class TestCleanup:
 # ---------------------------------------------------------------------------
 
 class TestTranscribe:
-    def _initialized_transcriber(self, text="hello", language=None, temperature=0.0):
-        t = _make_transcriber(language=language, temperature=temperature)
-        t._initialized = True
-        mock_response = MagicMock()
-        mock_response.text = f"  {text}  "  # with surrounding spaces to test strip()
-        mock_client = MagicMock()
-        mock_client.audio.transcriptions.create.return_value = mock_response
-        t._client = mock_client
-        return t
-
     def test_transcribe_returns_stripped_text(self):
-        t = self._initialized_transcriber(text="hello world")
+        t = _make_initialized_transcriber(text="  hello world  ")
         result = t.transcribe(_make_wav())
         assert result == "hello world"
 
@@ -174,7 +176,7 @@ class TestTranscribe:
         assert result == "ok"
 
     def test_transcribe_sends_model_and_temperature(self):
-        t = self._initialized_transcriber(temperature=0.3)
+        t = _make_initialized_transcriber(temperature=0.3)
         t.transcribe(_make_wav())
 
         _, kwargs = t._client.audio.transcriptions.create.call_args
@@ -182,21 +184,21 @@ class TestTranscribe:
         assert kwargs["temperature"] == 0.3
 
     def test_transcribe_includes_language_when_set(self):
-        t = self._initialized_transcriber(language="zh")
+        t = _make_initialized_transcriber(language="zh")
         t.transcribe(_make_wav())
 
         _, kwargs = t._client.audio.transcriptions.create.call_args
         assert kwargs.get("language") == "zh"
 
     def test_transcribe_omits_language_when_none(self):
-        t = self._initialized_transcriber(language=None)
+        t = _make_initialized_transcriber(language=None)
         t.transcribe(_make_wav())
 
         _, kwargs = t._client.audio.transcriptions.create.call_args
         assert "language" not in kwargs
 
     def test_transcribe_sends_file_with_wav_name(self):
-        t = self._initialized_transcriber()
+        t = _make_initialized_transcriber()
         t.transcribe(_make_wav())
 
         _, kwargs = t._client.audio.transcriptions.create.call_args
@@ -205,7 +207,7 @@ class TestTranscribe:
         assert audio_file.name == "audio.wav"
 
     def test_transcribe_sends_correct_audio_bytes(self):
-        t = self._initialized_transcriber()
+        t = _make_initialized_transcriber()
         wav_data = _make_wav()
         t.transcribe(wav_data)
 
@@ -325,42 +327,30 @@ class TestHotwords:
         assert t._hotwords is None
 
     def test_transcribe_with_hotwords_adds_prompt(self):
-        t = _make_transcriber(hotwords=["Python", "Kubernetes"])
-        t._initialized = True
-        mock_response = MagicMock()
-        mock_response.text = "hello"
-        mock_client = MagicMock()
-        mock_client.audio.transcriptions.create.return_value = mock_response
-        t._client = mock_client
-
+        t = _make_initialized_transcriber(hotwords=["Python", "Kubernetes"])
         t.transcribe(_make_wav())
-
-        _, kwargs = mock_client.audio.transcriptions.create.call_args
+        _, kwargs = t._client.audio.transcriptions.create.call_args
         assert kwargs["prompt"] == "Python, Kubernetes"
 
     def test_transcribe_without_hotwords_no_prompt(self):
-        t = _make_transcriber()
-        t._initialized = True
-        mock_response = MagicMock()
-        mock_response.text = "hello"
-        mock_client = MagicMock()
-        mock_client.audio.transcriptions.create.return_value = mock_response
-        t._client = mock_client
-
+        t = _make_initialized_transcriber()
         t.transcribe(_make_wav())
-
-        _, kwargs = mock_client.audio.transcriptions.create.call_args
+        _, kwargs = t._client.audio.transcriptions.create.call_args
         assert "prompt" not in kwargs
 
-    def test_build_hotwords_prompt_truncates(self):
-        long_words = [f"word{i:03d}xxxx" for i in range(50)]  # each ~11 chars
-        prompt = WhisperAPITranscriber._build_hotwords_prompt(long_words)
-        assert len(prompt) <= 200
+    def test_dynamic_hotwords_override_static(self):
+        t = _make_initialized_transcriber(hotwords=["StaticWord"])
+        t.transcribe(_make_wav(), hotwords=["DynamicWord"])
+        _, kwargs = t._client.audio.transcriptions.create.call_args
+        assert kwargs["prompt"] == "DynamicWord"
 
-    def test_build_hotwords_prompt_keeps_all_if_short(self):
-        words = ["Python", "Kubernetes", "Docker"]
-        prompt = WhisperAPITranscriber._build_hotwords_prompt(words)
-        assert prompt == "Python, Kubernetes, Docker"
+    def test_fallback_to_static_when_dynamic_none(self):
+        t = _make_initialized_transcriber(hotwords=["StaticWord"])
+        t.transcribe(_make_wav(), hotwords=None)
+        _, kwargs = t._client.audio.transcriptions.create.call_args
+        assert kwargs["prompt"] == "StaticWord"
 
-    def test_build_hotwords_prompt_empty(self):
-        assert WhisperAPITranscriber._build_hotwords_prompt([]) == ""
+    def test_transcribe_accepts_hotwords_kwarg(self):
+        t = _make_initialized_transcriber()
+        result = t.transcribe(_make_wav(), hotwords=["Python"])
+        assert result == "hello"

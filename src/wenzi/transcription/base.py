@@ -31,7 +31,7 @@ class BaseTranscriber(abc.ABC):
         """Load models. Call once at startup."""
 
     @abc.abstractmethod
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, hotwords: Optional[List[str]] = None) -> str:
         """Transcribe WAV audio bytes to text."""
 
     @abc.abstractmethod
@@ -78,6 +78,26 @@ class BaseTranscriber(abc.ABC):
             return 0.0
 
 
+# Whisper API prompt token limit is 224; leave margin for tokenizer variance.
+_MAX_PROMPT_CHARS = 200
+
+
+def build_hotwords_prompt(hotwords: List[str]) -> str:
+    """Join hotwords into a prompt string, truncating to fit token limit.
+
+    Shared by MLX Whisper and Whisper API backends.
+    """
+    parts: list[str] = []
+    total = 0
+    for word in hotwords:
+        added = len(word) + (2 if parts else 0)  # ", " separator
+        if total + added > _MAX_PROMPT_CHARS:
+            break
+        parts.append(word)
+        total += added
+    return ", ".join(parts)
+
+
 def create_transcriber(
     backend: str = "funasr",
     *,
@@ -101,7 +121,7 @@ def create_transcriber(
         temperature: Decoding temperature (mlx-whisper / whisper-api).
         base_url: API base URL (whisper-api only).
         api_key: API key (whisper-api only).
-        hotwords: Vocabulary terms for ASR boosting (sherpa-onnx / whisper-api only).
+        hotwords: Vocabulary terms for ASR boosting (sherpa-onnx / whisper-api / mlx-whisper).
     """
     backend = backend.lower().replace("_", "-")
 
@@ -112,7 +132,8 @@ def create_transcriber(
     if backend in ("mlx-whisper", "mlx", "whisper"):
         from .mlx import MLXWhisperTranscriber
         return MLXWhisperTranscriber(
-            language=language, model=model, use_punc=use_punc, temperature=temperature,
+            language=language, model=model, use_punc=use_punc,
+            temperature=temperature, hotwords=hotwords,
         )
 
     if backend in ("whisper-api", "groq"):

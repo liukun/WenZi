@@ -1102,3 +1102,192 @@ class TestPlaybackToggle:
 
         panel = ResultPreviewPanel()
         assert panel._playback_timer is None
+
+
+# ---------------------------------------------------------------------------
+# Hotwords display tests
+# ---------------------------------------------------------------------------
+
+
+class TestRelativeTime:
+    def test_empty_string(self):
+        from wenzi.ui.result_window_web import _relative_time
+
+        assert _relative_time("") == "-"
+
+    def test_recent_timestamp(self):
+        from datetime import datetime, timezone, timedelta
+
+        from wenzi.ui.result_window_web import _relative_time
+
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(hours=2)).isoformat()
+        result = _relative_time(ts)
+        assert result == "2h ago"
+
+    def test_days_ago(self):
+        from datetime import datetime, timezone, timedelta
+
+        from wenzi.ui.result_window_web import _relative_time
+
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(days=5)).isoformat()
+        result = _relative_time(ts)
+        assert result == "5d ago"
+
+    def test_minutes_ago(self):
+        from datetime import datetime, timezone, timedelta
+
+        from wenzi.ui.result_window_web import _relative_time
+
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(minutes=30)).isoformat()
+        result = _relative_time(ts)
+        assert result == "30m ago"
+
+    def test_months_ago(self):
+        from datetime import datetime, timezone, timedelta
+
+        from wenzi.ui.result_window_web import _relative_time
+
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(days=60)).isoformat()
+        result = _relative_time(ts)
+        assert result == "2mo ago"
+
+    def test_invalid_string(self):
+        from wenzi.ui.result_window_web import _relative_time
+
+        result = _relative_time("not-a-date")
+        assert isinstance(result, str)
+
+
+class TestBuildHotwordsHtml:
+    def _make_detail(self, **kwargs):
+        from wenzi.enhance.vocabulary import HotwordDetail
+
+        defaults = dict(
+            term="API", layer="base", category="tech",
+            variants=["api"], context="interface",
+            frequency=5, last_seen="", score=5.0, recency_bonus=0,
+        )
+        defaults.update(kwargs)
+        return HotwordDetail(**defaults)
+
+    def test_returns_valid_html(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail()]
+        html = _build_hotwords_html(details)
+        assert "<!DOCTYPE html>" in html
+        assert "<table>" in html
+        assert "API" in html
+
+    def test_context_layer_class(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail(layer="context")]
+        html = _build_hotwords_html(details)
+        assert "layer-ctx" in html
+        assert "ctx" in html
+
+    def test_base_layer_class(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail(layer="base")]
+        html = _build_hotwords_html(details)
+        assert "layer-base" in html
+
+    def test_html_escaping(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail(term="<script>", context="a&b")]
+        html = _build_hotwords_html(details)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+        assert "a&amp;b" in html
+
+    def test_multiple_rows(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [
+            self._make_detail(term="API"),
+            self._make_detail(term="gRPC", layer="context"),
+        ]
+        html = _build_hotwords_html(details)
+        assert "API" in html
+        assert "gRPC" in html
+
+    def test_empty_list(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        html = _build_hotwords_html([])
+        assert "<tbody>" in html
+        assert "<tr" not in html.split("<tbody>")[1].split("</tbody>")[0] or \
+               html.count("<tr") == 1  # only header row
+
+    def test_variants_display(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail(variants=["k8s", "kube"])]
+        html = _build_hotwords_html(details)
+        assert "k8s" in html
+        assert "kube" in html
+
+    def test_bonus_display(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail(recency_bonus=3)]
+        html = _build_hotwords_html(details)
+        assert "+3" in html
+
+    def test_dark_mode_css(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        html = _build_hotwords_html([self._make_detail()])
+        assert "prefers-color-scheme: dark" in html
+
+
+class TestSetHotwords:
+    def test_caches_details(self):
+        from wenzi.ui.result_window_web import ResultPreviewPanel
+
+        panel = _build_panel(ResultPreviewPanel())
+        details = [MagicMock(term="API")]
+        panel.set_hotwords(details)
+        assert panel._hotwords_detail == details
+
+    def test_caches_multiple_details(self):
+        from wenzi.ui.result_window_web import ResultPreviewPanel
+
+        panel = _build_panel(ResultPreviewPanel())
+        details = [MagicMock(), MagicMock()]
+        panel.set_hotwords(details)
+        assert len(panel._hotwords_detail) == 2
+
+    def test_init_has_empty_hotwords(self):
+        from wenzi.ui.result_window_web import ResultPreviewPanel
+
+        panel = ResultPreviewPanel()
+        assert panel._hotwords_detail == []
+
+
+class TestShowHotwordsAction:
+    def test_action_triggers_panel(self, panel_factory):
+        ns = panel_factory()
+        panel = ns.panel
+        detail = MagicMock()
+        detail.term = "API"
+        panel._hotwords_detail = [detail]
+        # Patch _show_hotwords_panel to verify it's called
+        panel._show_hotwords_panel = MagicMock()
+        panel._handle_js_message({"type": "showHotwords"})
+        panel._show_hotwords_panel.assert_called_once_with([detail])
+
+    def test_action_noop_when_empty(self, panel_factory):
+        ns = panel_factory()
+        panel = ns.panel
+        panel._hotwords_detail = []
+        panel._show_hotwords_panel = MagicMock()
+        panel._handle_js_message({"type": "showHotwords"})
+        panel._show_hotwords_panel.assert_not_called()

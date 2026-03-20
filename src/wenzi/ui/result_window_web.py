@@ -5,9 +5,13 @@ Uses WKWebView + WKScriptMessageHandler for a modern HTML/CSS/JS interface.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
-from typing import Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from wenzi.enhance.vocabulary import HotwordDetail
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +53,147 @@ def _ensure_edit_menu() -> None:
     edit_item.setTitle_("Edit")
     edit_item.setSubmenu_(edit_menu)
     main_menu.addItem_(edit_item)
+
+# ---------------------------------------------------------------------------
+# Hotwords table HTML
+# ---------------------------------------------------------------------------
+
+
+def _relative_time(iso_str: str) -> str:
+    """Convert ISO 8601 timestamp to a human-readable relative time string."""
+    if not iso_str:
+        return "-"
+    try:
+        from datetime import datetime, timezone
+
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - dt
+        secs = delta.total_seconds()
+        if secs < 60:
+            return "<1m ago"
+        if secs < 3600:
+            return f"{int(secs // 60)}m ago"
+        if secs < 86400:
+            return f"{int(secs // 3600)}h ago"
+        days = int(secs // 86400)
+        if days < 30:
+            return f"{days}d ago"
+        return f"{days // 30}mo ago"
+    except Exception:
+        return iso_str[:10] if len(iso_str) >= 10 else iso_str
+
+
+def _build_hotwords_html(details: List[HotwordDetail]) -> str:
+    """Build an HTML page with a styled table of hotword details."""
+    from wenzi.enhance.vocabulary import LAYER_CONTEXT
+
+    rows: list[str] = []
+    for d in details:
+        term = html.escape(d.term)
+        cat = html.escape(d.category)
+        last_seen = _relative_time(d.last_seen)
+        variants_raw = ", ".join(d.variants)
+        variants = html.escape(variants_raw)
+        context = html.escape(d.context)
+        # Escape with quote=True for title attributes (from raw values)
+        variants_attr = html.escape(variants_raw, quote=True)
+        context_attr = html.escape(d.context, quote=True)
+
+        is_ctx = d.layer == LAYER_CONTEXT
+        layer_cls = "layer-ctx" if is_ctx else "layer-base"
+        layer_label = "ctx" if is_ctx else "base"
+        bonus_str = f"+{d.recency_bonus}" if d.recency_bonus > 0 else "0"
+
+        rows.append(
+            f"<tr class='{layer_cls}'>"
+            f"<td class='cell-layer'>{layer_label}</td>"
+            f"<td class='cell-term'>{term}</td>"
+            f"<td class='cell-cat'>{cat}</td>"
+            f"<td class='cell-num'>{d.frequency}</td>"
+            f"<td class='cell-num'>{d.score:.0f}</td>"
+            f"<td class='cell-num'>{bonus_str}</td>"
+            f"<td class='cell-time'>{last_seen}</td>"
+            f'<td class="cell-variants" title="{variants_attr}">{variants}</td>'
+            f'<td class="cell-ctx" title="{context_attr}">{context}</td>'
+            f"</tr>"
+        )
+
+    tbody = "\n".join(rows)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+:root {{
+    --bg: #ffffff; --text: #1d1d1f; --header-bg: #f0f0f2;
+    --border: #d2d2d7; --secondary: #86868b;
+    --ctx-bg: #eef6ee; --base-bg: transparent;
+    --hover: #f5f5f7; --accent: #007aff;
+}}
+@media (prefers-color-scheme: dark) {{
+    :root {{
+        --bg: #1d1d1f; --text: #c8c8cc; --header-bg: #2c2c2e;
+        --border: #48484a; --secondary: #98989d;
+        --ctx-bg: #1e2e1e; --base-bg: transparent;
+        --hover: #2c2c2e; --accent: #0a84ff;
+    }}
+}}
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Mono",
+                 Menlo, monospace;
+    font-size: 12px; color: var(--text); background: var(--bg);
+    padding: 0; overflow: auto;
+}}
+table {{
+    width: 100%; border-collapse: collapse; table-layout: auto;
+}}
+thead {{ position: sticky; top: 0; z-index: 1; }}
+th {{
+    background: var(--header-bg); font-weight: 600; font-size: 11px;
+    padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border);
+    white-space: nowrap; color: var(--secondary);
+}}
+td {{
+    padding: 5px 8px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; vertical-align: top;
+}}
+tr:hover {{ background: var(--hover); }}
+tr.layer-ctx {{ background: var(--ctx-bg); }}
+tr.layer-ctx:hover {{ background: var(--hover); }}
+tr.layer-base {{ background: var(--base-bg); }}
+.cell-layer {{
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    color: var(--secondary); width: 36px;
+}}
+.cell-term {{ font-weight: 600; color: var(--accent); }}
+.cell-cat {{ color: var(--secondary); font-size: 11px; }}
+.cell-num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+.cell-time {{ color: var(--secondary); font-size: 11px; }}
+.cell-variants, .cell-ctx {{
+    max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+    color: var(--secondary); font-size: 11px;
+}}
+</style>
+</head>
+<body>
+<table>
+<thead>
+<tr>
+    <th>Layer</th><th>Term</th><th>Cat</th>
+    <th>Freq</th><th>Score</th><th>Bonus</th>
+    <th>Last Seen</th><th>Variants</th><th>Context</th>
+</tr>
+</thead>
+<tbody>
+{tbody}
+</tbody>
+</table>
+</body>
+</html>"""
+
 
 # ---------------------------------------------------------------------------
 # HTML template
@@ -237,6 +382,7 @@ select {
             <span class="section-info" id="asr-info"></span>
         </div>
         <div class="right">
+            <button class="btn hidden" id="hotwords-btn" onclick="postAction('showHotwords')">Hotwords</button>
             <label class="checkbox-wrap" id="punc-wrap">
                 <input type="checkbox" id="punc-cb" checked>
                 <span>Punc</span>
@@ -531,6 +677,16 @@ function setAsrResult(text, info) {
 function setSttPopupIndex(index) {
     const sel = document.getElementById('stt-select');
     if (sel) { sel.value = index; sel.disabled = false; }
+}
+
+function setHotwordsCount(n) {
+    const btn = document.getElementById('hotwords-btn');
+    if (n > 0) {
+        btn.textContent = 'Hotwords (' + n + ')';
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
 }
 
 function clearEnhanceText() {
@@ -905,10 +1061,12 @@ class ResultPreviewPanel:
         self._punc_enabled: bool = True
         self._thinking_enabled: bool = False
         self._thinking_text: str = ""
+        self._hotwords_detail: List[HotwordDetail] = []
         self._loading_timer = None
         self._loading_seconds: int = 0
         self._playback_timer = None
         self._translate_webview = None
+        self._hotwords_webview_panel = None
         self._page_loaded: bool = False
         self._pending_js: list[str] = []
         self._navigation_delegate = None
@@ -1380,6 +1538,18 @@ class ResultPreviewPanel:
 
         AppHelper.callAfter(_update)
 
+    def set_hotwords(self, details: List[HotwordDetail]) -> None:
+        """Cache hotword details and update the button count in the UI."""
+        self._hotwords_detail = details
+
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._webview is not None:
+                self._eval_js(f"setHotwordsCount({len(details)})")
+
+        AppHelper.callAfter(_update)
+
     def set_stt_popup_index(self, index: int) -> None:
         """Set the STT popup selection (for rollback on failure)."""
         from PyObjCTools import AppHelper
@@ -1401,6 +1571,10 @@ class ResultPreviewPanel:
     @enhance_request_id.setter
     def enhance_request_id(self, value: int) -> None:
         self._enhance_request_id = value
+
+    @property
+    def hotwords_detail(self) -> List[HotwordDetail]:
+        return self._hotwords_detail
 
     @property
     def is_visible(self) -> bool:
@@ -1495,6 +1669,10 @@ class ResultPreviewPanel:
             self._thinking_enabled = enabled
             if self._on_thinking_toggle is not None:
                 self._on_thinking_toggle(enabled)
+
+        elif msg_type == "showHotwords":
+            if self._hotwords_detail:
+                self._show_hotwords_panel(self._hotwords_detail)
 
         elif msg_type == "showThinking":
             if self._thinking_text:
@@ -1831,3 +2009,51 @@ class ResultPreviewPanel:
         scroll.setDocumentView_(tv)
         panel.contentView().addSubview_(scroll)
         panel.makeKeyAndOrderFront_(None)
+
+    def _show_hotwords_panel(self, details: List[HotwordDetail]) -> None:
+        """Display hotword details in a WKWebView-based table panel."""
+        from AppKit import (
+            NSBackingStoreBuffered,
+            NSClosableWindowMask,
+            NSPanel,
+            NSResizableWindowMask,
+            NSStatusWindowLevel,
+            NSTitledWindowMask,
+        )
+        from Foundation import NSMakeRect, NSURL
+        from WebKit import WKWebView, WKWebViewConfiguration
+
+        # Close existing hotwords panel to release resources
+        if self._hotwords_webview_panel is not None:
+            try:
+                self._hotwords_webview_panel.close()
+            except Exception:
+                pass
+            self._hotwords_webview_panel = None
+
+        width, height = 700, 420
+        panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, width, height),
+            NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask,
+            NSBackingStoreBuffered,
+            False,
+        )
+        panel.setTitle_(f"Hotwords ({len(details)})")
+        panel.setLevel_(NSStatusWindowLevel)
+        panel.setFloatingPanel_(True)
+        panel.setHidesOnDeactivate_(False)
+        panel.center()
+
+        config = WKWebViewConfiguration.alloc().init()
+        webview = WKWebView.alloc().initWithFrame_configuration_(
+            NSMakeRect(0, 0, width, height), config,
+        )
+        webview.setAutoresizingMask_(0x12)
+        webview.setValue_forKey_(False, "drawsBackground")
+
+        hotwords_html = _build_hotwords_html(details)
+        webview.loadHTMLString_baseURL_(hotwords_html, NSURL.fileURLWithPath_("/"))
+
+        panel.contentView().addSubview_(webview)
+        panel.makeKeyAndOrderFront_(None)
+        self._hotwords_webview_panel = panel
