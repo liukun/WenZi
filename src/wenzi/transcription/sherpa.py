@@ -185,7 +185,7 @@ class SherpaOnnxTranscriber(BaseTranscriber):
             sample_rate=16000,
         )
 
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, hotwords: Optional[List[str]] = None) -> str:
         """Batch transcription: decode entire WAV at once."""
         if not self._initialized:
             self.initialize()

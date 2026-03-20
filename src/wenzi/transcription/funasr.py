@@ -8,6 +8,7 @@ import os
 import tempfile
 import threading
 import time
+from typing import List, Optional
 
 from wenzi.config import MODEL_REVISION, MODELS
 from .base import BaseTranscriber
@@ -103,7 +104,7 @@ class FunASRTranscriber(BaseTranscriber):
         gc.collect()
         logger.info("FunASR models cleaned up")
 
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, hotwords: Optional[List[str]] = None) -> str:
         """Transcribe WAV audio bytes to text."""
         if not self._initialized:
             self.initialize()

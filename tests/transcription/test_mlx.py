@@ -34,6 +34,14 @@ def _make_mock_mlx_whisper(text: str = "hello") -> MagicMock:
     return mock
 
 
+def _make_initialized(text="hello", **kwargs) -> MLXWhisperTranscriber:
+    """Create an initialized MLXWhisperTranscriber with a mock mlx_whisper."""
+    t = MLXWhisperTranscriber(**kwargs)
+    t._initialized = True
+    t._mlx_whisper = _make_mock_mlx_whisper(text=text)
+    return t
+
+
 # ---------------------------------------------------------------------------
 # Constructor
 # ---------------------------------------------------------------------------
@@ -323,14 +331,8 @@ class TestWavBytesToFloat32:
 # ---------------------------------------------------------------------------
 
 class TestTranscribe:
-    def _make_initialized(self, text="transcribed text", language=None) -> MLXWhisperTranscriber:
-        t = MLXWhisperTranscriber(language=language)
-        t._initialized = True
-        t._mlx_whisper = _make_mock_mlx_whisper(text=text)
-        return t
-
     def test_transcribe_returns_text(self):
-        t = self._make_initialized(text="hello world")
+        t = _make_initialized(text="hello world")
         result = t.transcribe(_make_wav())
         assert result == "hello world"
 
@@ -347,26 +349,26 @@ class TestTranscribe:
         assert result == "ok"
 
     def test_transcribe_passes_language_to_mlx(self):
-        t = self._make_initialized(language="zh")
+        t = _make_initialized(language="zh")
         t.transcribe(_make_wav())
         _, kwargs = t._mlx_whisper.transcribe.call_args
         assert kwargs.get("language") == "zh"
 
     def test_transcribe_passes_temperature(self):
-        t = self._make_initialized()
+        t = _make_initialized()
         t._temperature = 0.3
         t.transcribe(_make_wav())
         _, kwargs = t._mlx_whisper.transcribe.call_args
         assert kwargs.get("temperature") == 0.3
 
     def test_transcribe_condition_on_previous_text_false(self):
-        t = self._make_initialized()
+        t = _make_initialized()
         t.transcribe(_make_wav())
         _, kwargs = t._mlx_whisper.transcribe.call_args
         assert kwargs.get("condition_on_previous_text") is False
 
     def test_transcribe_applies_punc_restorer(self):
-        t = self._make_initialized(text="hello world")
+        t = _make_initialized(text="hello world")
         mock_punc = MagicMock()
         mock_punc.restore.return_value = "hello world."
         t._punc_restorer = mock_punc
@@ -376,7 +378,7 @@ class TestTranscribe:
         mock_punc.restore.assert_called_once_with("hello world")
 
     def test_transcribe_skips_punc_when_skip_punc_true(self):
-        t = self._make_initialized(text="hello world")
+        t = _make_initialized(text="hello world")
         mock_punc = MagicMock()
         mock_punc.restore.return_value = "hello world."
         t._punc_restorer = mock_punc
@@ -387,7 +389,7 @@ class TestTranscribe:
         mock_punc.restore.assert_not_called()
 
     def test_transcribe_skips_punc_for_whitespace_only_text(self):
-        t = self._make_initialized(text="   ")
+        t = _make_initialized(text="   ")
         mock_punc = MagicMock()
         t._punc_restorer = mock_punc
 
@@ -404,3 +406,46 @@ class TestTranscribe:
 
         result = t.transcribe(_make_wav())
         assert result == ""
+
+    def test_transcribe_accepts_hotwords_kwarg(self):
+        t = _make_initialized(text="hello")
+        result = t.transcribe(_make_wav(), hotwords=["Python"])
+        assert result == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Hotwords
+# ---------------------------------------------------------------------------
+
+class TestHotwords:
+    def test_constructor_stores_hotwords(self):
+        t = MLXWhisperTranscriber(hotwords=["Python", "Docker"])
+        assert t._hotwords == ["Python", "Docker"]
+
+    def test_constructor_hotwords_default_none(self):
+        t = MLXWhisperTranscriber()
+        assert t._hotwords is None
+
+    def test_static_hotwords_set_initial_prompt(self):
+        t = _make_initialized(hotwords=["Python", "Docker"])
+        t.transcribe(_make_wav())
+        _, kwargs = t._mlx_whisper.transcribe.call_args
+        assert kwargs.get("initial_prompt") == "Python, Docker"
+
+    def test_dynamic_hotwords_override_static(self):
+        t = _make_initialized(hotwords=["StaticWord"])
+        t.transcribe(_make_wav(), hotwords=["DynamicWord"])
+        _, kwargs = t._mlx_whisper.transcribe.call_args
+        assert kwargs.get("initial_prompt") == "DynamicWord"
+
+    def test_no_hotwords_no_initial_prompt(self):
+        t = _make_initialized()
+        t.transcribe(_make_wav())
+        _, kwargs = t._mlx_whisper.transcribe.call_args
+        assert "initial_prompt" not in kwargs
+
+    def test_fallback_to_static_when_dynamic_none(self):
+        t = _make_initialized(hotwords=["StaticWord"])
+        t.transcribe(_make_wav(), hotwords=None)
+        _, kwargs = t._mlx_whisper.transcribe.call_args
+        assert kwargs.get("initial_prompt") == "StaticWord"

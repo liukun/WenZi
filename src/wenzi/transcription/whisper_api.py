@@ -8,13 +8,9 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from .base import BaseTranscriber
+from .base import BaseTranscriber, build_hotwords_prompt
 
 logger = logging.getLogger(__name__)
-
-
-# Whisper API prompt token limit is 224; leave margin for tokenizer variance.
-_MAX_PROMPT_CHARS = 200
 
 
 class WhisperAPITranscriber(BaseTranscriber):
@@ -65,7 +61,7 @@ class WhisperAPITranscriber(BaseTranscriber):
         self._initialized = False
         logger.info("Whisper API transcriber cleaned up")
 
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, hotwords: Optional[List[str]] = None) -> str:
         if not self._initialized:
             self.initialize()
 
@@ -79,8 +75,9 @@ class WhisperAPITranscriber(BaseTranscriber):
         }
         if self._language:
             kwargs["language"] = self._language
-        if self._hotwords:
-            prompt = self._build_hotwords_prompt(self._hotwords)
+        effective_hotwords = hotwords if hotwords is not None else self._hotwords
+        if effective_hotwords:
+            prompt = build_hotwords_prompt(effective_hotwords)
             if prompt:
                 kwargs["prompt"] = prompt
                 logger.debug("ASR hotwords prompt: %s", prompt)
@@ -90,19 +87,6 @@ class WhisperAPITranscriber(BaseTranscriber):
 
         logger.info("Transcription result: %s", text[:100])
         return text
-
-    @staticmethod
-    def _build_hotwords_prompt(hotwords: List[str]) -> str:
-        """Join hotwords into a prompt string, truncating to fit token limit."""
-        parts: list[str] = []
-        total = 0
-        for word in hotwords:
-            added = len(word) + (2 if parts else 0)  # ", " separator
-            if total + added > _MAX_PROMPT_CHARS:
-                break
-            parts.append(word)
-            total += added
-        return ", ".join(parts)
 
     @staticmethod
     def verify_provider(base_url: str, api_key: str, model: str) -> Optional[str]:

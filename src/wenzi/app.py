@@ -549,6 +549,24 @@ class WenZiApp(StatusBarApp):
             logger.debug("Hotwords: %s", ", ".join(words))
         return words
 
+    def _build_dynamic_hotwords(self) -> Optional[list[str]]:
+        """Build two-layer hotword list for current transcription."""
+        vocab_cfg = self._config.get("ai_enhance", {}).get("vocabulary", {})
+        if not vocab_cfg.get("enabled", False):
+            return None
+
+        from wenzi.enhance.vocabulary import build_hotword_list
+
+        vocab_index = None
+        if self._enhancer:
+            vocab_index = self._enhancer.vocab_index
+
+        return build_hotword_list(
+            vocab_index,
+            self._conversation_history,
+            self._load_hotwords(),
+        )
+
     def _set_status(self, text: str) -> None:
         """Update menu bar icon/title and status menu item (thread-safe)."""
         import Foundation

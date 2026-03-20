@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone, timedelta
 
 from wenzi.enhance.vocabulary import (
     VocabularyEntry,
     VocabularyIndex,
+    _parse_timestamp,
+    build_hotword_list,
     get_vocab_entry_count,
     load_hotwords,
 )
@@ -495,3 +498,206 @@ class TestLoadHotwords:
         )
         result = load_hotwords(data_dir=str(tmp_path), min_frequency=2)
         assert result == []
+
+
+# --- find_terms_in_text tests ---
+
+
+class TestFindTermsInText:
+    def test_exact_term_match(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.find_terms_in_text("I use Python for coding")
+        terms = [r.term for r in results]
+        assert "Python" in terms
+
+    def test_variant_match(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        results = idx.find_terms_in_text("我用派森写代码")
+        terms = [r.term for r in results]
+        assert "Python" in terms
+
+    def test_no_pinyin_layer(self, tmp_path):
+        """find_terms_in_text should NOT use pinyin matching."""
+        entries = [
+            {"term": "Python", "variants": ["派森"], "frequency": 3},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        # "排森" has same pinyin but different characters — should NOT match
+        results = idx.find_terms_in_text("我用排森写代码")
+        terms = [r.term for r in results]
+        assert "Python" not in terms
+
+    def test_not_loaded_returns_empty(self, tmp_path):
+        idx = VocabularyIndex({}, data_dir=str(tmp_path))
+        assert idx.find_terms_in_text("Python") == []
+
+    def test_empty_text_returns_empty(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        assert idx.find_terms_in_text("") == []
+        assert idx.find_terms_in_text("   ") == []
+
+    def test_sorted_by_frequency_desc(self, tmp_path):
+        entries = [
+            {"term": "LowTerm", "variants": ["罗特"], "frequency": 1},
+            {"term": "HighTerm", "variants": ["嗨特"], "frequency": 10},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        results = idx.find_terms_in_text("我说嗨特然后打了个电话给罗特")
+        assert len(results) == 2
+        assert results[0].term == "HighTerm"
+        assert results[1].term == "LowTerm"
+
+
+# --- _parse_timestamp tests ---
+
+
+class TestParseTimestamp:
+    def test_iso_with_timezone(self):
+        dt = _parse_timestamp("2026-03-20T10:30:00+08:00")
+        assert dt is not None
+        assert dt.tzinfo is not None
+
+    def test_iso_without_timezone(self):
+        dt = _parse_timestamp("2026-03-20T10:30:00")
+        assert dt is not None
+        assert dt.tzinfo == timezone.utc
+
+    def test_invalid_string(self):
+        assert _parse_timestamp("not-a-date") is None
+
+    def test_none_input(self):
+        assert _parse_timestamp(None) is None
+
+    def test_empty_string(self):
+        assert _parse_timestamp("") is None
+
+
+# --- build_hotword_list tests ---
+
+
+def _make_mock_history(records):
+    """Create a mock ConversationHistory that returns given records."""
+
+    class MockHistory:
+        def get_recent(self, n=10):
+            return records[:n]
+
+    return MockHistory()
+
+
+class TestBuildHotwordList:
+    def test_context_layer_priority(self, tmp_path):
+        """Context-layer terms should come before base-layer terms."""
+        entries = [
+            {"term": "Python", "variants": ["派森"], "frequency": 5},
+            {"term": "Docker", "variants": ["多克"], "frequency": 3},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        now = datetime.now(timezone.utc)
+        records = [
+            {
+                "timestamp": now.isoformat(),
+                "final_text": "我在用派森写代码",
+                "preview_enabled": True,
+            },
+        ]
+        history = _make_mock_history(records)
+        base = ["Kubernetes", "Terraform"]
+        result = build_hotword_list(idx, history, base)
+        assert result is not None
+        # Python should be first (from context), then base terms
+        assert result[0] == "Python"
+        assert "Kubernetes" in result
+        assert "Terraform" in result
+
+    def test_deduplication(self, tmp_path):
+        """Terms appearing in both layers should not be duplicated."""
+        entries = [
+            {"term": "Python", "variants": ["派森"], "frequency": 5},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        now = datetime.now(timezone.utc)
+        records = [
+            {
+                "timestamp": now.isoformat(),
+                "final_text": "我用派森",
+                "preview_enabled": True,
+            },
+        ]
+        history = _make_mock_history(records)
+        base = ["Python", "Docker"]
+        result = build_hotword_list(idx, history, base)
+        assert result is not None
+        assert result.count("Python") == 1
+
+    def test_max_count_limit(self, tmp_path):
+        entries = [
+            {"term": f"Term{i}", "variants": [f"变体{i}号"], "frequency": i + 1}
+            for i in range(10)
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        now = datetime.now(timezone.utc)
+        combined_text = " ".join(f"变体{i}号" for i in range(10))
+        records = [
+            {
+                "timestamp": now.isoformat(),
+                "final_text": combined_text,
+                "preview_enabled": True,
+            },
+        ]
+        history = _make_mock_history(records)
+        base = [f"Base{i}" for i in range(10)]
+        result = build_hotword_list(idx, history, base, max_count=5)
+        assert result is not None
+        assert len(result) == 5
+
+    def test_age_filtering(self, tmp_path):
+        """Records older than max_age_hours should be skipped."""
+        entries = [
+            {"term": "Python", "variants": ["派森"], "frequency": 5},
+        ]
+        idx = _write_vocab(tmp_path, entries)
+        old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+        records = [
+            {
+                "timestamp": old_time.isoformat(),
+                "final_text": "我用派森",
+                "preview_enabled": True,
+            },
+        ]
+        history = _make_mock_history(records)
+        # With max_age_hours=2, the old record should be filtered out
+        result = build_hotword_list(idx, history, None, max_age_hours=2.0)
+        assert result is None  # No context, no base
+
+    def test_vocab_index_none_uses_base(self):
+        """When vocab_index is None, only base hotwords are used."""
+        base = ["Python", "Docker"]
+        result = build_hotword_list(None, None, base)
+        assert result == ["Python", "Docker"]
+
+    def test_history_none_uses_base(self, tmp_path):
+        """When history is None, only base hotwords are used."""
+        idx = _write_vocab(tmp_path, _sample_entries())
+        base = ["Python", "Docker"]
+        result = build_hotword_list(idx, None, base)
+        assert result == ["Python", "Docker"]
+
+    def test_all_none_returns_none(self):
+        """When everything is None/empty, return None."""
+        result = build_hotword_list(None, None, None)
+        assert result is None
+
+    def test_empty_base_with_no_context_returns_none(self, tmp_path):
+        idx = _write_vocab(tmp_path, _sample_entries())
+        history = _make_mock_history([])
+        result = build_hotword_list(idx, history, None)
+        assert result is None
+
+    def test_base_only_when_no_context(self, tmp_path):
+        """When history is empty, only base hotwords are returned."""
+        idx = _write_vocab(tmp_path, _sample_entries())
+        history = _make_mock_history([])
+        base = ["Python", "Docker"]
+        result = build_hotword_list(idx, history, base)
+        assert result == ["Python", "Docker"]

@@ -5,9 +5,9 @@ from __future__ import annotations
 import gc
 import logging
 import time
-from typing import Optional
+from typing import List, Optional
 
-from .base import BaseTranscriber
+from .base import BaseTranscriber, build_hotwords_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +23,13 @@ class MLXWhisperTranscriber(BaseTranscriber):
         model: Optional[str] = None,
         use_punc: bool = False,
         temperature: Optional[float] = None,
+        hotwords: Optional[List[str]] = None,
     ) -> None:
         self._model_name = model or DEFAULT_MODEL
         self._language = language
         self._use_punc = use_punc
         self._temperature = temperature if temperature is not None else 0.0
+        self._hotwords = hotwords
         self._initialized = False
         self._mlx_whisper = None
         self._punc_restorer = None
@@ -119,7 +121,7 @@ class MLXWhisperTranscriber(BaseTranscriber):
             audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
         return audio
 
-    def transcribe(self, wav_data: bytes) -> str:
+    def transcribe(self, wav_data: bytes, *, hotwords: Optional[List[str]] = None) -> str:
         """Transcribe WAV audio bytes to text."""
         if not self._initialized:
             self.initialize()
@@ -127,13 +129,21 @@ class MLXWhisperTranscriber(BaseTranscriber):
         # Decode WAV in Python — no ffmpeg needed
         audio = self._wav_bytes_to_float32(wav_data)
 
-        result = self._mlx_whisper.transcribe(
-            audio,
-            path_or_hf_repo=self._model_name,
-            language=self._language,
-            temperature=self._temperature,
-            condition_on_previous_text=False,
-        )
+        kwargs: dict = {
+            "path_or_hf_repo": self._model_name,
+            "language": self._language,
+            "temperature": self._temperature,
+            "condition_on_previous_text": False,
+        }
+
+        effective_hotwords = hotwords if hotwords is not None else self._hotwords
+        if effective_hotwords:
+            prompt = build_hotwords_prompt(effective_hotwords)
+            if prompt:
+                kwargs["initial_prompt"] = prompt
+                logger.debug("MLX Whisper hotwords prompt: %s", prompt)
+
+        result = self._mlx_whisper.transcribe(audio, **kwargs)
 
         text = result.get("text", "")
 

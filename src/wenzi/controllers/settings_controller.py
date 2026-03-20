@@ -401,6 +401,7 @@ class SettingsController:
                     language=preset.language or asr_cfg.get("language"),
                     model=preset.model,
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=app._load_hotwords(),
                 )
                 new_transcriber.initialize()
 
@@ -499,6 +500,7 @@ class SettingsController:
                 language=preset.language or asr_cfg.get("language"),
                 model=preset.model,
                 temperature=asr_cfg.get("temperature"),
+                hotwords=app._load_hotwords(),
             )
             new_transcriber.initialize()
 
@@ -591,6 +593,7 @@ class SettingsController:
                     model=model,
                     language=asr_cfg.get("language"),
                     temperature=asr_cfg.get("temperature"),
+                    hotwords=app._load_hotwords(),
                 )
                 new_transcriber.initialize()
 

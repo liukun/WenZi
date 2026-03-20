@@ -2,7 +2,7 @@
 
 import pytest
 
-from wenzi.transcription.base import BaseTranscriber, create_transcriber
+from wenzi.transcription.base import BaseTranscriber, build_hotwords_prompt, create_transcriber
 from wenzi.transcription.funasr import FunASRTranscriber
 
 
@@ -252,3 +252,30 @@ class TestCleanup:
         t.cleanup()
         assert t.initialized is False
         assert t._mlx_whisper is None
+
+
+class TestBuildHotwordsPrompt:
+    def test_joins_words(self):
+        assert build_hotwords_prompt(["Python", "Docker"]) == "Python, Docker"
+
+    def test_truncates_to_limit(self):
+        long_words = [f"word{i:03d}xxxx" for i in range(50)]
+        prompt = build_hotwords_prompt(long_words)
+        assert len(prompt) <= 200
+
+    def test_empty_list(self):
+        assert build_hotwords_prompt([]) == ""
+
+    def test_single_word(self):
+        assert build_hotwords_prompt(["Python"]) == "Python"
+
+    def test_create_mlx_with_hotwords(self):
+        """create_transcriber should pass hotwords to MLX backend."""
+        try:
+            from wenzi.transcription.mlx import MLXWhisperTranscriber
+        except ImportError:
+            pytest.skip("mlx-whisper not installed")
+
+        t = create_transcriber(backend="mlx-whisper", hotwords=["Python", "Docker"])
+        assert isinstance(t, MLXWhisperTranscriber)
+        assert t._hotwords == ["Python", "Docker"]

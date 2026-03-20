@@ -540,7 +540,8 @@ class PreviewController:
                 app._transcriber.skip_punc = bool(
                     app._enhancer and app._enhancer.is_active
                 )
-                text = app._transcriber.transcribe(wav_data)
+                hotwords = app._build_dynamic_hotwords()
+                text = app._transcriber.transcribe(wav_data, hotwords=hotwords)
                 if text and text.strip():
                     stt_text = text.strip()
                 else:
@@ -1080,6 +1081,7 @@ class PreviewController:
                         language=preset.language or asr_cfg.get("language"),
                         model=preset.model,
                         temperature=asr_cfg.get("temperature"),
+                        hotwords=app._load_hotwords(),
                     )
                 else:
                     prov, mod = key_value
@@ -1092,6 +1094,7 @@ class PreviewController:
                         model=mod,
                         language=asr_cfg.get("language"),
                         temperature=asr_cfg.get("temperature"),
+                        hotwords=app._load_hotwords(),
                     )
 
                 new_transcriber.initialize()
@@ -1100,7 +1103,8 @@ class PreviewController:
                 new_transcriber.skip_punc = bool(
                     app._enhancer and app._enhancer.is_active
                 )
-                new_text = new_transcriber.transcribe(wav_data)
+                hotwords = app._build_dynamic_hotwords()
+                new_text = new_transcriber.transcribe(wav_data, hotwords=hotwords)
 
                 # Build new ASR info (duration only since model is in popup)
                 audio_duration = getattr(app, "_preview_audio_duration", 0.0)

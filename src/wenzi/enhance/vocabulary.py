@@ -6,7 +6,11 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
+
+if TYPE_CHECKING:
+    from wenzi.enhance.conversation_history import ConversationHistory
 
 from wenzi.config import DEFAULT_DATA_DIR
 
@@ -120,6 +124,28 @@ class VocabularyIndex:
             return self._rank(exact_indices, pinyin_indices, top_k)
         except Exception as e:
             logger.warning("Vocabulary retrieval failed: %s", e)
+            return []
+
+    # ------------------------------------------------------------------
+    # Term extraction (for hotword building)
+    # ------------------------------------------------------------------
+
+    def find_terms_in_text(self, text: str) -> List[VocabularyEntry]:
+        """Find vocabulary entries whose term/variant appears in *text*.
+
+        Uses exact substring matching only (no pinyin layer) to avoid noisy
+        matches.  Returns entries sorted by frequency descending.
+        """
+        text = text.strip()
+        if not self._loaded or not text:
+            return []
+
+        try:
+            indices = self._exact_search(text)
+            sorted_indices = sorted(indices, key=lambda i: -self._entries[i].frequency)
+            return [self._entries[i] for i in sorted_indices]
+        except Exception as e:
+            logger.warning("find_terms_in_text failed: %s", e)
             return []
 
     # ------------------------------------------------------------------
@@ -339,3 +365,72 @@ def load_hotwords(
 def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
     """Read the number of entries in vocabulary.json without loading the index."""
     return len(_read_raw_entries(data_dir))
+
+
+def _parse_timestamp(ts: str) -> Optional[datetime]:
+    """Parse an ISO 8601 timestamp string into a timezone-aware datetime.
+
+    Returns None on failure.
+    """
+    try:
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def build_hotword_list(
+    vocab_index: Optional[VocabularyIndex],
+    conversation_history: Optional[ConversationHistory],
+    base_hotwords: Optional[List[str]],
+    *,
+    max_count: int = 50,
+    max_recent: int = 15,
+    max_age_hours: float = 2.0,
+) -> Optional[List[str]]:
+    """Build a two-layer hotword list for ASR injection.
+
+    Layer 1 (context): Extract terms from recent conversation history.
+    Layer 2 (base): Static high-frequency hotwords from ``load_hotwords()``.
+
+    Context-layer terms are placed first; base-layer terms fill remaining
+    slots (deduplicated).  Returns None when no hotwords are available.
+    """
+    context_terms: List[str] = []
+
+    # Context layer: extract terms from recent conversation final_text
+    if vocab_index is not None and vocab_index.is_loaded and conversation_history is not None:
+        try:
+            records = conversation_history.get_recent(n=max_recent)
+            now = datetime.now(timezone.utc)
+            texts: List[str] = []
+            for record in records:
+                ts_str = record.get("timestamp", "")
+                ts = _parse_timestamp(ts_str)
+                if ts is not None:
+                    age_hours = (now - ts).total_seconds() / 3600.0
+                    if age_hours > max_age_hours:
+                        continue
+                final = record.get("final_text", "")
+                if final:
+                    texts.append(final)
+
+            if texts:
+                combined = " ".join(texts)
+                entries = vocab_index.find_terms_in_text(combined)
+                context_terms = [e.term for e in entries]
+        except Exception as e:
+            logger.warning("Failed to build context hotwords: %s", e)
+
+    # Merge: context first, base fills remaining slots (deduplicated)
+    seen: set[str] = set()
+    result: List[str] = []
+    for term in [*context_terms, *(base_hotwords or ())]:
+        lower = term.lower()
+        if lower not in seen and len(result) < max_count:
+            seen.add(lower)
+            result.append(term)
+
+    return result if result else None
