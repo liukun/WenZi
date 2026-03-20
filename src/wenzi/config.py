@@ -298,6 +298,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "auto_build": True,
             "build_provider": "",
             "build_model": "",
+            "max_dynamic_hotwords": 10,
+            "max_static_hotwords": 50,
         },
         "conversation_history": {
             "enabled": False,
@@ -527,6 +529,10 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
          DEFAULT_CONFIG["feedback"]["cancel_key"]),
         ("scripting.chooser.switch_to_english", bool, None,
          DEFAULT_CONFIG["scripting"]["chooser"]["switch_to_english"]),
+        ("ai_enhance.vocabulary.max_dynamic_hotwords", int, lambda v: v > 0,
+         DEFAULT_CONFIG["ai_enhance"]["vocabulary"]["max_dynamic_hotwords"]),
+        ("ai_enhance.vocabulary.max_static_hotwords", int, lambda v: v > 0,
+         DEFAULT_CONFIG["ai_enhance"]["vocabulary"]["max_static_hotwords"]),
     ]
 
     for path, expected_type, constraint, default in rules:

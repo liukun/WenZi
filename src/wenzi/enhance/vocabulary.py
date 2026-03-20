@@ -407,12 +407,16 @@ def _read_raw_entries(data_dir: str = DEFAULT_DATA_DIR) -> List[dict]:
 def load_hotwords(
     data_dir: str = DEFAULT_DATA_DIR,
     min_frequency: int = 1,
-    max_count: int = 50,
+    max_count: Optional[int] = None,
 ) -> List[str]:
     """Load high-frequency vocabulary terms for ASR hotword injection.
 
     Thin wrapper around :func:`load_hotwords_detailed` that returns
     term strings only.
+
+    Args:
+        max_count: Maximum number of hotwords to return.  ``None`` means
+            unlimited (return all entries that pass the frequency filter).
     """
     return [
         d.term for d in load_hotwords_detailed(data_dir, min_frequency, max_count)
@@ -422,13 +426,17 @@ def load_hotwords(
 def load_hotwords_detailed(
     data_dir: str = DEFAULT_DATA_DIR,
     min_frequency: int = 1,
-    max_count: int = 50,
+    max_count: Optional[int] = None,
 ) -> List[HotwordDetail]:
     """Load high-frequency vocabulary terms with full metadata.
 
     Reads vocabulary.json, filters by *min_frequency*, scores by
     ``frequency + recency_bonus``, and returns the top *max_count*
     entries as :class:`HotwordDetail` with ``layer=LAYER_BASE``.
+
+    Args:
+        max_count: Maximum number of entries to return.  ``None`` means
+            unlimited (return all entries that pass the frequency filter).
     """
     entries = _read_raw_entries(data_dir)
     filtered = [e for e in entries if e.get("frequency", 1) >= min_frequency]
@@ -456,7 +464,7 @@ def load_hotwords_detailed(
         ))
 
     details.sort(key=lambda d: -d.score)
-    return details[:max_count]
+    return details[:max_count] if max_count is not None else details
 
 
 def get_vocab_entry_count(data_dir: str = DEFAULT_DATA_DIR) -> int:
@@ -512,7 +520,7 @@ def build_hotword_list(
     conversation_history: Optional["ConversationHistory"],
     base_hotwords: Optional[List[str]],
     *,
-    max_count: int = 50,
+    max_count: int = 10,
     max_recent: int = 15,
     max_age_hours: float = 2.0,
 ) -> Optional[List[str]]:
@@ -538,7 +546,7 @@ def build_hotword_list_detailed(
     conversation_history: Optional["ConversationHistory"],
     base_hotwords_detail: Optional[List[HotwordDetail]],
     *,
-    max_count: int = 50,
+    max_count: int = 10,
     max_recent: int = 15,
     max_age_hours: float = 2.0,
 ) -> List[HotwordDetail]:

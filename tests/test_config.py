@@ -441,6 +441,41 @@ class TestValidateConfig:
             validate_config(config)
             assert config["feedback"]["cancel_key"] == key
 
+    def test_max_dynamic_hotwords_valid(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_dynamic_hotwords": 20})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_dynamic_hotwords"] == 20
+
+    def test_max_dynamic_hotwords_invalid_zero(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_dynamic_hotwords": 0})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_dynamic_hotwords"] == 10
+
+    def test_max_dynamic_hotwords_invalid_negative(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_dynamic_hotwords": -5})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_dynamic_hotwords"] == 10
+
+    def test_max_dynamic_hotwords_invalid_type(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_dynamic_hotwords": "abc"})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_dynamic_hotwords"] == 10
+
+    def test_max_static_hotwords_valid(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_static_hotwords": 100})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_static_hotwords"] == 100
+
+    def test_max_static_hotwords_invalid_zero(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_static_hotwords": 0})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_static_hotwords"] == 50
+
+    def test_max_static_hotwords_invalid_type(self):
+        config = self._make_config({"ai_enhance.vocabulary.max_static_hotwords": "abc"})
+        validate_config(config)
+        assert config["ai_enhance"]["vocabulary"]["max_static_hotwords"] == 50
+
 
 class TestResolveConfigDir:
     """Tests for resolve_config_dir with NSUserDefaults priority."""

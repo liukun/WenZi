@@ -551,6 +551,32 @@ class TestLoadHotwords:
         assert len(result) == 3
         assert result[0] == "Term0"
 
+    def test_max_count_none_returns_all(self, tmp_path):
+        """max_count=None means unlimited — all entries are returned."""
+        entries = [
+            {"term": f"Term{i}", "frequency": 20 - i}
+            for i in range(20)
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=1, max_count=None)
+        assert len(result) == 20
+
+    def test_default_max_count_is_unlimited(self, tmp_path):
+        """Default max_count should return all entries (unlimited)."""
+        entries = [
+            {"term": f"Term{i}", "frequency": 15 - i}
+            for i in range(15)
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords(data_dir=str(tmp_path), min_frequency=1)
+        assert len(result) == 15
+
     def test_no_file_returns_empty(self, tmp_path):
         result = load_hotwords(data_dir=str(tmp_path))
         assert result == []
@@ -924,6 +950,20 @@ class TestLoadHotwordsDetailed:
             data_dir=str(tmp_path), min_frequency=1, max_count=3,
         )
         assert len(result) == 3
+
+    def test_max_count_none_returns_all(self, tmp_path):
+        """max_count=None means unlimited — all entries are returned."""
+        entries = [
+            {"term": f"T{i}", "frequency": 20 - i} for i in range(20)
+        ]
+        vocab_path = tmp_path / "vocabulary.json"
+        vocab_path.write_text(
+            json.dumps(_make_vocab_json(entries)), encoding="utf-8"
+        )
+        result = load_hotwords_detailed(
+            data_dir=str(tmp_path), min_frequency=1, max_count=None,
+        )
+        assert len(result) == 20
 
     def test_no_file_returns_empty(self, tmp_path):
         result = load_hotwords_detailed(data_dir=str(tmp_path))

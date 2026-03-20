@@ -538,14 +538,21 @@ class WenZiApp(StatusBarApp):
             return None
 
     def _load_hotwords(self):
-        """Load vocabulary hotwords if vocabulary is enabled."""
+        """Load vocabulary hotwords for static ASR injection (e.g. Sherpa).
+
+        The number of hotwords is capped by
+        ``ai_enhance.vocabulary.max_static_hotwords`` (default 50).
+        """
         vocab_cfg = self._config.get("ai_enhance", {}).get("vocabulary", {})
         if not vocab_cfg.get("enabled", False):
             return None
         from wenzi.enhance.vocabulary import load_hotwords
-        words = load_hotwords(data_dir=self._data_dir) or None
+        words = load_hotwords(
+            data_dir=self._data_dir,
+            max_count=vocab_cfg["max_static_hotwords"],
+        ) or None
         if words:
-            logger.info("Loaded %d hotwords for ASR injection", len(words))
+            logger.info("Loaded %d static hotwords for ASR injection", len(words))
             logger.debug("Hotwords: %s", ", ".join(words))
         return words
 
@@ -555,6 +562,11 @@ class WenZiApp(StatusBarApp):
         Returns a ``(terms, details)`` tuple where *terms* is
         ``Optional[List[str]]`` for ASR injection and *details* is
         ``List[HotwordDetail]`` for the preview panel display.
+
+        The number of hotwords is capped by
+        ``ai_enhance.vocabulary.max_dynamic_hotwords`` (default 10).
+        Context-layer terms are placed first; base-layer terms fill
+        remaining slots.
         """
         vocab_cfg = self._config.get("ai_enhance", {}).get("vocabulary", {})
         if not vocab_cfg.get("enabled", False):
@@ -564,6 +576,8 @@ class WenZiApp(StatusBarApp):
             build_hotword_list_detailed,
             load_hotwords_detailed,
         )
+
+        max_hotwords = vocab_cfg["max_dynamic_hotwords"]
 
         vocab_index = None
         if self._enhancer:
@@ -575,6 +589,7 @@ class WenZiApp(StatusBarApp):
             vocab_index,
             self._conversation_history,
             base_detail,
+            max_count=max_hotwords,
         )
 
         terms = [d.term for d in details]
