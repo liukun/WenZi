@@ -1,26 +1,33 @@
 #!/usr/bin/env bash
-# Build WenZi.app with PyInstaller, re-sign, and package as DMG.
-# Usage: ./scripts/build-dmg.sh [version]
-# Example: ./scripts/build-dmg.sh 0.1.0
+# Package an already-built WenZi .app into a DMG installer.
+# Usage:
+#   ./scripts/build-dmg.sh              # Standard (expects dist/WenZi.app)
+#   ./scripts/build-dmg.sh --lite       # Lite     (expects dist/WenZi-Lite.app)
+#   ./scripts/build-dmg.sh [version]    # Standard with explicit version
+#   ./scripts/build-dmg.sh --lite [version]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DIST_DIR="$PROJECT_DIR/dist"
-APP_PATH="$DIST_DIR/WenZi.app"
-# Resolve signing identity: env var > auto-detect fingerprint > ad-hoc
-if [ -n "${CODESIGN_IDENTITY:-}" ]; then
-    SIGN_IDENTITY="$CODESIGN_IDENTITY"
-    SIGN_MODE="identity"
-else
-    SIGN_IDENTITY=$(security find-identity -p codesigning \
-        | grep -m1 ')' | awk '{print $2}')
-    if [ -n "$SIGN_IDENTITY" ]; then
-        SIGN_MODE="identity"
-    else
-        echo "WARNING: No codesigning identity found in keychain, falling back to ad-hoc signing."
-        SIGN_MODE="adhoc"
+
+# Parse --lite flag
+APP_NAME="WenZi"
+VOL_NAME="WenZi"
+for arg in "$@"; do
+    if [ "$arg" = "--lite" ]; then
+        APP_NAME="WenZi-Lite"
+        VOL_NAME="WenZi Lite"
     fi
+done
+
+APP_PATH="$DIST_DIR/$APP_NAME.app"
+
+# Check that the .app exists
+if [ ! -d "$APP_PATH" ]; then
+    echo "ERROR: $APP_PATH not found."
+    echo "Run 'make build' (or 'make build-lite') first."
+    exit 1
 fi
 
 # Read version from pyproject.toml
@@ -34,9 +41,14 @@ with open('$PROJECT_DIR/pyproject.toml', 'rb') as f:
     print(tomllib.load(f)['project']['version'])
 ")
 
-VERSION="${1:-}"
+# Version: explicit arg > git tag > pyproject.toml
+VERSION=""
+for arg in "$@"; do
+    if [ "$arg" != "--lite" ]; then
+        VERSION="$arg"
+    fi
+done
 if [ -z "$VERSION" ]; then
-    # Try to extract from git tag
     VERSION=$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "")
 fi
 if [ -z "$VERSION" ]; then
@@ -52,77 +64,24 @@ if [ "$VERSION" != "$PYPROJECT_VERSION" ]; then
     exit 1
 fi
 
-DMG_PATH="$DIST_DIR/WenZi-${VERSION}-arm64.dmg"
+DMG_PATH="$DIST_DIR/${APP_NAME}-${VERSION}-arm64.dmg"
 
 cd "$PROJECT_DIR"
 
-echo "==> Building WenZi v${VERSION}..."
+echo "==> Creating DMG for $APP_NAME v${VERSION}..."
 
-echo "==> Injecting build info..."
-uv run python scripts/inject_build_info.py
-
-echo "==> Cleaning previous build..."
-rm -rf build dist
-find "$PROJECT_DIR/src" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-
-echo "==> Running PyInstaller..."
-uv run pyinstaller WenZi.spec --clean --noconfirm
-
-if [ "$SIGN_MODE" = "identity" ]; then
-    echo "==> Re-signing app bundle (identity: $SIGN_IDENTITY)..."
-    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH"
-else
-    echo "==> Re-signing app bundle (ad-hoc)..."
-    codesign --force --deep --sign - "$APP_PATH"
-fi
-
-echo "==> Verifying signature..."
-codesign --verify --verbose "$APP_PATH"
-
-# Verify bundled resources: scan src/wenzi/ for non-Python files
-# and check they exist in the packaged app bundle
-FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
-echo "==> Verifying bundled resources..."
-MISSING=0
-FOUND=0
-while IFS= read -r src_file; do
-    rel_path="${src_file#$PROJECT_DIR/src/}"
-    if [ -f "$FRAMEWORKS_DIR/$rel_path" ]; then
-        echo "    OK: $rel_path"
-        FOUND=$((FOUND + 1))
-    else
-        echo "    MISSING: $rel_path"
-        MISSING=$((MISSING + 1))
-    fi
-done < <(find "$PROJECT_DIR/src/wenzi" -type f \
-    ! -name "*.py" \
-    ! -name "*.pyc" \
-    ! -path "*/__pycache__/*" \
-    ! -path "*/.DS_Store" \
-    ! -name "*.egg-info" \
-    ! -path "*.egg-info/*")
-
-if [ "$MISSING" -gt 0 ]; then
-    echo ""
-    echo "ERROR: $MISSING resource(s) missing from app bundle!"
-    echo "       Add them to WenZi.spec datas= section."
-    exit 1
-fi
-echo "    $FOUND resource(s) verified."
-
-echo "==> Creating DMG..."
 # Remove previous DMG if exists (create-dmg won't overwrite)
 rm -f "$DMG_PATH"
 create-dmg \
-    --volname "WenZi" \
+    --volname "$VOL_NAME" \
     --volicon "$PROJECT_DIR/resources/dmg-volume.icns" \
     --background "$PROJECT_DIR/resources/dmg-background.png" \
     --window-pos 200 120 \
     --window-size 600 400 \
     --icon-size 128 \
-    --icon "WenZi.app" 175 190 \
+    --icon "$APP_NAME.app" 175 190 \
     --app-drop-link 425 190 \
-    --hide-extension "WenZi.app" \
+    --hide-extension "$APP_NAME.app" \
     --no-internet-enable \
     "$DMG_PATH" \
     "$APP_PATH"
@@ -130,7 +89,6 @@ create-dmg \
 APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)
 DMG_SIZE=$(du -sh "$DMG_PATH" | cut -f1)
 echo ""
-echo "==> Build complete!"
+echo "==> DMG complete!"
 echo "    App: $APP_PATH ($APP_SIZE)"
 echo "    DMG: $DMG_PATH ($DMG_SIZE)"
-echo "    Run with: open $APP_PATH"

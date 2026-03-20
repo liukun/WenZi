@@ -1,4 +1,4 @@
-.PHONY: dev run-lite docs docs-serve lint test build build-lite build-dmg clean
+.PHONY: dev run-lite docs docs-serve lint test build build-lite build-dmg build-lite-dmg clean
 
 # Overridable environment variables for development:
 # WENZI_CONFIG_DIR    — config directory path (default: ~/.config/WenZi)
@@ -45,9 +45,12 @@ build:
 build-lite:
 	./scripts/build-lite.sh
 
-# Build the .dmg installer
+# Package .app into .dmg (run after build/build-lite)
 build-dmg:
 	./scripts/build-dmg.sh
+
+build-lite-dmg:
+	./scripts/build-dmg.sh --lite
 
 # Remove build artifacts
 clean:

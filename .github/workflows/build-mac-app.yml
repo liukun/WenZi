@@ -9,23 +9,14 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: macos-14  # Apple Silicon runner
-
+  # --- Shared setup: extract version and validate ---
+  prepare:
+    runs-on: macos-14
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13.5'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        run: uv sync --all-groups
 
       - name: Extract version from tag
         id: version
@@ -44,6 +35,25 @@ jobs:
             exit 1
           fi
           echo "Version validated: $TAG_VERSION"
+
+  # --- Standard build ---
+  build-standard:
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies (all extras)
+        run: uv sync --all-groups --all-extras
 
       - name: Inject build info
         run: uv run python scripts/inject_build_info.py
@@ -83,23 +93,18 @@ jobs:
           rm -f "$CERT_FILE"
 
       - name: Build app with PyInstaller
-        run: |
-          uv run pyinstaller WenZi.spec --clean --noconfirm
+        run: uv run pyinstaller WenZi.spec --clean --noconfirm
 
       - name: Re-sign app bundle
         run: |
-          APP_PATH="dist/WenZi.app"
-          echo "==> Re-signing app bundle..."
-          codesign --force --deep --sign "$CODESIGN_IDENTITY" "$APP_PATH"
-          echo "==> Verifying signature..."
-          codesign --verify --verbose "$APP_PATH"
+          codesign --force --deep --sign "$CODESIGN_IDENTITY" dist/WenZi.app
+          codesign --verify --verbose dist/WenZi.app
 
       - name: Install create-dmg
         run: brew install create-dmg
 
       - name: Create DMG
         run: |
-          DMG_PATH="dist/WenZi-${{ steps.version.outputs.VERSION }}-arm64.dmg"
           create-dmg \
             --volname "WenZi" \
             --volicon "resources/dmg-volume.icns" \
@@ -111,13 +116,120 @@ jobs:
             --app-drop-link 425 190 \
             --hide-extension "WenZi.app" \
             --no-internet-enable \
-            "$DMG_PATH" \
+            "dist/WenZi-${{ needs.prepare.outputs.version }}-arm64.dmg" \
             "dist/WenZi.app"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-standard
+          path: dist/WenZi-${{ needs.prepare.outputs.version }}-arm64.dmg
+
+  # --- Lite build ---
+  build-lite:
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies (base only, no local-asr extras)
+        run: uv sync --all-groups
+
+      - name: Inject build info
+        run: uv run python scripts/inject_build_info.py
+
+      - name: Import code signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          CERT_FILE="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_FILE="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PWD="build-keychain-pwd"
+
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$CERT_FILE"
+
+          security delete-keychain "$KEYCHAIN_FILE" 2>/dev/null || true
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_FILE"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
+
+          security import "$CERT_FILE" -P "$MACOS_CERTIFICATE_PWD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_FILE"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
+
+          security list-keychains -d user -s "$KEYCHAIN_FILE" login.keychain-db
+
+          IDENTITY=$(security find-identity -p codesigning "$KEYCHAIN_FILE" \
+            | grep -m1 ')' | awk '{print $2}')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No codesigning identity found in imported certificate"
+            exit 1
+          fi
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "Using signing identity: $IDENTITY"
+
+          rm -f "$CERT_FILE"
+
+      - name: Build Lite app with PyInstaller
+        run: uv run pyinstaller WenZi-Lite.spec --clean --noconfirm
+
+      - name: Re-sign Lite app bundle
+        run: |
+          codesign --force --deep --sign "$CODESIGN_IDENTITY" dist/WenZi-Lite.app
+          codesign --verify --verbose dist/WenZi-Lite.app
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create Lite DMG
+        run: |
+          create-dmg \
+            --volname "WenZi Lite" \
+            --volicon "resources/dmg-volume.icns" \
+            --background "resources/dmg-background.png" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "WenZi-Lite.app" 175 190 \
+            --app-drop-link 425 190 \
+            --hide-extension "WenZi-Lite.app" \
+            --no-internet-enable \
+            "dist/WenZi-Lite-${{ needs.prepare.outputs.version }}-arm64.dmg" \
+            "dist/WenZi-Lite.app"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-lite
+          path: dist/WenZi-Lite-${{ needs.prepare.outputs.version }}-arm64.dmg
+
+  # --- Release (waits for both builds) ---
+  release:
+    needs: [prepare, build-standard, build-lite]
+    runs-on: macos-14
+    steps:
+      - name: Download all DMG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: WenZi ${{ steps.version.outputs.VERSION }}
+          name: WenZi ${{ needs.prepare.outputs.version }}
           generate_release_notes: true
           files: |
-            dist/WenZi-${{ steps.version.outputs.VERSION }}-arm64.dmg
+            dist/WenZi-${{ needs.prepare.outputs.version }}-arm64.dmg
+            dist/WenZi-Lite-${{ needs.prepare.outputs.version }}-arm64.dmg

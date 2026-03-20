@@ -1981,7 +1981,7 @@ class TestConnectionTimeoutRetry:
         """Verify defaults when config keys are absent."""
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_config())
-        assert enhancer._connection_timeout == 10
+        assert enhancer._connection_timeout == 30
         assert enhancer._max_retries == 2
 
     def test_enhance_stream_connection_timeout_retry_success(self):
