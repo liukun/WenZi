@@ -431,6 +431,15 @@ class TextEnhancer:
         )
 
     @property
+    def input_context_level(self) -> str:
+        return self._input_context_level
+
+    @input_context_level.setter
+    def input_context_level(self, value: str) -> None:
+        self._input_context_level = value
+        logger.info("Input context level changed to: %s", value)
+
+    @property
     def conversation_history(self) -> ConversationHistory:
         return self._conversation_history
 

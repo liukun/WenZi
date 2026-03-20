@@ -6,11 +6,30 @@ to provide context-aware text enhancement.
 
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import logging
+import re
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
+
+from wenzi.ui_helpers import get_frontmost_app
 
 logger = logging.getLogger(__name__)
+
+# Module-level singleton executor for AX timeout protection.
+# Reused across hotkey presses to avoid per-call thread creation overhead.
+_ax_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+# Pre-compiled regex patterns for domain extraction
+_BROWSER_SUFFIX_RE = re.compile(
+    r"\s*[-\u2014\u2013]+\s*"
+    r"(Google Chrome|Mozilla Firefox|Safari|Microsoft Edge|Brave|Arc)$",
+    re.IGNORECASE,
+)
+_DOMAIN_RE = re.compile(
+    r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?$"
+)
 
 
 @dataclasses.dataclass
@@ -124,7 +143,12 @@ def capture_input_context(level: str = "basic") -> Optional[InputContext]:
         logger.warning("Unknown input_context level %r, treating as basic", level)
         level = "basic"
 
-    app_name, bundle_id, pid = _get_frontmost_app_info()
+    app = get_frontmost_app()
+    if app is None:
+        return None
+    app_name = str(app.localizedName() or "")
+    bundle_id = str(app.bundleIdentifier() or "")
+    pid = app.processIdentifier()
     if not app_name:
         return None
 
@@ -132,8 +156,6 @@ def capture_input_context(level: str = "basic") -> Optional[InputContext]:
         return InputContext(app_name=app_name, bundle_id=bundle_id)
 
     # detailed — collect with timeout protection (500ms budget)
-    import concurrent.futures
-
     # NOTE: AXUIElement calls ideally run on the main thread, but we
     # use a thread pool here for timeout protection. In practice,
     # AX calls use process-to-process IPC and work from any thread.
@@ -142,13 +164,14 @@ def capture_input_context(level: str = "basic") -> Optional[InputContext]:
     focused_desc = None
     browser_domain = None
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_collect_ax_fields, pid, bundle_id)
-            window_title, focused_role, focused_desc, browser_domain = future.result(
-                timeout=0.5
-            )
-    except (concurrent.futures.TimeoutError, Exception) as e:
-        logger.debug("AX collection timed out or failed: %s", e)
+        future = _ax_executor.submit(_collect_ax_fields, pid, bundle_id)
+        window_title, focused_role, focused_desc, browser_domain = future.result(
+            timeout=0.5
+        )
+    except concurrent.futures.TimeoutError:
+        logger.debug("AX collection timed out for PID %s", pid)
+    except Exception as e:
+        logger.warning("AX collection failed: %s", e)
 
     return InputContext(
         app_name=app_name,
@@ -162,38 +185,21 @@ def capture_input_context(level: str = "basic") -> Optional[InputContext]:
 
 def _collect_ax_fields(pid: int, bundle_id: Optional[str]) -> tuple:
     """Collect window title and AX-dependent fields. Called in a thread with timeout."""
-    window_title, focused_role, focused_desc = _get_ax_info(pid)
+    window_title, focused_role, focused_desc, win_ref = _get_ax_info(pid)
     browser_domain = None
     if bundle_id in _BROWSER_BUNDLE_IDS:
-        browser_domain = _get_browser_domain(pid, window_title)
+        browser_domain = _get_browser_domain(win_ref, window_title)
     return (window_title, focused_role, focused_desc, browser_domain)
 
 
-def _get_frontmost_app_info() -> tuple:
-    """Return (app_name, bundle_id, pid) of the frontmost application."""
-    try:
-        from AppKit import NSWorkspace
-        app = NSWorkspace.sharedWorkspace().frontmostApplication()
-        if app is None:
-            return (None, None, None)
-        return (
-            str(app.localizedName() or ""),
-            str(app.bundleIdentifier() or ""),
-            app.processIdentifier(),
-        )
-    except Exception as e:
-        logger.debug("Failed to get frontmost app info: %s", e)
-        return (None, None, None)
-
-
 def _get_ax_info(pid: Optional[int]) -> tuple:
-    """Get window title, focused element role, and description via AXUIElement API.
+    """Get window title, focused element role, description, and window ref.
 
-    Returns (window_title, role, description) tuple. Any field may be None
-    if Accessibility permission is not granted or the value cannot be determined.
+    Returns (window_title, role, description, win_ref) tuple. Any field
+    may be None if Accessibility permission is not granted.
     """
     if pid is None:
-        return (None, None, None)
+        return (None, None, None, None)
     try:
         from ApplicationServices import (
             AXUIElementCreateApplication,
@@ -204,8 +210,10 @@ def _get_ax_info(pid: Optional[int]) -> tuple:
 
         # Window title from AXFocusedWindow.AXTitle
         window_title = None
+        win_ref = None
         err, win = AXUIElementCopyAttributeValue(app_ref, "AXFocusedWindow", None)
         if err == kAXErrorSuccess and win:
+            win_ref = win
             err, val = AXUIElementCopyAttributeValue(win, "AXTitle", None)
             if err == kAXErrorSuccess and val:
                 window_title = str(val)
@@ -225,43 +233,33 @@ def _get_ax_info(pid: Optional[int]) -> tuple:
                     desc = str(val)
                     break
 
-        return (window_title, role, desc)
+        return (window_title, role, desc, win_ref)
     except Exception as e:
         logger.debug("Failed to get AX info: %s", e)
-        return (None, None, None)
+        return (None, None, None, None)
 
 
 def _get_browser_domain(
-    pid: Optional[int], window_title: Optional[str]
+    win_ref: Any, window_title: Optional[str]
 ) -> Optional[str]:
     """Extract browser domain. Tries AX first, falls back to window title."""
-    if pid is not None:
-        domain = _get_browser_domain_via_ax(pid)
+    if win_ref is not None:
+        domain = _get_browser_domain_from_win(win_ref)
         if domain:
             return domain
     # Fallback: parse from window title
     return _parse_domain_from_title(window_title) if window_title else None
 
 
-def _get_browser_domain_via_ax(pid: int) -> Optional[str]:
-    """Try to get URL from browser via AX and extract domain."""
+def _get_browser_domain_from_win(win_ref: Any) -> Optional[str]:
+    """Try to get URL from browser window AXDocument attribute."""
     try:
         from ApplicationServices import (
-            AXUIElementCreateApplication,
             AXUIElementCopyAttributeValue,
         )
         from ApplicationServices import kAXErrorSuccess
-        from urllib.parse import urlparse
 
-        app_ref = AXUIElementCreateApplication(pid)
-
-        # Try AXFocusedWindow → AXDocument (Safari) or address bar value
-        err, win = AXUIElementCopyAttributeValue(app_ref, "AXFocusedWindow", None)
-        if err != kAXErrorSuccess or win is None:
-            return None
-
-        # Safari: AXDocument attribute on the window
-        err, doc_url = AXUIElementCopyAttributeValue(win, "AXDocument", None)
+        err, doc_url = AXUIElementCopyAttributeValue(win_ref, "AXDocument", None)
         if err == kAXErrorSuccess and doc_url:
             parsed = urlparse(str(doc_url))
             if parsed.hostname:
@@ -269,7 +267,7 @@ def _get_browser_domain_via_ax(pid: int) -> Optional[str]:
 
         return None
     except Exception as e:
-        logger.debug("Failed to get browser domain via AX: %s", e)
+        logger.debug("Failed to get browser domain from window: %s", e)
         return None
 
 
@@ -283,29 +281,16 @@ def _parse_domain_from_title(title: str) -> Optional[str]:
 
     This is best-effort and may return None.
     """
-    import re
-
     # Strip known browser suffixes
-    title = re.sub(
-        r"\s*[-\u2014\u2013]+\s*(Google Chrome|Mozilla Firefox|Safari|Microsoft Edge|Brave|Arc)$",
-        "",
-        title,
-        flags=re.IGNORECASE,
-    )
-    title = title.strip()
+    title = _BROWSER_SUFFIX_RE.sub("", title).strip()
     if not title:
         return None
 
     # Check if the remaining looks like a domain
-    domain_pattern = re.compile(
-        r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?$"
-    )
-    if domain_pattern.match(title):
+    if _DOMAIN_RE.match(title):
         return title.lower()
 
     # Try urlparse for URLs
-    from urllib.parse import urlparse
-
     parsed = urlparse(title)
     if parsed.hostname:
         return parsed.hostname

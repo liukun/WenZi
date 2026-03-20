@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from wenzi.config import save_config
 from wenzi.input import type_text
+from wenzi.input_context import capture_input_context
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,6 @@ class RecordingController:
             return
 
         # Capture input context while the user's target app is still frontmost
-        from wenzi.input_context import capture_input_context
         ic_level = app._config.get("ai_enhance", {}).get("input_context", "basic")
         self._input_context = capture_input_context(ic_level)
 

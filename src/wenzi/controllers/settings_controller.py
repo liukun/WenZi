@@ -728,7 +728,7 @@ class SettingsController:
         app._config.setdefault("ai_enhance", {})
         app._config["ai_enhance"]["input_context"] = level
         if app._enhancer:
-            app._enhancer._input_context_level = level
+            app._enhancer.input_context_level = level
         save_config(app._config, app._config_path)
         logger.info("Input context level set to: %s (from settings)", level)
 

@@ -1,6 +1,6 @@
 """Tests for input_context module."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class TestInputContext:
@@ -135,10 +135,14 @@ class TestCaptureInputContext:
         from wenzi.input_context import capture_input_context
         assert capture_input_context("off") is None
 
-    @patch("wenzi.input_context._get_frontmost_app_info")
-    def test_basic_collects_app_only(self, mock_info):
+    @patch("wenzi.input_context.get_frontmost_app")
+    def test_basic_collects_app_only(self, mock_gfa):
         from wenzi.input_context import capture_input_context
-        mock_info.return_value = ("Terminal", "com.apple.Terminal", 1234)
+        app = MagicMock()
+        app.localizedName.return_value = "Terminal"
+        app.bundleIdentifier.return_value = "com.apple.Terminal"
+        app.processIdentifier.return_value = 1234
+        mock_gfa.return_value = app
         ctx = capture_input_context("basic")
         assert ctx is not None
         assert ctx.app_name == "Terminal"
@@ -147,10 +151,14 @@ class TestCaptureInputContext:
         assert ctx.focused_role is None
 
     @patch("wenzi.input_context._collect_ax_fields")
-    @patch("wenzi.input_context._get_frontmost_app_info")
-    def test_detailed_collects_all(self, mock_info, mock_collect):
+    @patch("wenzi.input_context.get_frontmost_app")
+    def test_detailed_collects_all(self, mock_gfa, mock_collect):
         from wenzi.input_context import capture_input_context
-        mock_info.return_value = ("Terminal", "com.apple.Terminal", 1234)
+        app = MagicMock()
+        app.localizedName.return_value = "Terminal"
+        app.bundleIdentifier.return_value = "com.apple.Terminal"
+        app.processIdentifier.return_value = 1234
+        mock_gfa.return_value = app
         mock_collect.return_value = ("zsh", "AXTextArea", None, None)
         ctx = capture_input_context("detailed")
         assert ctx is not None
@@ -158,17 +166,21 @@ class TestCaptureInputContext:
         assert ctx.window_title == "zsh"
         assert ctx.focused_role == "AXTextArea"
 
-    @patch("wenzi.input_context._get_frontmost_app_info")
-    def test_returns_none_when_no_app(self, mock_info):
+    @patch("wenzi.input_context.get_frontmost_app")
+    def test_returns_none_when_no_app(self, mock_gfa):
         from wenzi.input_context import capture_input_context
-        mock_info.return_value = (None, None, None)
+        mock_gfa.return_value = None
         assert capture_input_context("basic") is None
 
     @patch("wenzi.input_context._collect_ax_fields")
-    @patch("wenzi.input_context._get_frontmost_app_info")
-    def test_detailed_browser_domain(self, mock_info, mock_collect):
+    @patch("wenzi.input_context.get_frontmost_app")
+    def test_detailed_browser_domain(self, mock_gfa, mock_collect):
         from wenzi.input_context import capture_input_context
-        mock_info.return_value = ("Google Chrome", "com.google.Chrome", 5678)
+        app = MagicMock()
+        app.localizedName.return_value = "Google Chrome"
+        app.bundleIdentifier.return_value = "com.google.Chrome"
+        app.processIdentifier.return_value = 5678
+        mock_gfa.return_value = app
         mock_collect.return_value = (
             "GitHub - My Repo", "AXTextField", "Search or type a URL", "github.com"
         )
@@ -176,10 +188,14 @@ class TestCaptureInputContext:
         assert ctx.browser_domain == "github.com"
         assert ctx.focused_description == "Search or type a URL"
 
-    @patch("wenzi.input_context._get_frontmost_app_info")
-    def test_invalid_level_treated_as_basic(self, mock_info):
+    @patch("wenzi.input_context.get_frontmost_app")
+    def test_invalid_level_treated_as_basic(self, mock_gfa):
         from wenzi.input_context import capture_input_context
-        mock_info.return_value = ("Terminal", "com.apple.Terminal", 1234)
+        app = MagicMock()
+        app.localizedName.return_value = "Terminal"
+        app.bundleIdentifier.return_value = "com.apple.Terminal"
+        app.processIdentifier.return_value = 1234
+        mock_gfa.return_value = app
         ctx = capture_input_context("invalid")
         assert ctx is not None
         assert ctx.app_name == "Terminal"
@@ -188,10 +204,13 @@ class TestCaptureInputContext:
     def test_timeout_returns_partial_context(self):
         """AX timeout should gracefully degrade to partial context."""
         from wenzi.input_context import capture_input_context
+        app = MagicMock()
+        app.localizedName.return_value = "Terminal"
+        app.bundleIdentifier.return_value = "com.apple.Terminal"
+        app.processIdentifier.return_value = 1234
 
-        with patch("wenzi.input_context._get_frontmost_app_info") as mock_info, \
+        with patch("wenzi.input_context.get_frontmost_app", return_value=app), \
              patch("wenzi.input_context._collect_ax_fields", side_effect=Exception("timeout")):
-            mock_info.return_value = ("Terminal", "com.apple.Terminal", 1234)
             ctx = capture_input_context("detailed")
             assert ctx is not None
             assert ctx.app_name == "Terminal"

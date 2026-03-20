@@ -54,6 +54,12 @@ class PreviewController:
         self._result_holder: dict | None = None
         self._input_context = None
 
+    def _apply_input_context(self, ctx) -> None:
+        """Store input context and sync display text to the preview panel."""
+        self._input_context = ctx
+        display = ctx.format_for_display() if ctx else ""
+        self._app._preview_panel.set_input_context(display)
+
     # ------------------------------------------------------------------
     # Preview history helpers
     # ------------------------------------------------------------------
@@ -217,12 +223,8 @@ class PreviewController:
             return
 
         self._viewing_history_index = index
-        self._input_context = record.input_context
+        self._apply_input_context(record.input_context)
         app = self._app
-        if record.input_context:
-            app._preview_panel.set_input_context(record.input_context.format_for_display())
-        else:
-            app._preview_panel.set_input_context("")
 
         # Update internal state so confirm uses the correct ASR text
         app._current_preview_asr_text = record.asr_text
@@ -360,11 +362,7 @@ class PreviewController:
         # Save the frontmost app before we steal focus with the preview panel.
         # Used later to reactivate only the focused window (not all windows).
         previous_app = get_frontmost_app()
-        self._input_context = app._recording_controller._input_context
-        if self._input_context:
-            app._preview_panel.set_input_context(self._input_context.format_for_display())
-        else:
-            app._preview_panel.set_input_context("")
+        self._apply_input_context(app._recording_controller._input_context)
 
         try:
             app._usage_stats.record_transcription(
