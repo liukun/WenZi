@@ -207,7 +207,7 @@ class TextEnhancer:
     ) -> None:
         self._enabled = config.get("enabled", False)
         self._timeout = config.get("timeout", 30)
-        self._connection_timeout = config.get("connection_timeout", 10)
+        self._connection_timeout = config.get("connection_timeout", 30)
         self._max_retries = config.get("max_retries", 2)
         self._max_output_tokens = config.get("max_output_tokens", 4096)
         self._thinking = config.get("thinking", False)
