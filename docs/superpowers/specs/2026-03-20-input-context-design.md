@@ -66,6 +66,8 @@ Below the dropdown, a dynamic description label updates based on the selected op
 | Basic | *App name is sent to help the AI adapt to your context.* |
 | Detailed | *App name, window title, and other details are sent for better accuracy. May include sensitive info.* |
 
+Follows the existing settings save pattern: dropdown change callback → `_call("on_input_context_change", value)` → app handler updates `config["ai_enhance"]["input_context"]` and calls `save_config()`. On panel init, reads current value from config to select the correct dropdown item.
+
 ## Collection Layer
 
 ### Module
@@ -91,7 +93,7 @@ def capture_input_context(level: str = "basic") -> InputContext | None:
 ### Graceful degradation
 
 - If Accessibility permission is not granted, AX-dependent fields (`focused_role`, `focused_description`, `browser_domain` via AX) return `None`. The function does not raise or prompt — it silently degrades.
-- Browser domain fallback: when AX is unavailable, attempt to extract domain from `window_title` for known browser `bundle_id`s.
+- Browser domain fallback: when AX is unavailable, attempt to extract domain from `window_title` for known browser `bundle_id`s. Heuristic: strip known browser suffixes (e.g., " - Google Chrome", " -- Mozilla Firefox") from the window title, then check if the remainder looks like a domain or URL. This is best-effort — returns `None` if no confident match.
 - If `level="off"`, return `None` immediately.
 
 ### Known browser bundle IDs
@@ -107,9 +109,17 @@ _BROWSER_BUNDLE_IDS = {
 }
 ```
 
+### Timeout protection
+
+AXUIElement calls may hang if the target application is unresponsive. The entire `capture_input_context()` call should complete within 500ms. If AX queries exceed this budget, abort them and return whatever fields were already collected.
+
 ### Call timing
 
-Called in `recording_controller.on_hotkey_press()`, immediately after the existing flow starts but before any focus changes. At this point the user's target application is guaranteed to be in the foreground. The result is stored as `self._input_context` on the controller.
+Called in `recording_controller.on_hotkey_press()`, at the very beginning of the method body — before `_delayed_start`, sound playback, or any focus changes. At this point the user's target application is guaranteed to be in the foreground.
+
+The hotkey callback runs on the main thread (PyObjC/AppKit event loop), which satisfies the AXUIElement main-thread requirement. If a future hotkey implementation dispatches on a background thread, `capture_input_context()` must be wrapped in `AppHelper.callAfter()` to ensure main-thread execution.
+
+The result is stored as `self._input_context` on the controller.
 
 ## Injection Layer
 
@@ -142,11 +152,26 @@ Each history entry displayed to the LLM can include a short environment tag if t
 
 The tag detail level follows the **current** configuration, not the level at which the record was originally stored.
 
-### enhancer.enhance_stream() interface change
+`format_entry_line()` signature changes to:
 
-New optional parameter: `input_context: InputContext | None = None`
+```python
+@staticmethod
+def format_entry_line(entry: Dict[str, Any], context_level: str = "off") -> str:
+```
 
-Passed through from `EnhanceController.run()`.
+The `context_level` parameter controls whether and how the environment tag is appended. The enhancer passes the current config level when calling this method.
+
+**History cache interaction**: When the user changes `input_context` config level at runtime, the per-mode history cache (`_ModeHistoryCache`) must be invalidated to re-format entry lines with the new tag level. This can be handled by tracking the last-used `context_level` in the cache and triggering a full rebuild when it changes.
+
+### Enhancer interface changes
+
+Both `enhance_stream()` and `enhance()` gain a new optional parameter: `input_context: InputContext | None = None`.
+
+The input context line is appended in `_build_system_content()` (not `_build_context_section()`), after the context section closing `---`. This keeps `_build_context_section()` focused on history + vocabulary, while `_build_system_content()` handles the final assembly including the per-request dynamic tail.
+
+### EnhanceController pass-through
+
+`EnhanceController.run()` gains `input_context: InputContext | None = None` and forwards it to both `_run_single()` and `_run_chain()`, which in turn pass it to `enhancer.enhance_stream()` / `enhancer.enhance()`.
 
 ## Storage Layer
 
@@ -218,14 +243,16 @@ Recording ends
   -> on_hotkey_release()
     -> preview mode: do_transcribe_with_preview(input_context=self._input_context)
     -> direct mode: do_transcribe_direct(input_context=self._input_context)
+       -> with enhance: EnhanceController path (below)
+       -> without enhance: conversation_history.log(..., input_context=...) directly
 
 Enhancement phase
   -> EnhanceController.run(asr_text, input_context=...)
-    -> enhancer.enhance_stream(text, input_context=...)
-      -> _build_context_section(text, input_context=...)
-        -> History entries with environment tags
-        -> Vocabulary entries
-        -> Trailing line: "当前输入环境：..."
+    -> _run_single() / _run_chain() forwards input_context
+      -> enhancer.enhance_stream(text, input_context=...)
+        -> _build_system_content(text, mode_def, input_context=...)
+          -> _build_context_section(text)  # unchanged — history + vocabulary
+          -> append "当前输入环境：..." at the tail
 
 Storage phase
   -> conversation_history.log(..., input_context=input_context)
@@ -263,3 +290,4 @@ Preview history
 - `bundle_id` is never sent to the LLM.
 - The configured level controls both collection scope and display scope.
 - Old data without `input_context` is fully compatible — no migration needed.
+- `input_context` field in `PreviewRecord` should not be mutated after creation.
