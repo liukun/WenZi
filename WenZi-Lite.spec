@@ -37,6 +37,7 @@ a = Analysis(
         'wenzi.usage_stats',
         'wenzi.lru_cache',
         'wenzi.ui_helpers',
+        'wenzi.input_source',
         # wenzi.audio
         'wenzi.audio',
         'wenzi.audio.recorder',
@@ -58,6 +59,7 @@ a = Analysis(
         'wenzi.enhance.conversation_history',
         'wenzi.enhance.preview_history',
         'wenzi.enhance.mode_loader',
+        'wenzi.enhance.text_diff',
         # wenzi.ui
         'wenzi.ui',
         'wenzi.ui.result_window_web',
