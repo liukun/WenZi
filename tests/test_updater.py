@@ -27,6 +27,26 @@ class TestAppUpdaterInit:
         assert updater._cancelled is True
 
 
+class TestAppName:
+    def test_standard(self):
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert AppUpdater._app_name() == "WenZi"
+
+    def test_lite(self):
+        with patch("wenzi.app.get_build_type", return_value="lite"):
+            assert AppUpdater._app_name() == "WenZi-Lite"
+
+
+class TestStagedAppName:
+    def test_standard(self):
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert AppUpdater._staged_app_name() == ".WenZi-update.app"
+
+    def test_lite(self):
+        with patch("wenzi.app.get_build_type", return_value="lite"):
+            assert AppUpdater._staged_app_name() == ".WenZi-Lite-update.app"
+
+
 class TestGetAppBundlePath:
     def test_returns_path_from_nsbundle(self):
         mock_bundle = MagicMock()
@@ -120,15 +140,24 @@ class TestFindAppInVolume:
     def test_default_name(self, tmp_path):
         app = tmp_path / "WenZi.app"
         app.mkdir()
-        assert AppUpdater._find_app_in_volume(tmp_path) == app
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert AppUpdater._find_app_in_volume(tmp_path) == app
+
+    def test_lite_name(self, tmp_path):
+        app = tmp_path / "WenZi-Lite.app"
+        app.mkdir()
+        with patch("wenzi.app.get_build_type", return_value="lite"):
+            assert AppUpdater._find_app_in_volume(tmp_path) == app
 
     def test_other_name(self, tmp_path):
         app = tmp_path / "SomeOther.app"
         app.mkdir()
-        assert AppUpdater._find_app_in_volume(tmp_path) == app
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert AppUpdater._find_app_in_volume(tmp_path) == app
 
     def test_not_found(self, tmp_path):
-        with pytest.raises(UpdateError, match="not found"):
+        with patch("wenzi.app.get_build_type", return_value="standard"), \
+             pytest.raises(UpdateError, match="not found"):
             AppUpdater._find_app_in_volume(tmp_path)
 
 

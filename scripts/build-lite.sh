@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Build WenZi.app with PyInstaller and re-sign for macOS.
+# Build WenZi-Lite.app with PyInstaller and re-sign for macOS.
+# Lite version: Apple Speech + Remote API only (no local ASR models).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DIST_DIR="$PROJECT_DIR/dist"
-APP_PATH="$DIST_DIR/WenZi.app"
+APP_PATH="$DIST_DIR/WenZi-Lite.app"
 FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
 
 # Resolve signing identity: env var > auto-detect fingerprint > ad-hoc
@@ -25,15 +26,16 @@ fi
 
 cd "$PROJECT_DIR"
 
-echo "==> Syncing dependencies (including local-asr extras)..."
-uv sync --all-extras
+echo "==> Setting up Lite venv..."
+test -d .venv-lite || uv venv .venv-lite
+UV_PROJECT_ENVIRONMENT=.venv-lite uv sync
 
 echo "==> Cleaning previous build..."
 rm -rf build dist
 find "$PROJECT_DIR/src" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
-echo "==> Running PyInstaller..."
-uv run pyinstaller WenZi.spec --clean --noconfirm
+echo "==> Running PyInstaller (Lite)..."
+UV_PROJECT_ENVIRONMENT=.venv-lite uv run pyinstaller WenZi-Lite.spec --clean --noconfirm
 
 if [ "$SIGN_MODE" = "identity" ]; then
     echo "==> Re-signing app bundle (identity: $SIGN_IDENTITY)..."
@@ -72,7 +74,7 @@ done < <(find "$PROJECT_DIR/src/wenzi" -type f \
 if [ "$MISSING" -gt 0 ]; then
     echo ""
     echo "ERROR: $MISSING resource(s) missing from app bundle!"
-    echo "       Add them to WenZi.spec datas= section."
+    echo "       Add them to WenZi-Lite.spec datas= section."
     exit 1
 fi
 echo "    $FOUND resource(s) verified."

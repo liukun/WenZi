@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import logging.handlers
 import os
@@ -36,6 +37,7 @@ from .transcription.model_registry import (
     PRESET_BY_ID,
     clear_model_cache,
     find_fallback_preset,
+    is_backend_available,
     is_model_cached,
     resolve_preset_from_config,
 )
@@ -65,6 +67,41 @@ from .ui_helpers import (
 
 
 logger = logging.getLogger(__name__)
+
+_build_type_cache: str | None = None
+
+
+def get_build_type() -> str:
+    """Detect build variant: "lite" or "standard".
+
+    Detection priority:
+    1. PyInstaller bundle path (packaged app)
+    2. WENZI_VERSION environment variable (dev mode)
+    3. Package probing (runtime fallback)
+
+    Result is cached after first call.
+    """
+    global _build_type_cache
+    if _build_type_cache is not None:
+        return _build_type_cache
+
+    # 1. PyInstaller bundle path
+    if getattr(sys, "frozen", False):
+        _build_type_cache = "lite" if "WenZi-Lite" in sys.executable else "standard"
+        return _build_type_cache
+
+    # 2. Environment variable
+    env_version = os.environ.get("WENZI_VERSION")
+    if env_version in ("lite", "standard"):
+        _build_type_cache = env_version
+        return _build_type_cache
+
+    # 3. Package probing
+    if importlib.util.find_spec("funasr_onnx") is not None:
+        _build_type_cache = "standard"
+    else:
+        _build_type_cache = "lite"
+    return _build_type_cache
 
 
 LOG_DIR = Path(os.path.expanduser(DEFAULT_LOG_DIR))
@@ -184,6 +221,9 @@ class WenZiApp(StatusBarApp):
         # Load vocabulary hotwords for ASR injection
         hotwords = self._load_hotwords()
 
+        # Default backend depends on build type
+        default_backend = "apple" if get_build_type() == "lite" else "funasr"
+
         if default_provider and default_model:
             # Start with remote model
             providers = asr_cfg.get("providers", {})
@@ -201,30 +241,19 @@ class WenZiApp(StatusBarApp):
                 )
             else:
                 # Provider/model not found, fall back to local
-                self._transcriber = create_transcriber(
-                    backend=asr_cfg.get("backend", "funasr"),
-                    use_vad=asr_cfg.get("use_vad", True),
-                    use_punc=asr_cfg.get("use_punc", True),
-                    language=asr_cfg.get("language"),
-                    model=asr_cfg.get("model"),
-                    temperature=asr_cfg.get("temperature"),
-                    hotwords=hotwords,
+                self._transcriber = self._create_local_transcriber(
+                    asr_cfg, default_backend, hotwords
                 )
         else:
-            self._transcriber = create_transcriber(
-                backend=asr_cfg.get("backend", "funasr"),
-                use_vad=asr_cfg.get("use_vad", True),
-                use_punc=asr_cfg.get("use_punc", True),
-                language=asr_cfg.get("language"),
-                model=asr_cfg.get("model"),
-                temperature=asr_cfg.get("temperature"),
-                hotwords=hotwords,
+            self._transcriber = self._create_local_transcriber(
+                asr_cfg, default_backend, hotwords
             )
 
         self._output_method = self._config["output"]["method"]
         self._append_newline = self._config["output"]["append_newline"]
         self._preview_enabled = self._config["output"].get("preview", True)
         self._hotkey_listener: Optional[MultiHotkeyListener] = None
+        self._voice_input_available = True
         self._busy = False
         self._preview_panel = ResultPreviewPanel()
         self._conversation_history = ConversationHistory(data_dir=self._data_dir)
@@ -252,7 +281,7 @@ class WenZiApp(StatusBarApp):
             self._current_preset_id = asr_cfg.get("preset")
             if not self._current_preset_id:
                 self._current_preset_id = resolve_preset_from_config(
-                    asr_cfg.get("backend", "funasr"),
+                    asr_cfg.get("backend", default_backend),
                     asr_cfg.get("model"),
                 )
 
@@ -536,6 +565,24 @@ class WenZiApp(StatusBarApp):
             return img
         except Exception:
             return None
+
+    @staticmethod
+    def _create_local_transcriber(asr_cfg: dict, default_backend: str, hotwords):
+        """Create a local ASR transcriber from config.
+
+        The transcriber object is lightweight — heavy model loading happens
+        later in initialize(). Backend availability is checked in
+        _init_models() before initialize() is called.
+        """
+        return create_transcriber(
+            backend=asr_cfg.get("backend", default_backend),
+            use_vad=asr_cfg.get("use_vad", True),
+            use_punc=asr_cfg.get("use_punc", True),
+            language=asr_cfg.get("language"),
+            model=asr_cfg.get("model"),
+            temperature=asr_cfg.get("temperature"),
+            hotwords=hotwords,
+        )
 
     def _load_hotwords(self):
         """Load vocabulary hotwords for static ASR injection (e.g. Sherpa).
@@ -1083,6 +1130,89 @@ class WenZiApp(StatusBarApp):
                 ["open", "-R", self._config_error.path],
             )
 
+    def _apply_fallback_preset(self, fallback) -> None:
+        """Replace the current transcriber with a fallback preset.
+
+        Updates the transcriber, preset ID, and menu checkmarks.
+        Called from _init_models() when the configured backend is
+        unavailable or Siri/Dictation is disabled.
+        """
+        asr_cfg = self._config["asr"]
+        self._transcriber = create_transcriber(
+            backend=fallback.backend,
+            use_vad=asr_cfg.get("use_vad", True),
+            use_punc=asr_cfg.get("use_punc", True),
+            language=fallback.language or asr_cfg.get("language"),
+            model=fallback.model,
+            temperature=asr_cfg.get("temperature"),
+            hotwords=self._load_hotwords(),
+        )
+        self._current_preset_id = fallback.id
+        self._menu_builder.update_model_checkmarks()
+
+    def _handle_no_voice_backend(self) -> None:
+        """Handle the case where no voice backend is available.
+
+        Shows a three-option dialog:
+        - Open Settings: opens Siri settings, voice input via hotkey later
+        - Set Up Later: skip for now, prompt again on next launch
+        - Don't Ask Again: persist preference, stop hotkey listeners
+
+        In all cases, voice input is marked unavailable for this session.
+        The user can still try via hotkey press (Open Settings / Set Up Later)
+        which will attempt initialization on demand.
+        """
+        from .transcription.apple import (
+            SIRI_SETUP_DONT_ASK,
+            SIRI_SETUP_OPEN_SETTINGS,
+            prompt_siri_setup,
+        )
+
+        asr_cfg = self._config["asr"]
+
+        # If user previously chose "Don't Ask Again", skip silently
+        if asr_cfg.get("voice_input_disabled"):
+            logger.info("Voice input disabled by user preference")
+            self._voice_input_available = False
+            self._stop_voice_hotkeys()
+            self._set_status("WZ")
+            return
+
+        choice = prompt_siri_setup()
+
+        if choice == SIRI_SETUP_OPEN_SETTINGS:
+            import subprocess
+
+            from .transcription.apple import SIRI_SETTINGS_URL
+
+            subprocess.Popen(["open", SIRI_SETTINGS_URL])
+
+        elif choice == SIRI_SETUP_DONT_ASK:
+            asr_cfg["voice_input_disabled"] = True
+            save_config(self._config, self._config_path)
+            self._stop_voice_hotkeys()
+
+        # For all choices: mark voice unavailable, set normal status.
+        # "Open Settings" / "Set Up Later" keep hotkeys active so the
+        # user can try recording later (will attempt init on demand).
+        self._voice_input_available = False
+        self._set_status("WZ")
+        logger.info("Voice input not available, app running without ASR")
+
+    def _stop_voice_hotkeys(self) -> None:
+        """Stop the voice recording hotkey listener."""
+        from PyObjCTools import AppHelper
+
+        def _stop():
+            if self._hotkey_listener:
+                self._hotkey_listener.stop()
+                self._hotkey_listener = None
+
+        if threading.current_thread() is threading.main_thread():
+            _stop()
+        else:
+            AppHelper.callAfter(_stop)
+
     def _show_model_load_error_alert(self, error: Exception) -> None:
         """Show alert when model initialization fails, with option to clear cache."""
         preset_id = self._current_preset_id
@@ -1174,18 +1304,36 @@ class WenZiApp(StatusBarApp):
         # Load models in background
         def _init_models():
             try:
-                # For Apple Speech, verify Siri/Dictation before initializing
                 asr_cfg = self._config["asr"]
+                preset = PRESET_BY_ID.get(self._current_preset_id)
+
+                # Check if configured backend is installed
                 if (
                     not self._current_remote_asr
-                    and asr_cfg.get("backend") == "apple"
+                    and preset
+                    and not is_backend_available(preset.backend)
+                ):
+                    fallback = PRESET_BY_ID["apple-speech-ondevice"]
+                    logger.warning(
+                        "Backend %r not available, using %s",
+                        preset.backend,
+                        fallback.display_name,
+                    )
+                    self._apply_fallback_preset(fallback)
+                    preset = PRESET_BY_ID.get(self._current_preset_id)
+
+                # For Apple Speech, verify Siri/Dictation before initializing
+                if (
+                    not self._current_remote_asr
+                    and preset
+                    and preset.backend == "apple"
                 ):
                     from .transcription.apple import check_siri_available
 
                     self._set_status("Checking...")
                     siri_ok, _ = check_siri_available(
                         language=asr_cfg.get("language") or "zh",
-                        on_device=(asr_cfg.get("model") == "on-device"),
+                        on_device=(preset.model == "on-device"),
                     )
                     if not siri_ok:
                         fallback = find_fallback_preset()
@@ -1194,22 +1342,11 @@ class WenZiApp(StatusBarApp):
                                 "Siri/Dictation disabled, using %s for this session",
                                 fallback.display_name,
                             )
-                            self._transcriber = create_transcriber(
-                                backend=fallback.backend,
-                                use_vad=asr_cfg.get("use_vad", True),
-                                use_punc=asr_cfg.get("use_punc", True),
-                                language=fallback.language
-                                or asr_cfg.get("language"),
-                                model=fallback.model,
-                                temperature=asr_cfg.get("temperature"),
-                                hotwords=self._load_hotwords(),
-                            )
-                            self._current_preset_id = fallback.id
-                            self._menu_builder.update_model_checkmarks()
+                            self._apply_fallback_preset(fallback)
                         else:
-                            logger.warning(
-                                "Siri/Dictation disabled and no fallback available"
-                            )
+                            # No alternative backend (e.g. Lite build)
+                            self._handle_no_voice_backend()
+                            return
 
                 stop_event = threading.Event()
                 monitor_thread = None
@@ -1249,8 +1386,9 @@ class WenZiApp(StatusBarApp):
 
         threading.Thread(target=_init_models, daemon=True).start()
 
-        # Start hotkey listeners
-        self._start_hotkey_listeners()
+        # Start hotkey listeners (skip if user disabled voice input)
+        if not self._config["asr"].get("voice_input_disabled"):
+            self._start_hotkey_listeners()
 
         # Start scripting engine if enabled
         scripting_cfg = self._config.get("scripting", {})

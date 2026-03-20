@@ -27,7 +27,17 @@ class UpdateError(Exception):
 class AppUpdater:
     """Handles downloading, installing, and relaunching the app."""
 
-    STAGED_APP_NAME = ".WenZi-update.app"
+    @staticmethod
+    def _app_name() -> str:
+        """Return app name based on build type ('WenZi' or 'WenZi-Lite')."""
+        from wenzi.app import get_build_type
+
+        return "WenZi-Lite" if get_build_type() == "lite" else "WenZi"
+
+    @staticmethod
+    def _staged_app_name() -> str:
+        """Return staged update app name based on build type."""
+        return f".{AppUpdater._app_name()}-update.app"
 
     def __init__(
         self,
@@ -66,7 +76,7 @@ class AppUpdater:
     @staticmethod
     def _staged_path() -> Path:
         """Build the path where a staged update would be placed."""
-        return AppUpdater.get_app_bundle_path().parent / AppUpdater.STAGED_APP_NAME
+        return AppUpdater.get_app_bundle_path().parent / AppUpdater._staged_app_name()
 
     @staticmethod
     def cleanup_staged_app():
@@ -129,13 +139,13 @@ class AppUpdater:
             if not self.is_writable(app_path):
                 raise UpdateError(
                     f"Cannot write to {app_path.parent}. "
-                    "Please move WenZi.app to a writable location."
+                    f"Please move {self._app_name()}.app to a writable location."
                 )
 
             # Download DMG
             self._progress("Downloading update...")
             tmp_dir = Path(tempfile.mkdtemp(prefix="wenzi-update-"))
-            dmg_path = tmp_dir / f"WenZi-{self.version}.dmg"
+            dmg_path = tmp_dir / f"{self._app_name()}-{self.version}.dmg"
             self._download_dmg(dmg_path)
 
             if self._cancelled:
@@ -258,7 +268,8 @@ class AppUpdater:
     @staticmethod
     def _find_app_in_volume(mount_point: Path) -> Path:
         """Find the .app bundle inside a mounted DMG volume."""
-        default = mount_point / "WenZi.app"
+        app_name = f"{AppUpdater._app_name()}.app"
+        default = mount_point / app_name
         if default.exists():
             return default
 
@@ -267,7 +278,7 @@ class AppUpdater:
             if item.name.endswith(".app") and item.is_dir():
                 return item
 
-        raise UpdateError("WenZi.app not found in DMG")
+        raise UpdateError(f"{app_name} not found in DMG")
 
     @staticmethod
     def _verify_app(app_path: Path) -> None:

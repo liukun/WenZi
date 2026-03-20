@@ -347,7 +347,7 @@ class TestUpdateControllerStop:
 
 
 class TestFindDmgUrl:
-    def test_finds_dmg_asset(self):
+    def test_finds_standard_dmg(self):
         data = {
             "assets": [
                 {
@@ -360,7 +360,48 @@ class TestFindDmgUrl:
                 },
             ]
         }
-        assert _find_dmg_url(data) == "https://example.com/WenZi-0.2.0.dmg"
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert _find_dmg_url(data) == "https://example.com/WenZi-0.2.0.dmg"
+
+    def test_finds_lite_dmg(self):
+        data = {
+            "assets": [
+                {
+                    "name": "WenZi-0.2.0.dmg",
+                    "browser_download_url": "https://example.com/WenZi-0.2.0.dmg",
+                },
+                {
+                    "name": "WenZi-Lite-0.2.0.dmg",
+                    "browser_download_url": "https://example.com/WenZi-Lite-0.2.0.dmg",
+                },
+            ]
+        }
+        with patch("wenzi.app.get_build_type", return_value="lite"):
+            assert _find_dmg_url(data) == "https://example.com/WenZi-Lite-0.2.0.dmg"
+
+    def test_standard_skips_lite_dmg(self):
+        data = {
+            "assets": [
+                {
+                    "name": "WenZi-Lite-0.2.0.dmg",
+                    "browser_download_url": "https://example.com/WenZi-Lite-0.2.0.dmg",
+                },
+            ]
+        }
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert _find_dmg_url(data) is None
+
+    def test_lite_skips_standard_dmg(self):
+        data = {
+            "assets": [
+                {
+                    "name": "WenZi-0.2.0.dmg",
+                    "browser_download_url": "https://example.com/WenZi-0.2.0.dmg",
+                },
+            ]
+        }
+        with patch("wenzi.app.get_build_type", return_value="lite"):
+            assert _find_dmg_url(data) is None
 
     def test_no_dmg_asset(self):
         data = {
@@ -371,13 +412,16 @@ class TestFindDmgUrl:
                 }
             ]
         }
-        assert _find_dmg_url(data) is None
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert _find_dmg_url(data) is None
 
     def test_empty_assets(self):
-        assert _find_dmg_url({"assets": []}) is None
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert _find_dmg_url({"assets": []}) is None
 
     def test_no_assets_key(self):
-        assert _find_dmg_url({}) is None
+        with patch("wenzi.app.get_build_type", return_value="standard"):
+            assert _find_dmg_url({}) is None
 
 
 # --- Auto-update integration ---

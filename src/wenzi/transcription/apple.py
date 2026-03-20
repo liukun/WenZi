@@ -140,6 +140,70 @@ def prompt_enable_siri():
     restore_accessory()
 
 
+# Return values for prompt_siri_setup()
+SIRI_SETUP_OPEN_SETTINGS = "open_settings"
+SIRI_SETUP_LATER = "later"
+SIRI_SETUP_DONT_ASK = "dont_ask"
+
+
+def prompt_siri_setup():
+    """Show a three-option dialog for Siri setup on first launch.
+
+    Returns one of SIRI_SETUP_OPEN_SETTINGS, SIRI_SETUP_LATER,
+    or SIRI_SETUP_DONT_ASK.
+
+    Safe to call from any thread (dispatches to main thread internally).
+    """
+    import threading
+
+    from wenzi.ui_helpers import activate_for_dialog, restore_accessory
+
+    result_holder = {"value": SIRI_SETUP_LATER}
+    done_event = threading.Event()
+
+    def _show():
+        from AppKit import NSAlert, NSStatusWindowLevel
+
+        activate_for_dialog()
+
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Siri and Dictation Required")
+        alert.setInformativeText_(
+            "WenZi uses Apple Speech for voice input, which requires "
+            "Siri and Dictation to be enabled.\n\n"
+            "You can enable it now in System Settings, or continue "
+            "using WenZi without voice input (e.g. launcher only)."
+        )
+        # Button order: first = 1000, second = 1001, third = 1002
+        alert.addButtonWithTitle_("Open Settings")
+        alert.addButtonWithTitle_("Set Up Later")
+        alert.addButtonWithTitle_("Don't Ask Again")
+        alert.setAlertStyle_(0)  # informational
+        alert.window().setLevel_(NSStatusWindowLevel)
+        alert.window().setFloatingPanel_(True)
+        alert.window().setHidesOnDeactivate_(False)
+
+        result = alert.runModal()
+        if result == 1000:
+            result_holder["value"] = SIRI_SETUP_OPEN_SETTINGS
+        elif result == 1001:
+            result_holder["value"] = SIRI_SETUP_LATER
+        else:
+            result_holder["value"] = SIRI_SETUP_DONT_ASK
+        done_event.set()
+
+    if threading.current_thread() is threading.main_thread():
+        _show()
+    else:
+        from PyObjCTools import AppHelper
+
+        AppHelper.callAfter(_show)
+        done_event.wait()
+
+    restore_accessory()
+    return result_holder["value"]
+
+
 _audio_fmt = None  # Cached AVAudioFormat (created once per sample rate)
 _audio_fmt_sr = None
 

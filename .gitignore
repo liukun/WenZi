@@ -5,6 +5,7 @@ __pycache__/
 dist/
 build/
 .venv/
+.venv-*/
 *.egg
 .eggs/
 
@@ -16,7 +17,7 @@ build/
 local.*/
 
 # Build info (auto-generated)
-src/voicetext/_build_info.py
+src/wenzi/_build_info.py
 
 # Test coverage
 .coverage

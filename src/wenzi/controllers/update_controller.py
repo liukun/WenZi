@@ -89,11 +89,22 @@ def _get_current_version() -> str:
 
 
 def _find_dmg_url(release_data: dict) -> Optional[str]:
-    """Find the .dmg asset download URL from release data."""
+    """Find the .dmg asset download URL matching the current build type.
+
+    Lite builds match DMG names containing 'Lite';
+    Standard builds match DMG names not containing 'Lite'.
+    """
+    from wenzi.app import get_build_type
+
+    is_lite = get_build_type() == "lite"
     assets = release_data.get("assets", [])
     for asset in assets:
         name = asset.get("name", "")
-        if name.endswith(".dmg"):
+        if not name.endswith(".dmg"):
+            continue
+        if is_lite and "Lite" in name:
+            return asset.get("browser_download_url")
+        if not is_lite and "Lite" not in name:
             return asset.get("browser_download_url")
     return None
 
@@ -309,7 +320,7 @@ class UpdateController:
             topmost_alert(
                 title="Cannot Auto-Update",
                 message=(
-                    f"WenZi.app is in a read-only location ({app_path.parent}).\n\n"
+                    f"{AppUpdater._app_name()}.app is in a read-only location ({app_path.parent}).\n\n"
                     "Please download the update manually from the browser."
                 ),
             )

@@ -16,6 +16,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _reset_build_type_cache():
+    """Reset the build type cache between tests to prevent leakage."""
+    import wenzi.app
+
+    wenzi.app._build_type_cache = None
+    yield
+    wenzi.app._build_type_cache = None
+
+
+@pytest.fixture(autouse=True)
 def _no_real_clipboard_polling():
     """Prevent ClipboardMonitor from polling the real system clipboard."""
     with patch(

@@ -1,8 +1,15 @@
-.PHONY: dev docs docs-serve lint test build build-dmg clean
+.PHONY: dev run-lite docs docs-serve lint test build build-lite build-dmg clean
 
-# Run the app in development mode
+# Run the app in development mode (Standard — all backends)
 dev:
+	uv sync --all-extras
 	uv run python -m wenzi
+
+# Run Lite version (Apple Speech + Remote API only)
+run-lite:
+	test -d .venv-lite || uv venv .venv-lite
+	UV_PROJECT_ENVIRONMENT=.venv-lite uv sync
+	WENZI_VERSION=lite UV_PROJECT_ENVIRONMENT=.venv-lite uv run python -m wenzi
 
 # Build HTML documentation from docs/*.md
 docs:
@@ -21,9 +28,13 @@ lint:
 test:
 	uv run pytest tests/ -v --cov=wenzi
 
-# Build the .app bundle
+# Build the .app bundle (Standard)
 build:
 	./scripts/build.sh
+
+# Build the Lite .app bundle
+build-lite:
+	./scripts/build-lite.sh
 
 # Build the .dmg installer
 build-dmg:

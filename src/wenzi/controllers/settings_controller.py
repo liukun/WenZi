@@ -56,11 +56,11 @@ class SettingsController:
         # Collect current state
         hotkeys = app._config.get("hotkeys", {"fn": True})
 
-        # STT presets
+        # STT presets — only show backends that are available
         stt_presets = []
         for preset in PRESETS:
-            available = is_backend_available(preset.backend)
-            stt_presets.append((preset.id, preset.display_name, available))
+            if is_backend_available(preset.backend):
+                stt_presets.append((preset.id, preset.display_name, True))
 
         # STT remote models
         asr_cfg = app._config.get("asr", {})

@@ -2611,11 +2611,6 @@ name = "wenzi"
 version = "0.1.6"
 source = { editable = "." }
 dependencies = [
-    { name = "funasr-onnx" },
-    { name = "jieba" },
-    { name = "librosa" },
-    { name = "mlx-whisper" },
-    { name = "modelscope" },
     { name = "numpy" },
     { name = "openai-agents" },
     { name = "pint" },
@@ -2626,11 +2621,20 @@ dependencies = [
     { name = "pyobjc-framework-webkit" },
     { name = "pypinyin" },
     { name = "pyyaml" },
-    { name = "sherpa-onnx" },
-    { name = "sherpa-onnx-core" },
     { name = "simpleeval" },
     { name = "sounddevice" },
     { name = "soundfile" },
+]
+
+[package.optional-dependencies]
+local-asr = [
+    { name = "funasr-onnx" },
+    { name = "jieba" },
+    { name = "librosa" },
+    { name = "mlx-whisper" },
+    { name = "modelscope" },
+    { name = "sherpa-onnx" },
+    { name = "sherpa-onnx-core" },
 ]
 
 [package.dev-dependencies]
@@ -2644,11 +2648,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "funasr-onnx", specifier = ">=0.4.1" },
-    { name = "jieba", specifier = ">=0.42.1" },
-    { name = "librosa", specifier = ">=0.11.0" },
-    { name = "mlx-whisper", specifier = ">=0.4.3" },
-    { name = "modelscope", specifier = ">=1.30.0" },
+    { name = "funasr-onnx", marker = "extra == 'local-asr'", specifier = ">=0.4.1" },
+    { name = "jieba", marker = "extra == 'local-asr'", specifier = ">=0.42.1" },
+    { name = "librosa", marker = "extra == 'local-asr'", specifier = ">=0.11.0" },
+    { name = "mlx-whisper", marker = "extra == 'local-asr'", specifier = ">=0.4.3" },
+    { name = "modelscope", marker = "extra == 'local-asr'", specifier = ">=1.30.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "openai-agents", specifier = ">=0.11.0" },
     { name = "pint", specifier = ">=0.24" },
@@ -2659,12 +2663,13 @@ requires-dist = [
     { name = "pyobjc-framework-webkit", specifier = ">=12.1" },
     { name = "pypinyin", specifier = ">=0.53" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "sherpa-onnx", specifier = ">=1.12.29" },
-    { name = "sherpa-onnx-core", specifier = ">=1.12.29" },
+    { name = "sherpa-onnx", marker = "extra == 'local-asr'", specifier = ">=1.12.29" },
+    { name = "sherpa-onnx-core", marker = "extra == 'local-asr'", specifier = ">=1.12.29" },
     { name = "simpleeval", specifier = ">=1.0.5" },
     { name = "sounddevice", specifier = ">=0.5.0" },
     { name = "soundfile", specifier = ">=0.13.0" },
 ]
+provides-extras = ["local-asr"]
 
 [package.metadata.requires-dev]
 dev = [
