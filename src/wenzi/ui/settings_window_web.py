@@ -381,8 +381,11 @@ input[type="range"] {
   .sidebar-item.active { background: rgba(100,149,237,0.25); color: #6ca0f6; }
   .content { background: #1e1e1e; }
   .content-title { color: #f5f5f7; }
-  .setting-group { background: #2a2a2a; border-color: #3a3a3a; }
-  .setting-row { border-color: #3a3a3a; }
+  .setting-group { background: #2a2a2a; border-color: #333; }
+  .setting-row { border-color: #333; }
+  .model-row { border-color: #333; }
+  .provider-header { border-color: #333; }
+  .add-row { border-color: #333; }
   .setting-label { color: #f5f5f7; }
   .setting-desc { color: #98989d; }
   .group-title { color: #98989d; }
@@ -402,7 +405,7 @@ input[type="range"] {
   .model-radio { border-color: #48484a; }
   .model-row.selected .model-radio { border-color: #6ca0f6; }
   .model-row.selected .model-radio::after { background: #6ca0f6; }
-  .provider-header { background: #333; border-color: #3a3a3a; }
+  .provider-header { background: #333; }
   .provider-name { color: #f5f5f7; }
   .provider-badge.local { background: rgba(52,199,89,0.2); color: #30d158; }
   .provider-badge.remote { background: rgba(100,149,237,0.2); color: #6ca0f6; }
