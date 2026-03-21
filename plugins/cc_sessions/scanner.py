@@ -2,10 +2,63 @@
 
 from __future__ import annotations
 
+import configparser
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+# XML-like tags injected by Claude Code for system messages and commands
+_NOISE_PATTERN = re.compile(
+    r"^<(local-command-caveat|command-name|command-message|"
+    r"command-args|system-reminder|user-prompt-submit-hook)"
+)
+
+
+def is_noise_message(text: str) -> bool:
+    """Return True if *text* is a system-injected noise message."""
+    return bool(_NOISE_PATTERN.match(text.strip()))
+
+
+def _strip_xml_tags(text: str) -> str:
+    """Remove XML-like tags and return the inner text content."""
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
+_PLAN_PREFIX = "Implement the following plan:"
+
+
+def _extract_plan_title(plan_content: str) -> str:
+    """Extract the first markdown heading from plan content."""
+    for line in plan_content.split("\n"):
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def _clean_custom_title(raw: str) -> str:
+    """Clean a custom title: extract plan title if it starts with plan prefix."""
+    if raw.startswith(_PLAN_PREFIX):
+        remainder = raw[len(_PLAN_PREFIX):].strip()
+        # custom-title has plan on one line; extract heading then truncate at next ##
+        title = _extract_plan_title(remainder)
+        if title:
+            for sep in [" ## ", " # "]:
+                idx = title.find(sep)
+                if idx != -1:
+                    title = title[:idx]
+            return title.strip()
+    return raw
+
+
+def _clean_first_prompt(raw: str) -> str:
+    """Clean a firstPrompt value: strip noise, extract useful text."""
+    if not raw or not is_noise_message(raw):
+        return raw
+    cleaned = _strip_xml_tags(raw)
+    return cleaned if cleaned else ""
 
 
 def _make_session(
@@ -20,6 +73,8 @@ def _make_session(
     modified: str = "",
     message_count: Optional[int] = None,
     version: str = "",
+    summary: str = "",
+    custom_title: str = "",
 ) -> dict[str, Any]:
     """Build a session metadata dict."""
     return {
@@ -34,21 +89,94 @@ def _make_session(
         "modified": modified,
         "message_count": message_count,
         "version": version,
+        "summary": summary,
+        "custom_title": custom_title,
     }
 
 
 def _project_name_from_dir(dirname: str) -> str:
-    """Derive project name from directory name.
+    """Derive project name from directory name (fallback only).
 
     The directory name is the project path with slashes replaced by dashes,
     e.g. ``-Users-fanrenhao-work-VoiceText`` -> ``VoiceText``.
     """
-    # Strip leading/trailing dashes, take last segment
     stripped = dirname.strip("-")
     if not stripped:
         return dirname
     parts = stripped.split("-")
     return parts[-1] if parts else dirname
+
+
+# Cache: cwd path -> resolved project name
+_project_name_cache: dict[str, str] = {}
+
+
+def _resolve_project_name(cwd: str, fallback: str) -> str:
+    """Resolve the project name from *cwd*, with caching.
+
+    Priority: git remote origin repo name > cwd basename (before ``.``)
+    > *fallback* (directory-name derived).
+    """
+    if not cwd:
+        return fallback
+    cached = _project_name_cache.get(cwd)
+    if cached is not None:
+        return cached
+
+    name = _git_remote_name(cwd) or _name_from_cwd(cwd) or fallback
+    _project_name_cache[cwd] = name
+    return name
+
+
+def _git_remote_name(cwd: str) -> str:
+    """Extract the repository name from git remote origin URL.
+
+    Handles both worktrees (``.git`` is a file) and normal repos
+    (``.git`` is a directory).
+    """
+    try:
+        git_path = Path(cwd) / ".git"
+        if not git_path.exists():
+            return ""
+        if git_path.is_file():
+            # Worktree: .git file contains "gitdir: /path/to/main/.git/worktrees/..."
+            content = git_path.read_text(encoding="utf-8").strip()
+            if content.startswith("gitdir:"):
+                gitdir = content.split(":", 1)[1].strip()
+                # Walk up from .git/worktrees/<name> to .git/
+                config_path = Path(gitdir).parent.parent / "config"
+            else:
+                return ""
+        else:
+            config_path = git_path / "config"
+
+        if not config_path.is_file():
+            return ""
+        cfg = configparser.ConfigParser()
+        cfg.read(str(config_path), encoding="utf-8")
+        url = cfg.get('remote "origin"', "url", fallback="")
+        if not url:
+            return ""
+        # git@github.com:User/Repo.git -> Repo
+        # https://github.com/User/Repo.git -> Repo
+        base = url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+        if base.endswith(".git"):
+            base = base[:-4]
+        return base
+    except (OSError, configparser.Error):
+        return ""
+
+
+def _name_from_cwd(cwd: str) -> str:
+    """Extract project name from cwd basename, handling worktree naming.
+
+    ``/path/to/VoiceText.feat-branch`` -> ``VoiceText``
+    ``/path/to/VoiceText`` -> ``VoiceText``
+    """
+    basename = Path(cwd).name
+    if "." in basename:
+        return basename.split(".", 1)[0]
+    return basename
 
 
 def _choose_title(
@@ -58,78 +186,28 @@ def _choose_title(
 ) -> str:
     """Return best available title, truncated to 80 chars.
 
-    Priority: customTitle > summary > firstPrompt.
+    Priority: customTitle > summary > cleaned firstPrompt.
     """
-    raw = custom_title or summary or first_prompt or ""
+    raw = custom_title or summary or _clean_first_prompt(first_prompt or "") or ""
     if len(raw) > 80:
         return raw[:77] + "..."
     return raw
 
-
-def _scan_project_with_index(
-    proj_dir: Path,
-    project_name: str,
-) -> list[dict[str, Any]]:
-    """Read sessions-index.json and return a list of session dicts."""
-    index_path = proj_dir / "sessions-index.json"
-    if not index_path.is_file():
-        return []
-
-    try:
-        data = json.loads(index_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-
-    if not isinstance(data, list):
-        return []
-
-    results: list[dict[str, Any]] = []
-    for entry in data:
-        if not isinstance(entry, dict):
-            continue
-        session_id = entry.get("sessionId", "")
-        full_path = entry.get("fullPath", "")
-        if not full_path:
-            full_path = str(proj_dir / f"{session_id}.jsonl")
-
-        title = _choose_title(
-            entry.get("customTitle"),
-            entry.get("summary"),
-            entry.get("firstPrompt"),
-        )
-
-        results.append(_make_session(
-            session_id=session_id,
-            file_path=full_path,
-            project=project_name,
-            cwd=entry.get("projectPath", ""),
-            title=title,
-            first_prompt=entry.get("firstPrompt", ""),
-            git_branch=entry.get("gitBranch", ""),
-            created=entry.get("created", ""),
-            modified=entry.get("modified", ""),
-            message_count=entry.get("messageCount", 0),
-            version=entry.get("version", ""),
-        ))
-
-    return results
 
 
 def _scan_session_jsonl(
     jsonl_path: Path,
     project_name: str,
 ) -> dict[str, Any] | None:
-    """Parse a JSONL session file header to build a session dict.
+    """Parse a JSONL session file to build a session dict.
 
-    Reads up to the first 30 lines to find metadata and the first user message.
+    Reads the entire file in a single pass: extracts metadata from early lines
+    and counts real user messages throughout.
     Returns None if the file is unreadable or contains no useful data.
     """
     try:
-        lines = _read_head(jsonl_path, max_lines=30)
+        fh = jsonl_path.open("r", encoding="utf-8", errors="replace")
     except OSError:
-        return None
-
-    if not lines:
         return None
 
     session_id = jsonl_path.stem
@@ -139,92 +217,143 @@ def _scan_session_jsonl(
     first_user_message: str | None = None
     first_timestamp: str | None = None
     last_timestamp: str | None = None
+    custom_title = ""
+    summary = ""
+    user_msg_count = 0
+    metadata_lines = 30
 
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    with fh:
+        for i, raw_line in enumerate(fh):
+            line = raw_line.strip()
+            if not line:
+                continue
 
-        if not isinstance(obj, dict):
-            continue
+            # Count real user messages via string matching (entire file)
+            if '"type":"user"' in line:
+                if ("tool_result" not in line
+                        and "toolUseResult" not in line
+                        and "<local-command-caveat>" not in line
+                        and "<command-name>" not in line):
+                    user_msg_count += 1
 
-        ts = obj.get("timestamp")
-        if ts:
-            if first_timestamp is None:
-                first_timestamp = ts
-            last_timestamp = ts
+            # Detect custom-title entries (can appear anywhere in the file)
+            if '"type":"custom-title"' in line:
+                try:
+                    ct_obj = json.loads(line)
+                    custom_title = ct_obj.get("customTitle", "")
+                except json.JSONDecodeError:
+                    pass
 
-        if not cwd and obj.get("cwd"):
-            cwd = obj["cwd"]
-        if not version and obj.get("version"):
-            version = obj["version"]
-        if not git_branch and obj.get("gitBranch"):
-            git_branch = obj["gitBranch"]
+            # Extract plan title as summary via string matching (avoid full JSON parse)
+            if not summary and '"planContent"' in line and '"# ' in line:
+                # Find "# " after "planContent" — handles both "planContent":"# " and "planContent": "# "
+                pc_idx = line.find('"planContent"')
+                heading_idx = line.find('"# ', pc_idx)
+                if heading_idx != -1:
+                    start = heading_idx + 3  # skip '"# '
+                    end = len(line)
+                    for stop in ['\\n', '"']:
+                        pos = line.find(stop, start)
+                        if pos != -1 and pos < end:
+                            end = pos
+                    summary = line[start:end].strip()
 
-        if first_user_message is None and obj.get("type") == "user":
-            msg = obj.get("message", {})
-            content = msg.get("content", "") if isinstance(msg, dict) else ""
-            if isinstance(content, list):
-                # content parts — extract text parts
-                text_parts = [
-                    p.get("text", "") if isinstance(p, dict) else str(p)
-                    for p in content
-                ]
-                content = " ".join(t for t in text_parts if t)
-            if content:
-                first_user_message = content
+            # Extract metadata from early lines only
+            if i >= metadata_lines:
+                continue
+
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+
+            ts = obj.get("timestamp")
+            if ts:
+                if first_timestamp is None:
+                    first_timestamp = ts
+                last_timestamp = ts
+
+            if not cwd and obj.get("cwd"):
+                cwd = obj["cwd"]
+            if not version and obj.get("version"):
+                version = obj["version"]
+            if not git_branch and obj.get("gitBranch"):
+                git_branch = obj["gitBranch"]
+
+            if first_user_message is None and obj.get("type") == "user":
+                from .reader import _extract_user_text
+
+                msg = obj.get("message", {})
+                content = _extract_user_text(
+                    msg.get("content", "") if isinstance(msg, dict) else ""
+                )
+                if content and not is_noise_message(content):
+                    first_user_message = content
 
     if first_timestamp is None and first_user_message is None:
         return None
 
-    # Use file stat for modified time as fallback
     try:
         stat = jsonl_path.stat()
         file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
     except OSError:
         file_modified = last_timestamp or ""
 
-    title = _choose_title(None, None, first_user_message)
+    if custom_title:
+        custom_title = _clean_custom_title(custom_title)
+
+    project = _resolve_project_name(cwd, project_name)
+    title = _choose_title(custom_title or None, summary or None, first_user_message)
 
     return _make_session(
         session_id=session_id,
         file_path=str(jsonl_path),
-        project=project_name,
+        project=project,
         cwd=cwd,
         title=title,
         first_prompt=first_user_message or "",
         git_branch=git_branch,
         created=first_timestamp or "",
         modified=last_timestamp or file_modified,
-        message_count=0,
+        message_count=user_msg_count,
         version=version,
+        summary=summary,
+        custom_title=custom_title,
     )
 
 
-def _read_head(path: Path, max_lines: int = 30) -> list[str]:
-    """Read up to *max_lines* lines from a file."""
-    lines: list[str] = []
-    with path.open("r", encoding="utf-8", errors="replace") as fh:
-        for i, line in enumerate(fh):
-            if i >= max_lines:
-                break
-            lines.append(line)
-    return lines
+
+
+_UNSET = object()
 
 
 class SessionScanner:
     """Discover and cache Claude Code sessions."""
 
-    def __init__(self, base_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        base_dir: Path | None = None,
+        cache_path: Path | None | object = _UNSET,
+    ) -> None:
         if base_dir is None:
             base_dir = Path.home() / ".claude" / "projects"
         self._base_dir = base_dir
-        # Cache: file_path -> (mtime, session_dict)
-        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+        if cache_path is _UNSET:
+            # Default: use WenZi cache dir
+            from wenzi.config import resolve_cache_dir
+            cache_path = Path(resolve_cache_dir()) / "cc_sessions_cache.json"
+
+        if cache_path is not None:
+            from .cache import SessionCache
+            self._cache: SessionCache | None = SessionCache(cache_path)
+        else:
+            self._cache = None
+
+        # In-memory cache for index supplements: {index_path: (mtime, {sid: {summary, customTitle}})}
+        self._index_supplements: dict[str, tuple[float, dict[str, dict[str, str]]]] = {}
 
     def scan_all(self) -> list[dict[str, Any]]:
         """Return all sessions sorted by modified descending."""
@@ -233,51 +362,103 @@ class SessionScanner:
 
         sessions: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        live_paths: set[str] = set()
 
         for proj_entry in self._base_dir.iterdir():
             if not proj_entry.is_dir():
                 continue
-            project_name = _project_name_from_dir(proj_entry.name)
+            dir_fallback = _project_name_from_dir(proj_entry.name)
 
-            # Fast path: sessions-index.json
-            index_path = proj_entry / "sessions-index.json"
-            if index_path.exists():
-                cache_key = str(index_path)
+            # Load index supplements (summary/customTitle) with mtime caching
+            index_lookup = self._load_index_supplements(proj_entry)
+
+            # Scan all JSONL files
+            for jsonl_file in proj_entry.glob("*.jsonl"):
+                cache_key = str(jsonl_file)
+                live_paths.add(cache_key)
                 try:
-                    mtime = index_path.stat().st_mtime
+                    mtime = jsonl_file.stat().st_mtime
                 except OSError:
                     continue
-                cached = self._cache.get(cache_key)
-                if cached and cached[0] == mtime:
-                    index_sessions = cached[1]
-                else:
-                    index_sessions = _scan_project_with_index(proj_entry, project_name)
-                    self._cache[cache_key] = (mtime, index_sessions)
-                if index_sessions:
-                    for s in index_sessions:
-                        seen_ids.add(s["session_id"])
-                        sessions.append(s)
-                    continue
 
-            # Fallback: scan individual JSONL files
-            for jsonl_file in proj_entry.glob("*.jsonl"):
-                mtime = jsonl_file.stat().st_mtime
-                cache_key = str(jsonl_file)
-
-                cached = self._cache.get(cache_key)
+                cached = self._cache.get(cache_key) if self._cache else None
                 if cached and cached[0] == mtime:
                     session = cached[1]
                 else:
-                    result = _scan_session_jsonl(jsonl_file, project_name)
+                    result = _scan_session_jsonl(jsonl_file, dir_fallback)
                     if result is None:
                         continue
                     session = result
-                    self._cache[cache_key] = (mtime, session)
+                    if self._cache:
+                        self._cache.put(cache_key, mtime, session)
+
+                # Merge index supplements (summary/customTitle)
+                if index_lookup:
+                    sid = session["session_id"]
+                    supplement = index_lookup.get(sid)
+                    if supplement:
+                        summary = supplement.get("summary", "")
+                        custom_title = supplement.get("customTitle", "")
+                        if (summary != session.get("summary", "")
+                                or custom_title != session.get("custom_title", "")):
+                            session = dict(session)
+                            session["summary"] = summary
+                            session["custom_title"] = custom_title
+                            session["title"] = _choose_title(
+                                custom_title or None,
+                                summary or None,
+                                session.get("first_prompt"),
+                            )
+                            if self._cache:
+                                self._cache.put(cache_key, mtime, session)
 
                 if session["session_id"] not in seen_ids:
                     seen_ids.add(session["session_id"])
                     sessions.append(session)
 
+        # Prune deleted entries and save
+        if self._cache:
+            self._cache.prune(live_paths)
+            self._cache.save()
+
         # Sort by modified descending
         sessions.sort(key=lambda s: s.get("modified", ""), reverse=True)
         return sessions
+
+    def _load_index_supplements(
+        self, proj_dir: Path,
+    ) -> dict[str, dict[str, str]]:
+        """Load summary/customTitle from sessions-index.json with mtime caching."""
+        index_path = proj_dir / "sessions-index.json"
+        try:
+            mtime = index_path.stat().st_mtime
+        except OSError:
+            return {}
+
+        cache_key = str(index_path)
+        cached = self._index_supplements.get(cache_key)
+        if cached and cached[0] == mtime:
+            return cached[1]
+
+        try:
+            data = json.loads(index_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+        entries = data.get("entries", data) if isinstance(data, dict) else data
+        if not isinstance(entries, list):
+            return {}
+
+        lookup: dict[str, dict[str, str]] = {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            sid = entry.get("sessionId", "")
+            if sid:
+                lookup[sid] = {
+                    "summary": entry.get("summary", ""),
+                    "customTitle": entry.get("customTitle", ""),
+                }
+
+        self._index_supplements[cache_key] = (mtime, lookup)
+        return lookup

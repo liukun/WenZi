@@ -6,10 +6,13 @@ import importlib
 import logging
 import os
 import sys
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 import wenzi.config as _cfg
 from wenzi.scripting.registry import ScriptingRegistry
+
+if TYPE_CHECKING:
+    from wenzi.scripting.plugin_meta import PluginMeta
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,7 @@ class ScriptEngine:
         self._system_settings_source = None
         self._system_settings_open_cb: Optional[Callable[[], None]] = None
         self._reloading = False
+        self._plugin_metas: Dict[str, PluginMeta] = {}
 
         # Create wz namespace and install as module singleton
         from wenzi.scripting.api import _WZNamespace
@@ -738,10 +742,15 @@ class ScriptEngine:
 
         Each subdirectory with an ``__init__.py`` defining a ``setup(wz)``
         function is treated as a plugin.  Plugins listed in the config key
-        ``disabled_plugins`` are skipped.
+        ``disabled_plugins`` are skipped.  Plugins whose
+        ``min_wenzi_version`` exceeds the running version are skipped.
         """
+        self._plugin_metas.clear()
+
         if not os.path.isdir(self._plugins_dir):
             return
+
+        from wenzi.scripting.plugin_meta import load_plugin_meta
 
         norm_dir = os.path.normpath(self._plugins_dir)
         if norm_dir not in sys.path:
@@ -758,14 +767,57 @@ class ScriptEngine:
             if not os.path.isfile(os.path.join(plugin_path, "__init__.py")):
                 continue
 
+            # Read metadata (always, even if plugin will be skipped)
+            meta = load_plugin_meta(plugin_path)
+            self._plugin_metas[entry] = meta
+
+            # Check version compatibility
+            if meta.min_wenzi_version and not self._version_compatible(
+                meta.min_wenzi_version
+            ):
+                logger.warning(
+                    "Plugin %s (%s) requires WenZi >= %s, skipping",
+                    meta.name,
+                    entry,
+                    meta.min_wenzi_version,
+                )
+                continue
+
             try:
                 mod = importlib.import_module(entry)
                 if hasattr(mod, "setup") and callable(mod.setup):
                     mod.setup(self._wz)
-                    logger.info("Plugin loaded: %s", entry)
+                    parts = [f"Plugin loaded: {meta.name}"]
+                    if meta.version:
+                        parts.append(f"v{meta.version}")
+                    parts.append(f"({entry})")
+                    if meta.description:
+                        parts.append(f"— {meta.description}")
+                    if meta.author:
+                        parts.append(f"[by {meta.author}]")
+                    logger.info(" ".join(parts))
                 else:
                     logger.warning(
                         "Plugin %s has no setup() function, skipped", entry
                     )
             except Exception:
                 logger.exception("Failed to load plugin: %s", entry)
+
+    def get_plugin_metas(self) -> Dict[str, "PluginMeta"]:
+        """Return metadata for all discovered plugins (keyed by directory name)."""
+        return dict(self._plugin_metas)
+
+    @staticmethod
+    def _version_compatible(min_version: str) -> bool:
+        """Return True if the running WenZi version meets *min_version*."""
+        import wenzi
+
+        current = wenzi.__version__
+        if current == "dev":
+            return True  # dev mode is always compatible
+        try:
+            cur = tuple(int(x) for x in current.split("."))
+            req = tuple(int(x) for x in min_version.split("."))
+        except (ValueError, AttributeError):
+            return True  # unparseable → allow
+        return cur >= req

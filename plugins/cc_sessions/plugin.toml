@@ -1,0 +1,8 @@
+[plugin]
+name = "Claude Code Sessions"
+description = "Browse and view Claude Code session history through the launcher"
+version = "0.1.0"
+author = "WenZi"
+url = "https://github.com/Airead/WenZi"
+icon = "claude_icon.png"
+min_wenzi_version = "0.1.7"

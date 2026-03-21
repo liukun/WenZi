@@ -67,7 +67,11 @@ def _filter_sessions(
     if query.strip():
         scored = []
         for s in result:
-            matched, score = fuzzy_match(query, s["title"])
+            search_text = (
+                f"{s['title']} {s['project']} {s.get('git_branch', '')}"
+                f" {s.get('summary', '')} {s.get('first_prompt', '')[:200]}"
+            )
+            matched, score = fuzzy_match(query, search_text)
             if matched:
                 scored.append((score, s))
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -121,6 +125,40 @@ def register(wz) -> None:
 
         panel.show()
 
+    def _delete_session(session: Dict[str, Any]) -> None:
+        """Move the session JSONL file to macOS Trash."""
+        file_path = session.get("file_path", "")
+        if not file_path:
+            return
+        try:
+            from Foundation import NSURL, NSFileManager
+
+            url = NSURL.fileURLWithPath_(file_path)
+            fm = NSFileManager.defaultManager()
+            ok, _, err = fm.trashItemAtURL_resultingItemURL_error_(url, None, None)
+            if not ok:
+                raise OSError(str(err) if err else "trashItemAtURL failed")
+        except ImportError:
+            try:
+                os.remove(file_path)
+            except OSError:
+                logger.warning("Failed to delete %s", file_path, exc_info=True)
+                return
+
+        try:
+            from PyObjCTools import AppHelper
+
+            home = os.path.expanduser("~")
+            display = file_path.replace(home, "~")
+
+            def _hud():
+                from wenzi.ui.hud import show_hud
+                show_hud(f"Trashed\n{display}")
+
+            AppHelper.callAfter(_hud)
+        except Exception:
+            logger.debug("HUD notification failed", exc_info=True)
+
     def _copy_resume_command(session: Dict[str, Any]) -> None:
         """Copy cd + claude --resume command to clipboard."""
         from wenzi.scripting.sources import copy_to_clipboard
@@ -129,18 +167,20 @@ def register(wz) -> None:
         cmd = f"cd {cwd} && claude --resume {session['session_id']}"
         copy_to_clipboard(cmd)
 
-    def _make_preview(session: Dict[str, Any]) -> dict:
-        """Build a text preview for the launcher right panel."""
-        lines = [f"Project: {session['project']}"]
-        if session.get("git_branch"):
-            lines.append(f"Branch: {session['git_branch']}")
-        if session.get("version"):
-            lines.append(f"Claude: {session['version']}")
-        if session.get("message_count"):
-            lines.append(f"Messages: {session['message_count']}")
-        lines.append("")
-        lines.append(session.get("first_prompt", ""))
-        return {"type": "text", "content": "\n".join(lines)}
+    def _make_preview(session: Dict[str, Any]):
+        """Return a lazy callable that builds HTML preview on demand."""
+        def _load():
+            from pathlib import Path
+            from .reader import read_session_detail
+            from .preview import build_preview_html
+
+            file_path = session.get("file_path", "")
+            detail = read_session_detail(Path(file_path)) if file_path else {
+                "turns": [], "total_input_tokens": 0, "total_output_tokens": 0,
+            }
+            html = build_preview_html(session, detail)
+            return {"type": "html", "content": html}
+        return _load
 
     @wz.chooser.source(
         "cc-sessions",
@@ -167,13 +207,17 @@ def register(wz) -> None:
             if s.get("git_branch"):
                 subtitle_parts.append(s["git_branch"])
 
+            msg_count = s.get("message_count", 0)
             items.append({
                 "title": s["title"],
                 "subtitle": " \u00b7 ".join(subtitle_parts),
                 "icon": icon_url,
+                "icon_badge": str(msg_count) if msg_count else "",
                 "item_id": f"cc-{s['session_id']}",
                 "action": lambda sess=s: _open_viewer(sess),
                 "secondary_action": lambda sess=s: _copy_resume_command(sess),
                 "preview": _make_preview(s),
+                "delete_action": lambda sess=s: _delete_session(sess),
+                "confirm_delete": True,
             })
         return items

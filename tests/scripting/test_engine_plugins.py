@@ -230,3 +230,150 @@ class TestPurgePluginModules:
         engine._purge_user_modules()
 
         assert "purge_test" not in sys.modules
+
+
+class TestPluginMetadata:
+    """Test that engine reads and stores plugin metadata."""
+
+    def test_stores_metadata_from_toml(self, tmp_path):
+        """Plugin with plugin.toml has its metadata stored."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+
+        plugin = plugins_dir / "meta_plug"
+        plugin.mkdir()
+        (plugin / "__init__.py").write_text("def setup(wz): pass\n")
+        (plugin / "plugin.toml").write_text(
+            '[plugin]\n'
+            'name = "Meta Plugin"\n'
+            'description = "A test"\n'
+            'version = "1.0.0"\n'
+            'author = "Tester"\n'
+        )
+
+        from wenzi.scripting.engine import ScriptEngine
+
+        engine = ScriptEngine(
+            script_dir=str(scripts_dir),
+            plugins_dir=str(plugins_dir),
+        )
+        engine._load_plugins()
+
+        metas = engine.get_plugin_metas()
+        assert "meta_plug" in metas
+        assert metas["meta_plug"].name == "Meta Plugin"
+        assert metas["meta_plug"].version == "1.0.0"
+
+        # Cleanup
+        for name in list(sys.modules):
+            if name.startswith("meta_plug"):
+                del sys.modules[name]
+        if str(plugins_dir) in sys.path:
+            sys.path.remove(str(plugins_dir))
+
+    def test_fallback_when_no_toml(self, tmp_path):
+        """Plugin without plugin.toml uses directory name."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+
+        plugin = plugins_dir / "simple_plug"
+        plugin.mkdir()
+        (plugin / "__init__.py").write_text("def setup(wz): pass\n")
+
+        from wenzi.scripting.engine import ScriptEngine
+
+        engine = ScriptEngine(
+            script_dir=str(scripts_dir),
+            plugins_dir=str(plugins_dir),
+        )
+        engine._load_plugins()
+
+        metas = engine.get_plugin_metas()
+        assert "simple_plug" in metas
+        assert metas["simple_plug"].name == "simple_plug"
+
+        # Cleanup
+        for name in list(sys.modules):
+            if name.startswith("simple_plug"):
+                del sys.modules[name]
+        if str(plugins_dir) in sys.path:
+            sys.path.remove(str(plugins_dir))
+
+    def test_skips_incompatible_plugin(self, tmp_path):
+        """Plugin with min_wenzi_version higher than current is skipped."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+
+        plugin = plugins_dir / "future_plug"
+        plugin.mkdir()
+        (plugin / "__init__.py").write_text(
+            "def setup(wz): raise RuntimeError('should not be called')\n"
+        )
+        (plugin / "plugin.toml").write_text(
+            '[plugin]\nname = "Future"\nmin_wenzi_version = "99.0.0"\n'
+        )
+
+        from wenzi.scripting.engine import ScriptEngine
+
+        engine = ScriptEngine(
+            script_dir=str(scripts_dir),
+            plugins_dir=str(plugins_dir),
+        )
+        # Patch __version__ to a real version (default is "dev" which skips check)
+        with patch("wenzi.__version__", "0.1.7"):
+            engine._load_plugins()
+
+        # Plugin was not imported (setup() would raise RuntimeError)
+        assert "future_plug" not in sys.modules
+
+        # Metadata is still stored (for Settings panel to show reason)
+        metas = engine.get_plugin_metas()
+        assert "future_plug" in metas
+
+        # Cleanup
+        if str(plugins_dir) in sys.path:
+            sys.path.remove(str(plugins_dir))
+
+    def test_dev_version_always_compatible(self, tmp_path):
+        """In dev mode, all plugins are compatible regardless of min_wenzi_version."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+
+        plugin = plugins_dir / "dev_plug"
+        plugin.mkdir()
+        (plugin / "__init__.py").write_text(
+            "LOADED = False\n"
+            "def setup(wz):\n"
+            "    global LOADED\n"
+            "    LOADED = True\n"
+        )
+        (plugin / "plugin.toml").write_text(
+            '[plugin]\nname = "Dev"\nmin_wenzi_version = "99.0.0"\n'
+        )
+
+        from wenzi.scripting.engine import ScriptEngine
+
+        engine = ScriptEngine(
+            script_dir=str(scripts_dir),
+            plugins_dir=str(plugins_dir),
+        )
+        # wenzi.__version__ is "dev" in test env — plugin should load
+        engine._load_plugins()
+
+        import dev_plug
+        assert dev_plug.LOADED is True
+
+        # Cleanup
+        for name in list(sys.modules):
+            if name.startswith("dev_plug"):
+                del sys.modules[name]
+        if str(plugins_dir) in sys.path:
+            sys.path.remove(str(plugins_dir))
