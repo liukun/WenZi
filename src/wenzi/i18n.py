@@ -40,8 +40,9 @@ def _load_nslocale() -> Any:
 def _load_json(path: str) -> Dict[str, str]:
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
+            data = json.load(f)
+            return {k: str(v) for k, v in data.items()}
+    except (OSError, json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to load locale file %s: %s", path, e)
         return {}
 
@@ -102,7 +103,7 @@ def t(key: str, **kwargs: Any) -> str:
     if kwargs:
         try:
             return value.format_map(kwargs)
-        except KeyError:
+        except (KeyError, AttributeError, ValueError):
             logger.warning("Missing i18n params for key %r: %s", key, kwargs)
             return value
     return value
