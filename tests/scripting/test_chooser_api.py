@@ -1,6 +1,6 @@
 """Tests for the Chooser API."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from wenzi.scripting.sources import ChooserItem, ChooserSource, ModifierAction
 from wenzi.scripting.api.chooser import (
@@ -617,6 +617,60 @@ class TestHelpCommand:
         items = pick_calls[0]
         titles = [i["title"] for i in items]
         assert "my-source" in titles
+
+
+class TestReloadCommand:
+    def test_reload_registered_on_ensure(self):
+        api = ChooserAPI()
+        api._ensure_command_source()
+        assert "reload" in api._command_source._commands
+        entry = api._command_source._commands["reload"]
+        assert entry.promoted is True
+
+    def test_reload_not_re_registered(self):
+        """Calling _ensure_command_source twice should not trigger overwrite."""
+        api = ChooserAPI()
+        api._ensure_command_source()
+        entry1 = api._command_source._commands["reload"]
+        api._ensure_command_source()
+        entry2 = api._command_source._commands["reload"]
+        assert entry1 is entry2
+
+    def test_reload_visible_in_promoted_search(self):
+        api = ChooserAPI()
+        api._ensure_command_source()
+        promoted_src = api.panel._sources["commands-promoted"]
+        items = promoted_src.search("reload")
+        assert len(items) >= 1
+        assert any(i.title == "Reload Scripts" for i in items)
+
+    def test_reload_visible_in_prefixed_search(self):
+        api = ChooserAPI()
+        api._ensure_command_source()
+        cmd_src = api.panel._sources["commands"]
+        items = cmd_src.search("reload")
+        assert any(i.title == "Reload Scripts" for i in items)
+
+    def test_reload_action_calls_wz_reload(self):
+        """Action should call wz.reload()."""
+        api = ChooserAPI()
+        api._ensure_command_source()
+
+        mock_wz = MagicMock()
+        with patch("wenzi.scripting.api.wz", mock_wz):
+            entry = api._command_source._commands["reload"]
+            entry.action("")
+
+        mock_wz.reload.assert_called_once()
+
+    def test_reload_action_noop_when_wz_is_none(self):
+        """Action should not raise when wz is None."""
+        api = ChooserAPI()
+        api._ensure_command_source()
+
+        with patch("wenzi.scripting.api.wz", None):
+            entry = api._command_source._commands["reload"]
+            entry.action("")  # should not raise
 
 
 class TestQuitAllCommand:
