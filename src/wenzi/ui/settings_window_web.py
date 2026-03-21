@@ -223,8 +223,36 @@ class SettingsWebPanel:
 
     @staticmethod
     def _prepare_state(state: dict) -> dict:
-        """Convert state for JSON serialization (pass-through for now)."""
-        return state
+        """Convert tuple-based state values to JSON-friendly dicts."""
+        s = dict(state)
+        if "stt_presets" in s:
+            s["stt_presets"] = [
+                {"id": t[0], "name": t[1], "available": t[2]}
+                for t in s["stt_presets"]
+            ]
+        if "stt_remote_models" in s:
+            s["stt_remote_models"] = [
+                {"provider": t[0], "model": t[1], "display": t[2]}
+                for t in s["stt_remote_models"]
+            ]
+        if "llm_models" in s:
+            s["llm_models"] = [
+                {"provider": t[0], "model": t[1], "display": t[2]}
+                for t in s["llm_models"]
+            ]
+        if "current_llm" in s and isinstance(s["current_llm"], (tuple, list)):
+            s["current_llm"] = {
+                "provider": s["current_llm"][0],
+                "model": s["current_llm"][1],
+            }
+        if "enhance_modes" in s:
+            s["enhance_modes"] = [
+                {"id": t[0], "name": t[1], "order": t[2]}
+                for t in s["enhance_modes"]
+            ]
+        if s.get("last_tab") == "models":
+            s["last_tab"] = "speech"
+        return s
 
     # ------------------------------------------------------------------
     # Panel construction

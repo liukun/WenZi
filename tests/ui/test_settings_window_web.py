@@ -212,3 +212,68 @@ class TestCallbackDispatch:
     def test_unknown_message_type_ignored(self):
         panel, cbs = self._make_panel()
         panel._handle_js_message({"type": "unknown", "data": "foo"})
+
+
+class TestPrepareState:
+    def test_stt_presets_converted(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        prepared = panel._prepare_state(state)
+        assert prepared["stt_presets"] == [
+            {"id": "funasr-paraformer", "name": "FunASR Paraformer", "available": True},
+            {"id": "apple-speech", "name": "Apple Speech", "available": True},
+        ]
+
+    def test_llm_models_converted(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        prepared = panel._prepare_state(state)
+        assert prepared["llm_models"] == [
+            {"provider": "ollama", "model": "qwen2.5:7b", "display": "ollama / qwen2.5:7b"},
+        ]
+
+    def test_current_llm_converted(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        prepared = panel._prepare_state(state)
+        assert prepared["current_llm"] == {"provider": "ollama", "model": "qwen2.5:7b"}
+
+    def test_enhance_modes_converted(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        prepared = panel._prepare_state(state)
+        assert prepared["enhance_modes"] == [
+            {"id": "proofread", "name": "Proofread", "order": 10},
+            {"id": "format", "name": "Format", "order": 30},
+        ]
+
+    def test_stt_remote_models_converted(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        state["stt_remote_models"] = [("openai", "whisper-1", "OpenAI / whisper-1")]
+        prepared = panel._prepare_state(state)
+        assert prepared["stt_remote_models"] == [
+            {"provider": "openai", "model": "whisper-1", "display": "OpenAI / whisper-1"},
+        ]
+
+    def test_non_tuple_fields_preserved(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        prepared = panel._prepare_state(state)
+        assert prepared["sound_enabled"] is True
+        assert prepared["vocab_count"] == 42
+        assert prepared["config_dir"] == "/tmp/test-config"
+
+    def test_last_tab_models_mapped_to_speech(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        state = _make_state()
+        state["last_tab"] = "models"
+        prepared = panel._prepare_state(state)
+        assert prepared["last_tab"] == "speech"
