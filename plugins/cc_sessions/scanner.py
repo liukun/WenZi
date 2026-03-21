@@ -26,6 +26,33 @@ def _strip_xml_tags(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
+_PLAN_PREFIX = "Implement the following plan:"
+
+
+def _extract_plan_title(plan_content: str) -> str:
+    """Extract the first markdown heading from plan content."""
+    for line in plan_content.split("\n"):
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def _clean_custom_title(raw: str) -> str:
+    """Clean a custom title: extract plan title if it starts with plan prefix."""
+    if raw.startswith(_PLAN_PREFIX):
+        remainder = raw[len(_PLAN_PREFIX):].strip()
+        # custom-title has plan on one line; extract heading then truncate at next ##
+        title = _extract_plan_title(remainder)
+        if title:
+            for sep in [" ## ", " # "]:
+                idx = title.find(sep)
+                if idx != -1:
+                    title = title[:idx]
+            return title.strip()
+    return raw
+
+
 def _clean_first_prompt(raw: str) -> str:
     """Clean a firstPrompt value: strip noise, extract useful text."""
     if not raw or not is_noise_message(raw):
@@ -190,6 +217,8 @@ def _scan_session_jsonl(
     first_user_message: str | None = None
     first_timestamp: str | None = None
     last_timestamp: str | None = None
+    custom_title = ""
+    summary = ""
     user_msg_count = 0
     metadata_lines = 30
 
@@ -206,6 +235,28 @@ def _scan_session_jsonl(
                         and "<local-command-caveat>" not in line
                         and "<command-name>" not in line):
                     user_msg_count += 1
+
+            # Detect custom-title entries (can appear anywhere in the file)
+            if '"type":"custom-title"' in line:
+                try:
+                    ct_obj = json.loads(line)
+                    custom_title = ct_obj.get("customTitle", "")
+                except json.JSONDecodeError:
+                    pass
+
+            # Extract plan title as summary via string matching (avoid full JSON parse)
+            if not summary and '"planContent"' in line and '"# ' in line:
+                # Find "# " after "planContent" — handles both "planContent":"# " and "planContent": "# "
+                pc_idx = line.find('"planContent"')
+                heading_idx = line.find('"# ', pc_idx)
+                if heading_idx != -1:
+                    start = heading_idx + 3  # skip '"# '
+                    end = len(line)
+                    for stop in ['\\n', '"']:
+                        pos = line.find(stop, start)
+                        if pos != -1 and pos < end:
+                            end = pos
+                    summary = line[start:end].strip()
 
             # Extract metadata from early lines only
             if i >= metadata_lines:
@@ -250,8 +301,11 @@ def _scan_session_jsonl(
     except OSError:
         file_modified = last_timestamp or ""
 
+    if custom_title:
+        custom_title = _clean_custom_title(custom_title)
+
     project = _resolve_project_name(cwd, project_name)
-    title = _choose_title(None, None, first_user_message)
+    title = _choose_title(custom_title or None, summary or None, first_user_message)
 
     return _make_session(
         session_id=session_id,
@@ -265,6 +319,8 @@ def _scan_session_jsonl(
         modified=last_timestamp or file_modified,
         message_count=user_msg_count,
         version=version,
+        summary=summary,
+        custom_title=custom_title,
     )
 
 
@@ -341,17 +397,20 @@ class SessionScanner:
                     sid = session["session_id"]
                     supplement = index_lookup.get(sid)
                     if supplement:
-                        session = dict(session)  # avoid mutating cached dict
                         summary = supplement.get("summary", "")
                         custom_title = supplement.get("customTitle", "")
-                        session["summary"] = summary
-                        session["custom_title"] = custom_title
-                        # Recalculate title with index data
-                        session["title"] = _choose_title(
-                            custom_title or None,
-                            summary or None,
-                            session.get("first_prompt"),
-                        )
+                        if (summary != session.get("summary", "")
+                                or custom_title != session.get("custom_title", "")):
+                            session = dict(session)
+                            session["summary"] = summary
+                            session["custom_title"] = custom_title
+                            session["title"] = _choose_title(
+                                custom_title or None,
+                                summary or None,
+                                session.get("first_prompt"),
+                            )
+                            if self._cache:
+                                self._cache.put(cache_key, mtime, session)
 
                 if session["session_id"] not in seen_ids:
                     seen_ids.add(session["session_id"])
