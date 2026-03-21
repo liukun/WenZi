@@ -227,5 +227,33 @@
   "vocab_build.tokens_detail": "Tokens: {total}  (input {input}{cached_info} + output {output})",
   "vocab_build.tokens_cached": ", cached {cached}",
 
-  "translate.title": "Google Translate"
+  "translate.title": "Google Translate",
+
+  "quick_edit.title": "Quick Edit",
+  "quick_edit.btn.copy": "Copy [⌥↵]",
+  "quick_edit.btn.copy_path": "Copy Path [⌘↵]",
+  "quick_edit.hud.copied": "Copied\n{preview}",
+  "quick_edit.hud.path_copied": "Path Copied\n{display}",
+
+  "snippet_editor.title": "New Snippet",
+  "snippet_editor.btn.cancel": "Cancel [ESC]",
+  "snippet_editor.btn.save": "Save [⏎]",
+  "snippet_editor.placeholder.optional": "Optional",
+  "snippet_editor.placeholder.category": "category/name or just name",
+  "snippet_editor.label.name": "Name",
+  "snippet_editor.label.keyword": "Keyword",
+  "snippet_editor.label.content": "Content",
+  "snippet_editor.error.name_empty": "Name cannot be empty",
+  "snippet_editor.error.name_empty_after_slash": "Name cannot be empty after '/'",
+  "snippet_editor.error.file_exists": "File already exists: {name}",
+  "snippet_editor.error.keyword_exists": "Keyword '{keyword}' already exists",
+  "snippet_editor.error.content_duplicates": "Content duplicates \"{label}\"",
+  "snippet_editor.error.save_failed": "Failed to save snippet",
+  "snippet_editor.hud.saved": "Saved\n{path}",
+
+  "leader_alert.title": "Leader: {key}",
+  "leader_alert.default_action": "action",
+
+  "chooser.action.open": "Open",
+  "chooser.action.reveal": "Reveal"
 }

@@ -11,6 +11,7 @@ import logging
 import os
 from typing import Callable, Dict, List, Optional
 
+from wenzi.i18n import t
 from wenzi.scripting.sources import ChooserItem, ChooserSource
 from wenzi.ui_helpers import get_frontmost_app, reactivate_app, restore_accessory
 
@@ -723,10 +724,12 @@ class ChooserPanel:
         scored.sort(key=lambda x: (x[0], x[1]))
         self._current_items = [item for _, _, item in scored]
 
-    _DEFAULT_ACTION_HINTS = {
-        "enter": "Open",
-        "cmd_enter": "Reveal",
-    }
+    @staticmethod
+    def _default_action_hints():
+        return {
+            "enter": t("chooser.action.open"),
+            "cmd_enter": t("chooser.action.reveal"),
+        }
 
     def _push_items_to_js(
         self,
@@ -789,10 +792,10 @@ class ChooserPanel:
         elif self._compact_results and "calculator" in self._sources:
             hints = (
                 self._sources["calculator"].action_hints
-                or self._DEFAULT_ACTION_HINTS
+                or self._default_action_hints()
             )
         else:
-            hints = self._DEFAULT_ACTION_HINTS
+            hints = self._default_action_hints()
         parts.append(
             f"setActionHints({json.dumps(hints, ensure_ascii=False)})"
         )

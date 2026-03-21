@@ -227,5 +227,33 @@
   "vocab_build.tokens_detail": "Tokens: {total}  (输入 {input}{cached_info} + 输出 {output})",
   "vocab_build.tokens_cached": "，缓存 {cached}",
 
-  "translate.title": "Google 翻译"
+  "translate.title": "Google 翻译",
+
+  "quick_edit.title": "快速编辑",
+  "quick_edit.btn.copy": "复制 [⌥↵]",
+  "quick_edit.btn.copy_path": "复制路径 [⌘↵]",
+  "quick_edit.hud.copied": "已复制\n{preview}",
+  "quick_edit.hud.path_copied": "路径已复制\n{display}",
+
+  "snippet_editor.title": "新建片段",
+  "snippet_editor.btn.cancel": "取消 [ESC]",
+  "snippet_editor.btn.save": "保存 [⏎]",
+  "snippet_editor.placeholder.optional": "可选",
+  "snippet_editor.placeholder.category": "分类/名称 或仅名称",
+  "snippet_editor.label.name": "名称",
+  "snippet_editor.label.keyword": "关键词",
+  "snippet_editor.label.content": "内容",
+  "snippet_editor.error.name_empty": "名称不能为空",
+  "snippet_editor.error.name_empty_after_slash": "「/」后的名称不能为空",
+  "snippet_editor.error.file_exists": "文件已存在：{name}",
+  "snippet_editor.error.keyword_exists": "关键词「{keyword}」已存在",
+  "snippet_editor.error.content_duplicates": "内容与「{label}」重复",
+  "snippet_editor.error.save_failed": "保存片段失败",
+  "snippet_editor.hud.saved": "已保存\n{path}",
+
+  "leader_alert.title": "Leader: {key}",
+  "leader_alert.default_action": "操作",
+
+  "chooser.action.open": "打开",
+  "chooser.action.reveal": "显示"
 }
