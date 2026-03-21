@@ -74,10 +74,15 @@ class SettingsController:
         # LLM models
         llm_models = []
         current_llm = None
+        ai_providers_cfg = app._config.get("ai_enhance", {}).get("providers", {})
         if app._enhancer:
             for pname, models in app._enhancer.providers_with_models.items():
+                pcfg = ai_providers_cfg.get(pname, {})
+                has_api_key = bool(pcfg.get("api_key"))
                 for mname in models:
-                    llm_models.append((pname, mname, f"{pname} / {mname}"))
+                    llm_models.append(
+                        (pname, mname, f"{pname} / {mname}", has_api_key)
+                    )
             current_llm = (app._enhancer.provider_name, app._enhancer.model_name)
 
         # Enhance modes (excluding "off") with order for display
@@ -962,6 +967,18 @@ class SettingsController:
                 "hotkey": source_hotkeys.get(prefix_key, "") if prefix_key else "",
             })
 
+        # Collect registered chooser sources from scripting registry
+        registered_sources = []
+        engine = getattr(app, "_script_engine", None)
+        if engine is not None:
+            registry = getattr(engine, "_registry", None)
+            if registry is not None:
+                for name, src in registry.chooser_sources.items():
+                    registered_sources.append({
+                        "name": name,
+                        "prefix": getattr(src, "prefix", ""),
+                    })
+
         return {
             "enabled": chooser_cfg.get("enabled", True),
             "hotkey": chooser_cfg.get("hotkey", ""),
@@ -969,6 +986,7 @@ class SettingsController:
             "switch_english": chooser_cfg.get("switch_to_english", True),
             "new_snippet_hotkey": chooser_cfg.get("new_snippet_hotkey", ""),
             "sources": sources,
+            "registered_sources": registered_sources,
         }
 
     def launcher_toggle(self, enabled: bool) -> None:

@@ -1009,11 +1009,8 @@ function renderLlmTab() {
   for (var g = 0; g < groupOrder.length; g++) {
     var provider = groupOrder[g];
     var items = groups[provider];
-    var isLocal = provider.toLowerCase().indexOf('ollama') >= 0 ||
-                  provider.toLowerCase().indexOf('local') >= 0;
     html += '<div class="provider-header">';
     html += '  <span class="provider-name">' + _esc(provider) + '</span>';
-    html += '  <span class="provider-badge ' + (isLocal ? 'local' : 'remote') + '">' + (isLocal ? 'Local' : 'Cloud') + '</span>';
     html += '</div>';
     for (var k = 0; k < items.length; k++) {
       var item = items[k];
@@ -1023,7 +1020,7 @@ function renderLlmTab() {
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(item.display) + '</div>';
       html += '  </div>';
-      if (!isLocal) {
+      if (item.has_api_key) {
         html += '  <div class="model-tag">API Key</div>';
       }
       html += '</div>';
@@ -1055,6 +1052,15 @@ function renderAiModes() {
   var modes = CONFIG.enhance_modes || [];
   var current = CONFIG.current_enhance_mode || '';
   var html = '';
+
+  // "Off" option — always first
+  var offSel = (current === 'off') ? ' selected' : '';
+  html += '<div class="model-row' + offSel + '" onclick="selectEnhanceMode(\\x27off\\x27, this)">';
+  html += '  <div class="model-radio"></div>';
+  html += '  <div class="model-info">';
+  html += '    <div class="model-name">' + _esc(_t('ai_tab.off', 'Off')) + '</div>';
+  html += '  </div>';
+  html += '</div>';
 
   for (var i = 0; i < modes.length; i++) {
     var m = modes[i];
@@ -1135,7 +1141,69 @@ function renderLauncherSources() {
     html += '<div class="setting-row"><div class="setting-left"><div class="setting-desc">No sources configured</div></div></div>';
   }
 
+  // Registered script/plugin sources (read-only)
+  var regSources = (CONFIG.launcher || {}).registered_sources || [];
+  if (regSources.length > 0) {
+    html += '</div>';  // close current setting-group
+    html += '<div class="group-title">' + _esc(_t('launcher_tab.script_sources', 'Script & Plugin Sources')) + '</div>';
+    html += '<div class="setting-group">';
+    for (var r = 0; r < regSources.length; r++) {
+      var rs = regSources[r];
+      html += '<div class="setting-row" style="opacity:0.7;">';
+      html += '  <div class="setting-left">';
+      html += '    <div class="setting-label">' + _esc(rs.name) + '</div>';
+      if (rs.prefix) {
+        html += '    <div class="setting-desc">' + _esc(_t('launcher_tab.prefix', 'Prefix:')) + ' ' + _esc(rs.prefix) + '</div>';
+      }
+      html += '  </div>';
+      html += '  <div class="setting-right">';
+      html += '    <div class="toggle on" style="pointer-events:none;opacity:0.5;"></div>';
+      html += '  </div>';
+      html += '</div>';
+    }
+  }
+
   container.innerHTML = html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Launcher disable state                                              */
+/* ------------------------------------------------------------------ */
+
+function updateLauncherDisabledState() {
+  var launcherTab = document.getElementById('tab-launcher');
+  if (!launcherTab) return;
+  var scriptingOn = CONFIG.scripting_enabled;
+  var launcherOn = (CONFIG.launcher || {}).enabled;
+
+  // Get all interactive controls in the launcher tab
+  var allControls = launcherTab.querySelectorAll('.toggle, select, input, .btn-small, .toolbar-btn');
+  var enableToggle = document.getElementById('ctl-launcher-enabled');
+
+  if (!scriptingOn) {
+    // Scripting off: disable ALL launcher controls
+    allControls.forEach(function(el) {
+      el.style.pointerEvents = 'none';
+      el.style.opacity = '0.4';
+    });
+  } else if (!launcherOn) {
+    // Launcher off: enable only the launcher toggle, disable sub-controls
+    allControls.forEach(function(el) {
+      el.style.pointerEvents = 'none';
+      el.style.opacity = '0.4';
+    });
+    // Re-enable the launcher enable toggle
+    if (enableToggle) {
+      enableToggle.style.pointerEvents = '';
+      enableToggle.style.opacity = '';
+    }
+  } else {
+    // Everything enabled
+    allControls.forEach(function(el) {
+      el.style.pointerEvents = '';
+      el.style.opacity = '';
+    });
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1226,6 +1294,9 @@ function _initState(config) {
   // Snippets hotkey
   var snippetHk = document.getElementById('ctl-new-snippet-hotkey');
   if (snippetHk) snippetHk.textContent = launcher.new_snippet_hotkey || _t('launcher_tab.none', 'None');
+
+  // Disable launcher controls based on scripting/launcher state
+  updateLauncherDisabledState();
 
   // Restore last tab
   if (config.last_tab && config.last_tab !== 'general') {
@@ -1329,6 +1400,11 @@ function _updateState(state) {
     renderLauncherSources();
     var snHk = document.getElementById('ctl-new-snippet-hotkey');
     if (snHk && launcher.new_snippet_hotkey !== undefined) snHk.textContent = launcher.new_snippet_hotkey || _t('launcher_tab.none', 'None');
+  }
+
+  // Update launcher disabled state if scripting or launcher changed
+  if (state.scripting_enabled !== undefined || state.launcher !== undefined) {
+    updateLauncherDisabledState();
   }
 }
 
@@ -1591,7 +1667,12 @@ class SettingsWebPanel:
             ]
         if "llm_models" in s:
             s["llm_models"] = [
-                {"provider": t[0], "model": t[1], "display": t[2]}
+                {
+                    "provider": t[0],
+                    "model": t[1],
+                    "display": t[2],
+                    "has_api_key": t[3] if len(t) > 3 else False,
+                }
                 for t in s["llm_models"]
             ]
         if "current_llm" in s and isinstance(s["current_llm"], (tuple, list)):

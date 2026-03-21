@@ -231,7 +231,7 @@ class TestPrepareState:
         state = _make_state()
         prepared = panel._prepare_state(state)
         assert prepared["llm_models"] == [
-            {"provider": "ollama", "model": "qwen2.5:7b", "display": "ollama / qwen2.5:7b"},
+            {"provider": "ollama", "model": "qwen2.5:7b", "display": "ollama / qwen2.5:7b", "has_api_key": False},
         ]
 
     def test_current_llm_converted(self):
