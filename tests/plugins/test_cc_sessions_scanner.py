@@ -413,3 +413,47 @@ class TestSessionScannerPersistentCache:
         scanner = SessionScanner(base_dir=tmp_path / "projects", cache_path=None)
         sessions = scanner.scan_all()
         assert len(sessions) == 1
+
+
+# ---------------------------------------------------------------------------
+# Session metadata fields (summary, custom_title)
+# ---------------------------------------------------------------------------
+
+
+class TestSessionMetadataFields:
+    """Test that summary and custom_title are extracted."""
+
+    def test_index_extracts_summary_and_custom_title(self, tmp_path: Path):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        index = [
+            {
+                "sessionId": "s1",
+                "firstPrompt": "Hello",
+                "summary": "Refactored config module",
+                "customTitle": "Config Refactor",
+                "messageCount": 10,
+                "created": "2026-01-01T00:00:00Z",
+                "modified": "2026-01-01T01:00:00Z",
+            }
+        ]
+        (proj / "sessions-index.json").write_text(json.dumps(index))
+        results = _scan_project_with_index(proj, "Proj")
+        assert results[0]["summary"] == "Refactored config module"
+        assert results[0]["custom_title"] == "Config Refactor"
+
+    def test_index_empty_custom_title(self, tmp_path: Path):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        index = [
+            {
+                "sessionId": "s2",
+                "firstPrompt": "Hi",
+                "summary": "A summary",
+                "customTitle": "",
+            }
+        ]
+        (proj / "sessions-index.json").write_text(json.dumps(index))
+        results = _scan_project_with_index(proj, "Proj")
+        assert results[0]["summary"] == "A summary"
+        assert results[0]["custom_title"] == ""

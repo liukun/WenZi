@@ -20,6 +20,8 @@ def _make_session(
     modified: str = "",
     message_count: Optional[int] = None,
     version: str = "",
+    summary: str = "",
+    custom_title: str = "",
 ) -> dict[str, Any]:
     """Build a session metadata dict."""
     return {
@@ -34,6 +36,8 @@ def _make_session(
         "modified": modified,
         "message_count": message_count,
         "version": version,
+        "summary": summary,
+        "custom_title": custom_title,
     }
 
 
@@ -110,6 +114,8 @@ def _scan_project_with_index(
             modified=entry.get("modified", ""),
             message_count=entry.get("messageCount", 0),
             version=entry.get("version", ""),
+            summary=entry.get("summary", ""),
+            custom_title=entry.get("customTitle", ""),
         ))
 
     return results
