@@ -9,15 +9,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 
 
 class SessionCache:
-    """JSON-backed cache mapping file paths to (mtime, session_data).
-
-    Stores two kinds of entries:
-    - **session entries**: keyed by JSONL file path
-    - **index entries**: keyed by sessions-index.json path, value is a list of sessions
+    """JSON-backed cache mapping JSONL file paths to (mtime, session_data).
 
     The cache file is only written when :meth:`save` is called and the
     cache has been modified since the last load/save.
@@ -26,7 +22,6 @@ class SessionCache:
     def __init__(self, cache_path: Path) -> None:
         self._path = cache_path
         self._sessions: dict[str, dict[str, Any]] = {}
-        self._indexes: dict[str, dict[str, Any]] = {}
         self._dirty = False
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._load()
@@ -39,32 +34,13 @@ class SessionCache:
         """Store or update a session entry."""
         self._put_entry(self._sessions, file_path, mtime, data)
 
-    def get_index(self, index_path: str) -> tuple[float, list[dict[str, Any]]] | None:
-        """Return ``(mtime, sessions_list)`` or ``None``."""
-        return self._get_entry(self._indexes, index_path)
-
-    def put_index(self, index_path: str, mtime: float, sessions: list[dict[str, Any]]) -> None:
-        """Store or update an index entry."""
-        self._put_entry(self._indexes, index_path, mtime, sessions)
-
-    def prune(
-        self,
-        live_paths: set[str],
-        live_index_paths: set[str] | None = None,
-    ) -> None:
+    def prune(self, live_paths: set[str]) -> None:
         """Remove entries whose paths are not in *live_paths*."""
         stale = [k for k in self._sessions if k not in live_paths]
         for k in stale:
             del self._sessions[k]
         if stale:
             self._dirty = True
-
-        if live_index_paths is not None:
-            stale_idx = [k for k in self._indexes if k not in live_index_paths]
-            for k in stale_idx:
-                del self._indexes[k]
-            if stale_idx:
-                self._dirty = True
 
     def save(self) -> None:
         """Write cache to disk if modified, using atomic rename."""
@@ -73,7 +49,6 @@ class SessionCache:
         data = {
             "version": _CACHE_VERSION,
             "sessions": self._sessions,
-            "indexes": self._indexes,
         }
         try:
             tmp = self._path.with_suffix(".tmp")
@@ -112,4 +87,3 @@ class SessionCache:
             return
 
         self._sessions = raw.get("sessions", {})
-        self._indexes = raw.get("indexes", {})

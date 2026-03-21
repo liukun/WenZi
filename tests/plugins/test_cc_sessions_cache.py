@@ -21,7 +21,7 @@ class TestSessionCacheInit:
         """Cache loads data from an existing file."""
         cache_path = tmp_path / "cache.json"
         data = {
-            "version": 1,
+            "version": 2,
             "sessions": {
                 "/tmp/s1.jsonl": {
                     "mtime": 1000.0,
@@ -78,26 +78,6 @@ class TestSessionCacheGetPut:
         assert entry == (200.0, {"session_id": "s1", "title": "New"})
 
 
-class TestSessionCachePutIndex:
-    """Test put_index for sessions-index.json entries."""
-
-    def test_put_index_stores_multiple_sessions(self, tmp_path: Path):
-        cache = SessionCache(tmp_path / "cache.json")
-        sessions = [
-            {"session_id": "s1", "file_path": "/tmp/s1.jsonl", "title": "A"},
-            {"session_id": "s2", "file_path": "/tmp/s2.jsonl", "title": "B"},
-        ]
-        cache.put_index("/proj/sessions-index.json", 500.0, sessions)
-        entry = cache.get_index("/proj/sessions-index.json")
-        assert entry is not None
-        assert entry[0] == 500.0
-        assert len(entry[1]) == 2
-
-    def test_get_index_returns_none_for_unknown(self, tmp_path: Path):
-        cache = SessionCache(tmp_path / "cache.json")
-        assert cache.get_index("/unknown/index.json") is None
-
-
 class TestSessionCachePrune:
     """Test pruning of stale entries."""
 
@@ -108,12 +88,6 @@ class TestSessionCachePrune:
         cache.prune(live_paths={"/tmp/keep.jsonl"})
         assert cache.get("/tmp/keep.jsonl") is not None
         assert cache.get("/tmp/gone.jsonl") is None
-
-    def test_prune_removes_absent_indexes(self, tmp_path: Path):
-        cache = SessionCache(tmp_path / "cache.json")
-        cache.put_index("/proj/sessions-index.json", 100.0, [{"session_id": "s1"}])
-        cache.prune(live_paths=set(), live_index_paths=set())
-        assert cache.get_index("/proj/sessions-index.json") is None
 
 
 class TestSessionCacheSave:
@@ -126,26 +100,21 @@ class TestSessionCacheSave:
         cache.save()
         assert cache_path.is_file()
         loaded = json.loads(cache_path.read_text())
-        assert loaded["version"] == 1
+        assert loaded["version"] == 2
         assert "/tmp/s1.jsonl" in loaded["sessions"]
 
     def test_save_only_when_dirty(self, tmp_path: Path):
         cache_path = tmp_path / "cache.json"
         cache = SessionCache(cache_path)
         cache.save()
-        # File should not be created if nothing was added
         assert not cache_path.exists()
 
     def test_roundtrip(self, tmp_path: Path):
         cache_path = tmp_path / "cache.json"
         cache1 = SessionCache(cache_path)
         cache1.put("/tmp/s1.jsonl", 100.0, {"session_id": "s1", "title": "Hello"})
-        cache1.put_index("/proj/index.json", 200.0, [{"session_id": "s2"}])
         cache1.save()
 
         cache2 = SessionCache(cache_path)
         entry = cache2.get("/tmp/s1.jsonl")
         assert entry == (100.0, {"session_id": "s1", "title": "Hello"})
-        idx = cache2.get_index("/proj/index.json")
-        assert idx is not None
-        assert len(idx[1]) == 1

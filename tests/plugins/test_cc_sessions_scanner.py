@@ -8,9 +8,13 @@ from pathlib import Path
 from cc_sessions.scanner import (
     SessionScanner,
     _choose_title,
+    _clean_first_prompt,
+    _git_remote_name,
+    _name_from_cwd,
     _project_name_from_dir,
-    _scan_project_with_index,
+    _resolve_project_name,
     _scan_session_jsonl,
+    is_noise_message,
 )
 
 
@@ -59,80 +63,71 @@ class TestChooseTitle:
 
 
 # ---------------------------------------------------------------------------
-# _scan_project_with_index
+# Index supplements (summary/customTitle merge)
 # ---------------------------------------------------------------------------
 
 
-class TestScanProjectWithIndex:
-    def test_reads_index(self, tmp_path: Path):
-        proj = tmp_path / "-Users-me-work-Proj"
-        proj.mkdir()
-        index = [
-            {
-                "sessionId": "s1",
-                "fullPath": str(proj / "s1.jsonl"),
-                "firstPrompt": "Hello world",
-                "summary": None,
-                "customTitle": None,
-                "messageCount": 5,
-                "created": "2026-01-01T00:00:00Z",
-                "modified": "2026-01-01T01:00:00Z",
-                "gitBranch": "main",
-                "projectPath": "/Users/me/work/Proj",
-            }
-        ]
-        (proj / "sessions-index.json").write_text(json.dumps(index))
+class TestIndexSupplements:
+    """Test that summary/customTitle from index are merged into JSONL-scanned sessions."""
 
-        results = _scan_project_with_index(proj, "Proj")
-        assert len(results) == 1
-        s = results[0]
-        assert s["session_id"] == "s1"
-        assert s["project"] == "Proj"
-        assert s["title"] == "Hello world"
-        assert s["message_count"] == 5
+    def _make_proj_with_index_and_jsonl(self, tmp_path, session_id, prompt, index_entry):
+        """Helper: create a project dir with both a JSONL file and an index."""
+        proj = tmp_path / "projects" / "proj"
+        proj.mkdir(parents=True, exist_ok=True)
+        jsonl = proj / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": prompt}}) + "\n"
+        )
+        index_data = [{"sessionId": session_id, **index_entry}]
+        (proj / "sessions-index.json").write_text(json.dumps(index_data))
+        return tmp_path / "projects"
 
-    def test_title_priority_custom_over_summary(self, tmp_path: Path):
-        proj = tmp_path / "proj"
-        proj.mkdir()
-        index = [
-            {
-                "sessionId": "s2",
-                "firstPrompt": "prompt",
-                "summary": "summary",
-                "customTitle": "custom",
-            }
-        ]
-        (proj / "sessions-index.json").write_text(json.dumps(index))
-
-        results = _scan_project_with_index(proj, "Proj")
-        assert results[0]["title"] == "custom"
+    def test_merges_summary_and_custom_title(self, tmp_path: Path):
+        base = self._make_proj_with_index_and_jsonl(
+            tmp_path, "s1", "Hello",
+            {"summary": "A good summary", "customTitle": "My Title"},
+        )
+        scanner = SessionScanner(base_dir=base, cache_path=None)
+        sessions = scanner.scan_all()
+        assert len(sessions) == 1
+        assert sessions[0]["summary"] == "A good summary"
+        assert sessions[0]["custom_title"] == "My Title"
+        assert sessions[0]["title"] == "My Title"  # customTitle wins
 
     def test_title_priority_summary_over_prompt(self, tmp_path: Path):
-        proj = tmp_path / "proj"
-        proj.mkdir()
-        index = [
-            {
-                "sessionId": "s3",
-                "firstPrompt": "prompt",
-                "summary": "summary",
-                "customTitle": None,
-            }
-        ]
-        (proj / "sessions-index.json").write_text(json.dumps(index))
+        base = self._make_proj_with_index_and_jsonl(
+            tmp_path, "s2", "prompt text",
+            {"summary": "summary text", "customTitle": ""},
+        )
+        scanner = SessionScanner(base_dir=base, cache_path=None)
+        sessions = scanner.scan_all()
+        assert sessions[0]["title"] == "summary text"
 
-        results = _scan_project_with_index(proj, "Proj")
-        assert results[0]["title"] == "summary"
+    def test_no_index_uses_first_prompt(self, tmp_path: Path):
+        proj = tmp_path / "projects" / "proj"
+        proj.mkdir(parents=True)
+        (proj / "s1.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": "Just a prompt"}}) + "\n"
+        )
+        scanner = SessionScanner(base_dir=tmp_path / "projects", cache_path=None)
+        sessions = scanner.scan_all()
+        assert sessions[0]["title"] == "Just a prompt"
+        assert sessions[0]["summary"] == ""
 
-    def test_missing_index_returns_empty(self, tmp_path: Path):
-        proj = tmp_path / "proj"
-        proj.mkdir()
-        assert _scan_project_with_index(proj, "Proj") == []
-
-    def test_corrupt_index_returns_empty(self, tmp_path: Path):
-        proj = tmp_path / "proj"
-        proj.mkdir()
+    def test_corrupt_index_ignored(self, tmp_path: Path):
+        proj = tmp_path / "projects" / "proj"
+        proj.mkdir(parents=True)
+        (proj / "s1.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": "Hello"}}) + "\n"
+        )
         (proj / "sessions-index.json").write_text("{broken json")
-        assert _scan_project_with_index(proj, "Proj") == []
+        scanner = SessionScanner(base_dir=tmp_path / "projects", cache_path=None)
+        sessions = scanner.scan_all()
+        assert len(sessions) == 1
+        assert sessions[0]["title"] == "Hello"
 
 
 # ---------------------------------------------------------------------------
@@ -203,29 +198,21 @@ class TestScanSessionJsonl:
 
 
 class TestSessionScanner:
-    def test_scan_all_with_index(self, tmp_path: Path):
-        proj = tmp_path / "-Users-me-work-MyApp"
+    def test_scan_all_with_index_supplements(self, tmp_path: Path):
+        proj = tmp_path / "proj"
         proj.mkdir()
-        index = [
-            {
-                "sessionId": "s1",
-                "fullPath": str(proj / "s1.jsonl"),
-                "firstPrompt": "Hello",
-                "summary": None,
-                "customTitle": None,
-                "messageCount": 3,
-                "created": "2026-01-01T00:00:00Z",
-                "modified": "2026-01-02T00:00:00Z",
-                "gitBranch": "main",
-                "projectPath": "/Users/me/work/MyApp",
-            }
-        ]
+        (proj / "s1.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "cwd": "/Users/me/work/MyApp",
+                        "message": {"content": "Hello"}}) + "\n"
+        )
+        index = [{"sessionId": "s1", "summary": "A summary", "customTitle": ""}]
         (proj / "sessions-index.json").write_text(json.dumps(index))
 
         scanner = SessionScanner(base_dir=tmp_path, cache_path=None)
         sessions = scanner.scan_all()
         assert len(sessions) == 1
-        assert sessions[0]["project"] == "MyApp"
+        assert sessions[0]["summary"] == "A summary"
 
     def test_scan_all_fallback_jsonl(self, tmp_path: Path):
         proj = tmp_path / "proj"
@@ -265,22 +252,18 @@ class TestSessionScanner:
     def test_sorted_by_modified_desc(self, tmp_path: Path):
         proj = tmp_path / "proj"
         proj.mkdir()
-        index = [
-            {
-                "sessionId": "old",
-                "firstPrompt": "Old",
-                "modified": "2026-01-01T00:00:00Z",
-            },
-            {
-                "sessionId": "new",
-                "firstPrompt": "New",
-                "modified": "2026-01-02T00:00:00Z",
-            },
-        ]
-        (proj / "sessions-index.json").write_text(json.dumps(index))
+        (proj / "old.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": "Old"}}) + "\n"
+        )
+        (proj / "new.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-02T00:00:00Z",
+                        "message": {"content": "New"}}) + "\n"
+        )
 
         scanner = SessionScanner(base_dir=tmp_path, cache_path=None)
         sessions = scanner.scan_all()
+        assert len(sessions) == 2
         assert sessions[0]["session_id"] == "new"
         assert sessions[1]["session_id"] == "old"
 
@@ -421,39 +404,232 @@ class TestSessionScannerPersistentCache:
 
 
 class TestSessionMetadataFields:
-    """Test that summary and custom_title are extracted."""
+    """Test that summary and custom_title are extracted via index supplements."""
 
     def test_index_extracts_summary_and_custom_title(self, tmp_path: Path):
-        proj = tmp_path / "proj"
-        proj.mkdir()
-        index = [
-            {
-                "sessionId": "s1",
-                "firstPrompt": "Hello",
-                "summary": "Refactored config module",
-                "customTitle": "Config Refactor",
-                "messageCount": 10,
-                "created": "2026-01-01T00:00:00Z",
-                "modified": "2026-01-01T01:00:00Z",
-            }
-        ]
+        proj = tmp_path / "projects" / "proj"
+        proj.mkdir(parents=True)
+        (proj / "s1.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": "Hello"}}) + "\n"
+        )
+        index = [{"sessionId": "s1", "summary": "Refactored config module",
+                   "customTitle": "Config Refactor"}]
         (proj / "sessions-index.json").write_text(json.dumps(index))
-        results = _scan_project_with_index(proj, "Proj")
-        assert results[0]["summary"] == "Refactored config module"
-        assert results[0]["custom_title"] == "Config Refactor"
+        scanner = SessionScanner(base_dir=tmp_path / "projects", cache_path=None)
+        sessions = scanner.scan_all()
+        assert sessions[0]["summary"] == "Refactored config module"
+        assert sessions[0]["custom_title"] == "Config Refactor"
 
     def test_index_empty_custom_title(self, tmp_path: Path):
-        proj = tmp_path / "proj"
-        proj.mkdir()
-        index = [
-            {
-                "sessionId": "s2",
-                "firstPrompt": "Hi",
-                "summary": "A summary",
-                "customTitle": "",
-            }
-        ]
+        proj = tmp_path / "projects" / "proj"
+        proj.mkdir(parents=True)
+        (proj / "s2.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": "Hi"}}) + "\n"
+        )
+        index = [{"sessionId": "s2", "summary": "A summary", "customTitle": ""}]
         (proj / "sessions-index.json").write_text(json.dumps(index))
-        results = _scan_project_with_index(proj, "Proj")
-        assert results[0]["summary"] == "A summary"
-        assert results[0]["custom_title"] == ""
+        scanner = SessionScanner(base_dir=tmp_path / "projects", cache_path=None)
+        sessions = scanner.scan_all()
+        assert sessions[0]["summary"] == "A summary"
+        assert sessions[0]["custom_title"] == ""
+
+
+class TestNoiseFiltering:
+    """Test filtering of system-injected noise messages."""
+
+    def test_is_noise_message_local_command_caveat(self):
+        text = '<local-command-caveat>Caveat: The messages below were generated...</local-command-caveat>'
+        assert is_noise_message(text) is True
+
+    def test_is_noise_message_command_name(self):
+        text = '<command-name>/clear</command-name> <command-message>clear</command-message>'
+        assert is_noise_message(text) is True
+
+    def test_is_noise_message_normal_text(self):
+        assert is_noise_message("refactor the config module") is False
+
+    def test_is_noise_message_empty(self):
+        assert is_noise_message("") is False
+
+    def test_clean_first_prompt_strips_tags(self):
+        raw = '<command-name>/clear</command-name> <command-message>clear</command-message>'
+        result = _clean_first_prompt(raw)
+        assert "<" not in result
+        assert result == "/clear clear"
+
+    def test_clean_first_prompt_normal_text_unchanged(self):
+        assert _clean_first_prompt("hello world") == "hello world"
+
+    def test_choose_title_skips_noise_prompt(self):
+        title = _choose_title(
+            None,
+            "A good summary",
+            '<local-command-caveat>Caveat: noise</local-command-caveat>',
+        )
+        assert title == "A good summary"
+
+    def test_scan_jsonl_skips_noise_first_message(self, tmp_path: Path):
+        """Scanner skips noise messages and finds the real first prompt."""
+        jsonl = tmp_path / "cleared.jsonl"
+        jsonl.write_text("\n".join(json.dumps(obj) for obj in [
+            {"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+             "message": {"content": "<local-command-caveat>Caveat: noise</local-command-caveat>"}},
+            {"type": "user", "timestamp": "2026-01-01T00:00:01Z",
+             "message": {"content": "<command-name>/clear</command-name>"}},
+            {"type": "user", "timestamp": "2026-01-01T00:00:02Z",
+             "message": {"content": "refactor the config module"}},
+        ]) + "\n")
+        result = _scan_session_jsonl(jsonl, "Proj")
+        assert result is not None
+        assert result["first_prompt"] == "refactor the config module"
+
+    def test_index_supplements_title_from_summary_when_prompt_is_noise(self, tmp_path: Path):
+        """When firstPrompt is noise, index summary is used for title."""
+        proj = tmp_path / "projects" / "proj"
+        proj.mkdir(parents=True)
+        (proj / "s1.jsonl").write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "message": {"content": "<local-command-caveat>noise</local-command-caveat>"}}) + "\n"
+            + json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:01Z",
+                          "message": {"content": "real question"}}) + "\n"
+        )
+        index = [{"sessionId": "s1", "summary": "Real summary", "customTitle": ""}]
+        (proj / "sessions-index.json").write_text(json.dumps(index))
+        scanner = SessionScanner(base_dir=tmp_path / "projects", cache_path=None)
+        sessions = scanner.scan_all()
+        assert sessions[0]["title"] == "Real summary"
+
+
+class TestUserMessageCounting:
+    """Test that _scan_session_jsonl counts real user messages correctly."""
+
+    def test_counts_real_user_messages(self, tmp_path: Path):
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            '{"type":"system","timestamp":"2026-01-01T00:00:00Z"}\n'
+            '{"type":"user","timestamp":"2026-01-01T00:00:01Z","message":{"content":"Hi"}}\n'
+            '{"type":"assistant","message":{"content":"Hello"}}\n'
+            '{"type":"user","timestamp":"2026-01-01T00:00:02Z","message":{"content":"Bye"}}\n'
+            '{"type":"progress","data":{}}\n'
+        )
+        result = _scan_session_jsonl(jsonl, "P")
+        assert result is not None
+        assert result["message_count"] == 2
+
+    def test_excludes_tool_results(self, tmp_path: Path):
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            '{"type":"user","timestamp":"2026-01-01T00:00:00Z","message":{"content":"Hi"}}\n'
+            '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"x"}]}}\n'
+            '{"type":"user","toolUseResult":{"type":"create"},"message":{"content":"result"}}\n'
+            '{"type":"user","timestamp":"2026-01-01T00:00:01Z","message":{"content":"Bye"}}\n'
+        )
+        result = _scan_session_jsonl(jsonl, "P")
+        assert result is not None
+        assert result["message_count"] == 2
+
+    def test_excludes_noise_messages(self, tmp_path: Path):
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            '{"type":"user","timestamp":"2026-01-01T00:00:00Z","message":{"content":"<local-command-caveat>noise</local-command-caveat>"}}\n'
+            '{"type":"user","message":{"content":"<command-name>/clear</command-name>"}}\n'
+            '{"type":"user","timestamp":"2026-01-01T00:00:01Z","message":{"content":"real question"}}\n'
+        )
+        result = _scan_session_jsonl(jsonl, "P")
+        assert result is not None
+        assert result["message_count"] == 1
+
+
+class TestProjectNameResolution:
+    """Test git remote and cwd-based project name resolution."""
+
+    def test_name_from_cwd_simple(self):
+        assert _name_from_cwd("/Users/fan/work/VoiceText") == "VoiceText"
+
+    def test_name_from_cwd_worktree(self):
+        assert _name_from_cwd("/Users/fan/work/VoiceText.feat-ui-experience") == "VoiceText"
+
+    def test_git_remote_name_normal_repo(self, tmp_path: Path):
+        """Reads remote origin URL from .git/config."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = git@github.com:Airead/WenZi.git\n"
+            "    fetch = +refs/heads/*:refs/remotes/origin/*\n"
+        )
+        assert _git_remote_name(str(tmp_path)) == "WenZi"
+
+    def test_git_remote_name_https(self, tmp_path: Path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = https://github.com/Airead/WenZi.git\n"
+        )
+        assert _git_remote_name(str(tmp_path)) == "WenZi"
+
+    def test_git_remote_name_worktree(self, tmp_path: Path):
+        """Follows .git file to main repo config."""
+        # Set up main repo
+        main = tmp_path / "main"
+        main.mkdir()
+        git_dir = main / ".git"
+        git_dir.mkdir()
+        worktrees = git_dir / "worktrees" / "wt1"
+        worktrees.mkdir(parents=True)
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = git@github.com:Airead/WenZi.git\n"
+        )
+
+        # Set up worktree
+        wt = tmp_path / "wt1"
+        wt.mkdir()
+        (wt / ".git").write_text(f"gitdir: {worktrees}\n")
+
+        assert _git_remote_name(str(wt)) == "WenZi"
+
+    def test_git_remote_name_no_git(self, tmp_path: Path):
+        assert _git_remote_name(str(tmp_path)) == ""
+
+    def test_resolve_project_name_caches(self, tmp_path: Path):
+        """Second call uses cache, not filesystem."""
+        from cc_sessions.scanner import _project_name_cache
+
+        cwd = str(tmp_path / "nonexistent")
+        # Clear any existing cache entry
+        _project_name_cache.pop(cwd, None)
+        name1 = _resolve_project_name(cwd, "fallback")
+        assert name1 == "nonexistent"  # from _name_from_cwd
+
+        # Cached — even with different fallback, returns same
+        name2 = _resolve_project_name(cwd, "other")
+        assert name2 == "nonexistent"
+
+        # Cleanup
+        _project_name_cache.pop(cwd, None)
+
+    def test_resolve_project_name_empty_cwd_uses_fallback(self):
+        assert _resolve_project_name("", "MyFallback") == "MyFallback"
+
+    def test_scan_jsonl_uses_cwd_for_project(self, tmp_path: Path):
+        """JSONL scanner resolves project name from cwd, not dir name."""
+        from cc_sessions.scanner import _project_name_cache
+
+        jsonl = tmp_path / "s1.jsonl"
+        cwd = "/Users/fan/work/VoiceText.feat-branch"
+        jsonl.write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "cwd": cwd, "message": {"content": "Hi"}}) + "\n"
+        )
+        # Clear cache
+        _project_name_cache.pop(cwd, None)
+        result = _scan_session_jsonl(jsonl, "branch")
+        assert result is not None
+        assert result["project"] == "VoiceText"
+
+        # Cleanup
+        _project_name_cache.pop(cwd, None)
