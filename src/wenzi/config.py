@@ -249,6 +249,7 @@ def migrate_xdg_paths() -> None:
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    "language": "auto",
     "hotkeys": {"fn": True},
     "audio": {
         "sample_rate": 16000,
@@ -500,6 +501,7 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     rules = [
         # (dotted_path, expected_type, constraint, default_value)
+        ("language", str, lambda v: v in {"auto", "en", "zh"}, DEFAULT_CONFIG["language"]),
         ("audio.sample_rate", int, lambda v: v > 0, DEFAULT_CONFIG["audio"]["sample_rate"]),
         ("audio.block_ms", int, lambda v: v > 0, DEFAULT_CONFIG["audio"]["block_ms"]),
         ("audio.max_session_bytes", int, lambda v: v > 0, DEFAULT_CONFIG["audio"]["max_session_bytes"]),
