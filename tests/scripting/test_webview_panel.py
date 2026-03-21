@@ -7,6 +7,7 @@ lifecycle state management.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 from wenzi.scripting.ui.webview_panel import WebViewPanel
@@ -239,6 +240,8 @@ class TestWebViewPanelLifecycle:
         with patch.dict("sys.modules", {"AppKit": MagicMock()}):
             panel.close()
         assert panel._open is False
+        # Reset mock to clear the _rejectAll call made during close()
+        panel._webview.evaluateJavaScript_completionHandler_.reset_mock()
         panel.send("evt", {})
         panel._webview.evaluateJavaScript_completionHandler_.assert_not_called()
 
@@ -255,17 +258,37 @@ class TestWebViewPanelLifecycle:
         p = WebViewPanel(title="T", html="<b>x</b>")
         assert p._open is False
 
-    def test_close_rejects_pending_calls(self):
-        """Closing should reject all pending JS calls."""
+    def test_close_calls_reject_all_pending(self):
+        """Closing should invoke _reject_all_pending before setting _open=False."""
         panel = _make_panel()
-        panel._pending_calls["c1"] = True
-        panel._pending_calls["c2"] = True
+        open_during_reject = []
+
+        original = panel._reject_all_pending
+
+        def spy(reason):
+            open_during_reject.append(panel._open)
+            original(reason)
+
+        panel._reject_all_pending = spy
 
         with patch.dict("sys.modules", {"AppKit": MagicMock()}):
             panel.close()
 
-        # After close, pending calls dict should be cleared
-        assert len(panel._pending_calls) == 0
+        # _reject_all_pending was called while _open was still True
+        assert open_during_reject == [True]
+
+    def test_close_cleans_up_tmp_html(self, tmp_path):
+        """Closing should delete the temp HTML file."""
+        panel = _make_panel()
+        tmp_file = tmp_path / "test.html"
+        tmp_file.write_text("<p>hi</p>")
+        panel._tmp_html_path = str(tmp_file)
+
+        with patch.dict("sys.modules", {"AppKit": MagicMock()}):
+            panel.close()
+
+        assert not tmp_file.exists()
+        assert panel._tmp_html_path is None
 
     def test_on_close_callback_called(self):
         panel = WebViewPanel(title="T", html="<p>hi</p>")
@@ -320,3 +343,80 @@ class TestWebViewPanelLifecycle:
         panel._open = False
         panel._reject_call("c21", "error")
         panel._webview.evaluateJavaScript_completionHandler_.assert_not_called()
+
+    def test_no_pending_calls_attribute(self):
+        """_pending_calls was dead code and should no longer exist."""
+        panel = WebViewPanel(title="T", html="<b>x</b>")
+        assert not hasattr(panel, "_pending_calls")
+
+    def test_tmp_html_path_default_none(self):
+        """Temp HTML path should start as None."""
+        panel = WebViewPanel(title="T", html="<b>x</b>")
+        assert panel._tmp_html_path is None
+
+    def test_reject_all_pending_fires_js_when_webview_exists(self):
+        """_reject_all_pending should call evaluateJavaScript when webview exists."""
+        panel = _make_panel()
+        panel._reject_all_pending("closing")
+        panel._webview.evaluateJavaScript_completionHandler_.assert_called_once()
+        js = panel._webview.evaluateJavaScript_completionHandler_.call_args[0][0]
+        assert "_rejectAll" in js
+        assert "closing" in js
+
+    def test_reject_all_pending_noop_without_webview(self):
+        """_reject_all_pending should be a no-op when webview is None."""
+        panel = WebViewPanel(title="T", html="<b>x</b>")
+        panel._open = True
+        # Should not raise
+        panel._reject_all_pending("closing")
+
+
+# ---------------------------------------------------------------------------
+# Bridge JS
+# ---------------------------------------------------------------------------
+
+
+class TestBridgeJS:
+    def test_bridge_js_contains_timeout(self):
+        """wz.call() should include a setTimeout for timeout handling."""
+        from wenzi.scripting.ui.webview_panel import _BRIDGE_JS
+
+        assert "setTimeout" in _BRIDGE_JS
+        assert "wz.call timeout" in _BRIDGE_JS
+        assert "30000" in _BRIDGE_JS
+
+    def test_bridge_js_call_accepts_opts(self):
+        """wz.call() should accept opts parameter with timeout."""
+        from wenzi.scripting.ui.webview_panel import _BRIDGE_JS
+
+        assert "call(method, data, opts)" in _BRIDGE_JS
+        assert "opts.timeout" in _BRIDGE_JS
+
+
+# ---------------------------------------------------------------------------
+# allowed_read_paths commonpath
+# ---------------------------------------------------------------------------
+
+
+class TestAllowedReadPaths:
+    def test_commonpath_with_multiple_paths(self):
+        """Multiple allowed_read_paths should use os.path.commonpath."""
+        panel = WebViewPanel(
+            title="T",
+            html="<b>x</b>",
+            allowed_read_paths=["/a/b/c", "/a/b/d"],
+        )
+        expanded = [os.path.expanduser(p) for p in panel._allowed_read_paths]
+        result = os.path.commonpath(expanded)
+        assert result == "/a/b"
+
+    def test_single_path_used_directly(self):
+        """Single allowed_read_path should be used as-is."""
+        panel = WebViewPanel(
+            title="T",
+            html="<b>x</b>",
+            allowed_read_paths=["/my/path"],
+        )
+        expanded = [os.path.expanduser(p) for p in panel._allowed_read_paths]
+        assert len(expanded) == 1
+        assert expanded[0] == "/my/path"

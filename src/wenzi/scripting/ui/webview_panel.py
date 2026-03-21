@@ -43,10 +43,17 @@ _BRIDGE_JS = r"""
             );
         },
 
-        call(method, data) {
+        call(method, data, opts) {
             return new Promise(function(resolve, reject) {
                 const id = 'c' + (++_callId);
+                const timeout = (opts && opts.timeout) || 30000;
                 _pending[id] = {resolve: resolve, reject: reject};
+                setTimeout(function() {
+                    if (_pending[id]) {
+                        delete _pending[id];
+                        reject(new Error("wz.call timeout: " + method));
+                    }
+                }, timeout);
                 window.webkit.messageHandlers.wz.postMessage(
                     {type: 'call', name: method, data: data || null, callId: id}
                 );
@@ -135,16 +142,11 @@ def _get_message_handler_class():
             if self._panel_ref is None:
                 return
             raw = message.body()
+            # WKWebView bridges JS objects to NSDictionary via PyObjC;
+            # convert to a plain Python dict without JSON roundtrip.
             try:
-                from Foundation import NSJSONSerialization
-
-                json_data, _ = (
-                    NSJSONSerialization.dataWithJSONObject_options_error_(
-                        raw, 0, None
-                    )
-                )
-                body = json.loads(bytes(json_data))
-            except Exception:
+                body = dict(raw) if not isinstance(raw, dict) else raw
+            except (TypeError, ValueError):
                 logger.warning("Cannot convert webview message: %r", raw)
                 return
             self._panel_ref._handle_js_message(body)
@@ -196,10 +198,12 @@ class WebViewPanel:
         # Bridge state
         self._event_handlers: Dict[str, List[Callable]] = defaultdict(list)
         self._call_handlers: Dict[str, Callable] = {}
-        self._pending_calls: Dict[str, Any] = {}
 
         # Close callbacks
         self._on_close_callbacks: list = []
+
+        # Temp file for HTML loading with allowed_read_paths
+        self._tmp_html_path: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -225,8 +229,6 @@ class WebViewPanel:
         if not self._open:
             return
 
-        self._open = False
-
         # Fire on_close callbacks
         for cb in self._on_close_callbacks:
             try:
@@ -234,8 +236,18 @@ class WebViewPanel:
             except Exception:
                 logger.exception("Error in on_close callback")
 
-        # Reject all pending JS calls
+        # Reject all pending JS calls (must happen before _open = False)
         self._reject_all_pending("Panel closed")
+
+        self._open = False
+
+        # Clean up temp HTML file
+        if self._tmp_html_path is not None:
+            try:
+                os.unlink(self._tmp_html_path)
+            except OSError:
+                pass
+            self._tmp_html_path = None
 
         if self._panel is not None:
             from AppKit import NSApp
@@ -335,7 +347,7 @@ class WebViewPanel:
 
             AppHelper.callAfter(_do)
         except Exception:
-            pass
+            logger.exception("Failed to dispatch resolve to main thread")
 
     def _reject_call(self, call_id: str, error: str) -> None:
         """Send an error response back to JS (dispatched to main thread)."""
@@ -352,14 +364,13 @@ class WebViewPanel:
 
             AppHelper.callAfter(_do)
         except Exception:
-            pass
+            logger.exception("Failed to dispatch reject to main thread")
 
     def _reject_all_pending(self, reason: str) -> None:
-        """Reject all pending calls and clear the dict."""
-        if self._webview is not None and self._open:
+        """Reject all pending JS calls via the bridge."""
+        if self._webview is not None:
             js = f"wz._rejectAll({json.dumps(reason)})"
             self._webview.evaluateJavaScript_completionHandler_(js, None)
-        self._pending_calls.clear()
 
     # ------------------------------------------------------------------
     # Panel construction
@@ -460,18 +471,21 @@ class WebViewPanel:
             tmp.close()
 
             file_url = NSURL.fileURLWithPath_(tmp.name)
-            # Use the first allowed path as the read access root
-            access_url = NSURL.fileURLWithPath_(self._allowed_read_paths[0])
-            self._webview.loadFileURL_allowingReadAccessToURL_(file_url, access_url)
-
-            # Clean up temp file after a delay
-            def _cleanup():
+            # Compute common ancestor when multiple paths are provided
+            expanded = [os.path.expanduser(p) for p in self._allowed_read_paths]
+            access_path = (
+                os.path.commonpath(expanded) if len(expanded) > 1 else expanded[0]
+            )
+            access_url = NSURL.fileURLWithPath_(access_path)
+            # Clean up previous temp file before loading new one
+            if self._tmp_html_path is not None:
                 try:
-                    os.unlink(tmp.name)
+                    os.unlink(self._tmp_html_path)
                 except OSError:
                     pass
+            self._tmp_html_path = tmp.name
 
-            threading.Timer(5.0, _cleanup).start()
+            self._webview.loadFileURL_allowingReadAccessToURL_(file_url, access_url)
         else:
             self._webview.loadHTMLString_baseURL_(
                 html, NSURL.URLWithString_("about:blank")
