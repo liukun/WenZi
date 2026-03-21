@@ -21,11 +21,15 @@ class ScriptEngine:
         self,
         script_dir: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        plugins_dir: Optional[str] = None,
     ) -> None:
         self._script_dir = os.path.expanduser(
             script_dir or _cfg.DEFAULT_SCRIPTS_DIR
         )
         self._config = config or {}
+        self._plugins_dir = os.path.expanduser(
+            plugins_dir or _cfg.DEFAULT_PLUGINS_DIR
+        )
         self._registry = ScriptingRegistry()
         self._clipboard_monitor = None
         self._usage_tracker = None
@@ -53,6 +57,7 @@ class ScriptEngine:
     def start(self) -> None:
         """Load scripts, register built-in sources, and start all listeners."""
         self._register_builtin_sources()
+        self._load_plugins()
         self._load_scripts()
         self._bind_chooser_hotkey()
         self._bind_source_hotkeys()
@@ -99,7 +104,9 @@ class ScriptEngine:
             # Reset APIs so they create fresh instances
             self._wz._hotkey_api = None
             self._wz._chooser_api = None
+            self._wz._ui_api = None
             self._register_builtin_sources()
+            self._load_plugins()
             self._load_scripts()
             self._bind_chooser_hotkey()
             self._bind_source_hotkeys()
@@ -645,22 +652,33 @@ class ScriptEngine:
             self._wz.hotkey.start()
 
     def _purge_user_modules(self) -> None:
-        """Remove cached user script modules so reload picks up file changes."""
-        scripts_dir = os.path.normpath(self._script_dir) + os.sep
+        """Remove cached user script and plugin modules so reload picks up changes."""
+        purge_dirs = [os.path.normpath(self._script_dir) + os.sep]
+        plugins_norm = os.path.normpath(self._plugins_dir) + os.sep
+        if os.path.isdir(self._plugins_dir):
+            purge_dirs.append(plugins_norm)
+
         for name, mod in list(sys.modules.items()):
-            # Check __file__ for regular modules
             mod_file = getattr(mod, "__file__", None)
-            if mod_file and os.path.normpath(mod_file).startswith(scripts_dir):
-                self._remove_pyc(mod_file)
-                del sys.modules[name]
+            if mod_file:
+                norm_file = os.path.normpath(mod_file)
+                for d in purge_dirs:
+                    if norm_file.startswith(d):
+                        self._remove_pyc(mod_file)
+                        del sys.modules[name]
+                        break
                 continue
-            # Check __path__ for namespace packages (no __file__)
             mod_path = getattr(mod, "__path__", None)
             if mod_path:
                 for p in mod_path:
-                    if os.path.normpath(p).startswith(scripts_dir):
-                        del sys.modules[name]
-                        break
+                    norm_p = os.path.normpath(p)
+                    for d in purge_dirs:
+                        if norm_p.startswith(d):
+                            del sys.modules[name]
+                            break
+                    else:
+                        continue
+                    break
         importlib.invalidate_caches()
 
     @staticmethod
@@ -708,3 +726,40 @@ class ScriptEngine:
                 alert(f"Script error: {exc}", duration=5.0)
             except Exception:
                 pass
+
+    def _load_plugins(self) -> None:
+        """Auto-discover and load plugins from the plugins directory.
+
+        Each subdirectory with an ``__init__.py`` defining a ``setup(wz)``
+        function is treated as a plugin.  Plugins listed in the config key
+        ``disabled_plugins`` are skipped.
+        """
+        if not os.path.isdir(self._plugins_dir):
+            return
+
+        norm_dir = os.path.normpath(self._plugins_dir)
+        if norm_dir not in sys.path:
+            sys.path.insert(0, norm_dir)
+
+        disabled = set(self._config.get("disabled_plugins", []))
+
+        for entry in sorted(os.listdir(self._plugins_dir)):
+            if entry in disabled or entry.startswith((".", "_")):
+                continue
+            plugin_path = os.path.join(self._plugins_dir, entry)
+            if not os.path.isdir(plugin_path):
+                continue
+            if not os.path.isfile(os.path.join(plugin_path, "__init__.py")):
+                continue
+
+            try:
+                mod = importlib.import_module(entry)
+                if hasattr(mod, "setup") and callable(mod.setup):
+                    mod.setup(self._wz)
+                    logger.info("Plugin loaded: %s", entry)
+                else:
+                    logger.warning(
+                        "Plugin %s has no setup() function, skipped", entry
+                    )
+            except Exception:
+                logger.exception("Failed to load plugin: %s", entry)

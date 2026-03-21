@@ -49,6 +49,7 @@ DEFAULT_LOG_DIR = os.path.join("~", "Library", "Logs", "WenZi")
 DEFAULT_CONFIG_PATH = os.path.join(DEFAULT_CONFIG_DIR, "config.json")
 DEFAULT_ENHANCE_MODES_DIR = os.path.join(DEFAULT_CONFIG_DIR, "enhance_modes")
 DEFAULT_SCRIPTS_DIR = os.path.join(DEFAULT_CONFIG_DIR, "scripts")
+DEFAULT_PLUGINS_DIR = os.path.join(DEFAULT_CONFIG_DIR, "plugins")
 DEFAULT_SNIPPETS_DIR = os.path.join(DEFAULT_CONFIG_DIR, "snippets")
 
 # Data files (user-generated, not recoverable if deleted)

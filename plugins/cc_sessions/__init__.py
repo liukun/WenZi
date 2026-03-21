@@ -3,18 +3,14 @@
 Browse and view Claude Code session history through the launcher.
 
 Installation:
-    cp -r plugins/cc_sessions/ ~/.config/WenZi/scripts/cc_sessions/
+    Copy this directory to ~/.config/WenZi/plugins/cc_sessions/
 
-Usage in ~/.config/WenZi/scripts/init.py:
-    import cc_sessions
+The plugin is auto-loaded by WenZi's ScriptEngine.
 """
 
-try:
-    from wenzi.scripting.api import wz
 
-    if wz is not None:
-        from .init_plugin import register
+def setup(wz):
+    """Entry point called by the ScriptEngine plugin loader."""
+    from .init_plugin import register
 
-        register(wz)
-except ImportError:
-    pass  # Not running inside WenZi
+    register(wz)
