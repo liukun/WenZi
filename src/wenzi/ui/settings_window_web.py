@@ -213,6 +213,9 @@ class SettingsWebPanel:
                     logger.exception("Callback %s raised", name)
             else:
                 logger.warning("Unknown callback: %s", name)
+            return
+
+        logger.warning("Unknown JS message type: %s", msg_type)
 
     # ------------------------------------------------------------------
     # State preparation (stub for Task 3)

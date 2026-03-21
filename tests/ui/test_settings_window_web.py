@@ -165,3 +165,50 @@ class TestSettingsWebPanelInit:
         # Should not raise or call callback
         panel._handle_js_message({"type": "callback", "name": "on_sound_toggle", "args": [True]})
         cbs["on_sound_toggle"].assert_not_called()
+
+
+class TestCallbackDispatch:
+    def _make_panel(self):
+        from wenzi.ui.settings_window_web import SettingsWebPanel
+        panel = SettingsWebPanel()
+        callbacks = _make_callbacks()
+        panel.show(_make_state(), callbacks)
+        return panel, callbacks
+
+    def test_callback_with_no_args(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "callback", "name": "on_record_hotkey", "args": []})
+        cbs["on_record_hotkey"].assert_called_once_with()
+
+    def test_callback_with_one_arg(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "callback", "name": "on_sound_toggle", "args": [True]})
+        cbs["on_sound_toggle"].assert_called_once_with(True)
+
+    def test_callback_with_two_args(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "callback", "name": "on_hotkey_toggle", "args": ["fn", False]})
+        cbs["on_hotkey_toggle"].assert_called_once_with("fn", False)
+
+    def test_callback_with_two_args_llm(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "callback", "name": "on_llm_select", "args": ["ollama", "qwen2.5:7b"]})
+        cbs["on_llm_select"].assert_called_once_with("ollama", "qwen2.5:7b")
+
+    def test_unknown_callback_ignored(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "callback", "name": "nonexistent", "args": []})
+
+    def test_callback_exception_logged_not_raised(self):
+        panel, cbs = self._make_panel()
+        cbs["on_sound_toggle"].side_effect = RuntimeError("boom")
+        panel._handle_js_message({"type": "callback", "name": "on_sound_toggle", "args": [True]})
+
+    def test_tab_change_callback(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "callback", "name": "on_tab_change", "args": ["llm"]})
+        cbs["on_tab_change"].assert_called_once_with("llm")
+
+    def test_unknown_message_type_ignored(self):
+        panel, cbs = self._make_panel()
+        panel._handle_js_message({"type": "unknown", "data": "foo"})
