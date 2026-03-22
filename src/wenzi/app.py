@@ -273,6 +273,13 @@ class WenZiApp(StatusBarApp):
         self._correction_tracker = CorrectionTracker(
             db_path=os.path.join(self._data_dir, "correction_tracker.db"),
         )
+        if self._correction_tracker.is_empty():
+            threading.Thread(
+                target=self._correction_tracker.rebuild_from_history,
+                args=(self._conversation_history,),
+                daemon=True,
+                name="correction-rebuild",
+            ).start()
 
         # Feedback: sound + visual indicator
         fb_cfg = self._config.get("feedback", {})

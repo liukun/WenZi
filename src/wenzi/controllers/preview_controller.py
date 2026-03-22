@@ -96,6 +96,7 @@ class PreviewController:
         asr_text: str,
         final_text: str,
         audio_duration: float = 0.0,
+        correction_tracked: bool = False,
     ) -> str | None:
         """Log enhancement result to conversation history.
 
@@ -139,6 +140,7 @@ class PreviewController:
             user_corrected=bool(result_holder.get("user_corrected")),
             audio_duration=audio_duration,
             input_context=self._input_context,
+            correction_tracked=correction_tracked,
         )
 
     def _save_to_preview_history(
@@ -672,6 +674,13 @@ class PreviewController:
                 )
             else:
                 # Normal confirm — log to conversation history, then save to preview history
+                mode_def = (
+                    app._enhancer.get_mode_definition(app._enhance_mode)
+                    if app._enhancer
+                    else None
+                )
+                should_track = mode_def is not None and mode_def.track_corrections
+
                 ts = None
                 try:
                     ts = self._log_with_chain_steps(
@@ -680,24 +689,21 @@ class PreviewController:
                         asr_text=app._current_preview_asr_text,
                         final_text=final_text,
                         audio_duration=getattr(app, "_preview_audio_duration", 0.0),
+                        correction_tracked=should_track,
                     )
                 except Exception as e:
                     logger.error("Failed to log conversation: %s", e)
 
                 # Record correction session if the current mode tracks corrections
                 try:
-                    mode_def = (
-                        app._enhancer.get_mode_definition(app._enhance_mode)
-                        if app._enhancer
-                        else None
-                    )
-                    if mode_def is not None and mode_def.track_corrections:
+                    if should_track:
                         asr_model = app._current_stt_model()
                         llm_model = app._current_llm_model()
+                        input_ctx = self._input_context
                         app_bundle_id = (
-                            self._input_context.bundle_id
-                            if self._input_context is not None
-                            and hasattr(self._input_context, "bundle_id")
+                            input_ctx.bundle_id
+                            if input_ctx is not None
+                            and hasattr(input_ctx, "bundle_id")
                             else None
                         )
                         app._correction_tracker.record(
@@ -711,17 +717,8 @@ class PreviewController:
                             audio_duration=getattr(app, "_preview_audio_duration", 0.0),
                             user_corrected=bool(result_holder.get("user_corrected")),
                             timestamp=ts,
+                            input_context=input_ctx.to_dict() if input_ctx is not None else None,
                         )
-                        # Mark the conversation history record as correction-tracked
-                        if ts is not None:
-                            try:
-                                app._conversation_history.update_record(
-                                    ts, correction_tracked=True
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    "Failed to set correction_tracked on history record: %s", e
-                                )
                 except Exception as e:
                     logger.error("Failed to record correction: %s", e)
 

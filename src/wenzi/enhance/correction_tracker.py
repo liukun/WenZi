@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
-from typing import Optional
+from typing import Any, Optional
 
 from .text_diff import tokenize_for_diff, _is_punctuation_only
 from .vocabulary import _MIN_LATIN_VARIANT_LENGTH
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_REPLACE_TOKENS = 8
 
@@ -28,6 +32,7 @@ CREATE TABLE IF NOT EXISTS correction_sessions (
     llm_model TEXT NOT NULL DEFAULT '',
     app_bundle_id TEXT NOT NULL DEFAULT '',
     enhance_mode TEXT NOT NULL DEFAULT '',
+    input_context TEXT NOT NULL DEFAULT '',
     audio_duration REAL,
     user_corrected INTEGER NOT NULL DEFAULT 0
 );
@@ -150,6 +155,15 @@ class CorrectionTracker:
         finally:
             conn.close()
 
+    def is_empty(self) -> bool:
+        """Return True if no correction sessions have been recorded yet."""
+        conn = self._get_conn()
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM correction_sessions").fetchone()[0]
+            return count == 0
+        finally:
+            conn.close()
+
     def record(
         self,
         asr_text: str,
@@ -162,6 +176,7 @@ class CorrectionTracker:
         audio_duration: Optional[float],
         user_corrected: bool,
         timestamp: Optional[str] = None,
+        input_context: Optional[dict[str, Any]] = None,
     ) -> None:
         """Record a correction session and extract word-level diff pairs.
 
@@ -174,16 +189,17 @@ class CorrectionTracker:
         _app = app_bundle_id or ""
         _enhanced = enhanced_text or ""
         _mode = enhance_mode or ""
+        _ctx = json.dumps(input_context, ensure_ascii=False) if input_context else ""
 
         conn = self._get_conn()
         try:
             cursor = conn.execute(
                 """INSERT INTO correction_sessions
                    (timestamp, asr_text, enhanced_text, final_text, asr_model, llm_model,
-                    app_bundle_id, enhance_mode, audio_duration, user_corrected)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    app_bundle_id, enhance_mode, input_context, audio_duration, user_corrected)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (now, asr_text, _enhanced, final_text, asr_model, _llm, _app, _mode,
-                 audio_duration, int(user_corrected)),
+                 _ctx, audio_duration, int(user_corrected)),
             )
             session_id = cursor.lastrowid
 
@@ -231,34 +247,78 @@ class CorrectionTracker:
              timestamp, timestamp, excluded_flag),
         )
 
-    def backfill_from_history(self, conversation_history) -> int:
-        """Import correction sessions from conversation history that are not yet tracked.
+    def rebuild_from_history(self, conversation_history) -> int:
+        """Clear all data and rebuild from conversation history.
 
-        Iterates all records in conversation_history, skips non-proofread entries,
-        entries where asr_text equals final_text, and entries already present by
-        timestamp. Returns the count of sessions imported.
+        Drops all rows from correction_sessions and correction_pairs, then
+        re-imports records with ``correction_tracked=True`` from conversation
+        history (including archives). Records are processed in chronological
+        order to ensure correct first_seen/last_seen values.
+
+        Returns the count of sessions imported.
         """
-        all_records = conversation_history.get_all()
-
         conn = self._get_conn()
         try:
-            existing_ts = {row[0] for row in conn.execute("SELECT timestamp FROM correction_sessions").fetchall()}
+            conn.execute("DELETE FROM correction_pairs")
+            conn.execute("DELETE FROM correction_sessions")
+            conn.commit()
         finally:
             conn.close()
 
+        imported = self._import_from_history(conversation_history, skip_existing=False)
+        logger.info("Rebuild complete: %d sessions imported", imported)
+        return imported
+
+    def backfill_from_history(self, conversation_history) -> int:
+        """Incrementally import tracked records not yet in the database.
+
+        Only imports records with ``correction_tracked=True`` whose timestamp
+        is not already present in correction_sessions. Safe to run with
+        existing data — does not modify or delete any existing records.
+
+        Returns the count of sessions imported.
+        """
+        imported = self._import_from_history(conversation_history, skip_existing=True)
+        logger.info("Backfill complete: %d sessions imported", imported)
+        return imported
+
+    def _import_from_history(
+        self, conversation_history, *, skip_existing: bool,
+    ) -> int:
+        """Shared import logic for rebuild and backfill."""
+        all_records = conversation_history.get_all(include_archived=True)
+        # Process in chronological order (get_all returns newest first)
+        all_records.reverse()
+
+        existing_ts: set[str] = set()
+        if skip_existing:
+            conn = self._get_conn()
+            try:
+                existing_ts = {
+                    row[0] for row in
+                    conn.execute("SELECT timestamp FROM correction_sessions").fetchall()
+                }
+            finally:
+                conn.close()
+
         imported = 0
         for record in all_records:
-            ts = record.get("timestamp", "")
-            if ts in existing_ts:
+            if not record.get("correction_tracked"):
                 continue
-            if record.get("enhance_mode") != "proofread":
+            ts = record.get("timestamp", "")
+            if skip_existing and ts in existing_ts:
                 continue
             asr_text = record.get("asr_text", "")
             final_text = record.get("final_text", "")
             if not asr_text or not final_text or asr_text == final_text:
                 continue
-            input_ctx = record.get("input_context") or {}
-            app_bundle_id = input_ctx.get("bundle_id", "") if isinstance(input_ctx, dict) else ""
+
+            input_ctx = record.get("input_context")
+            if isinstance(input_ctx, dict):
+                app_bundle_id = input_ctx.get("bundle_id", "")
+            else:
+                input_ctx = None
+                app_bundle_id = ""
 
             self.record(
                 asr_text=asr_text,
@@ -267,10 +327,11 @@ class CorrectionTracker:
                 asr_model=record.get("stt_model", ""),
                 llm_model=record.get("llm_model", ""),
                 app_bundle_id=app_bundle_id,
-                enhance_mode=record.get("enhance_mode", "proofread"),
+                enhance_mode=record.get("enhance_mode", ""),
                 audio_duration=record.get("audio_duration"),
                 user_corrected=record.get("user_corrected", False),
                 timestamp=ts,
+                input_context=input_ctx,
             )
             imported += 1
         return imported

@@ -21,6 +21,19 @@ def test_init_creates_tables(tmp_path):
     conn.close()
 
 
+def test_is_empty_true_on_fresh_db(tmp_path):
+    tracker = CorrectionTracker(db_path=str(tmp_path / "tracker.db"))
+    assert tracker.is_empty() is True
+
+
+def test_is_empty_false_after_record(tmp_path):
+    tracker = CorrectionTracker(db_path=str(tmp_path / "tracker.db"))
+    tracker.record(asr_text="hello", enhanced_text="", final_text="hello",
+        asr_model="FunASR", llm_model="", app_bundle_id="",
+        enhance_mode="proofread", audio_duration=None, user_corrected=False)
+    assert tracker.is_empty() is False
+
+
 def test_init_sets_schema_version(tmp_path):
     db_path = str(tmp_path / "tracker.db")
     CorrectionTracker(db_path=db_path)
@@ -273,7 +286,7 @@ def test_get_llm_vocab_includes_variants(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Task 6: backfill_from_history()
+# rebuild_from_history()
 # ---------------------------------------------------------------------------
 
 
@@ -283,7 +296,7 @@ def _write_jsonl(path, records):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def test_backfill_processes_proofread_records(tmp_path):
+def test_rebuild_processes_tracked_records(tmp_path):
     history_dir = tmp_path / "history"
     history_dir.mkdir()
     _write_jsonl(history_dir / "conversation_history.jsonl", [{
@@ -297,11 +310,12 @@ def test_backfill_processes_proofread_records(tmp_path):
         "user_corrected": False,
         "audio_duration": 2.0,
         "preview_enabled": True,
+        "correction_tracked": True,
     }])
     from wenzi.enhance.conversation_history import ConversationHistory
     ch = ConversationHistory(data_dir=str(history_dir))
     tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
-    count = tracker.backfill_from_history(ch)
+    count = tracker.rebuild_from_history(ch)
     assert count == 1
     conn = sqlite3.connect(str(tmp_path / "t.db"))
     assert conn.execute("SELECT COUNT(*) FROM correction_sessions").fetchone()[0] == 1
@@ -309,7 +323,7 @@ def test_backfill_processes_proofread_records(tmp_path):
     conn.close()
 
 
-def test_backfill_skips_non_proofread(tmp_path):
+def test_rebuild_skips_untracked_records(tmp_path):
     history_dir = tmp_path / "history"
     history_dir.mkdir()
     _write_jsonl(history_dir / "conversation_history.jsonl", [{
@@ -318,14 +332,16 @@ def test_backfill_skips_non_proofread(tmp_path):
         "final_text": "Hello World", "enhance_mode": "translate_en",
         "stt_model": "FunASR", "llm_model": "gpt-4o",
         "user_corrected": False, "preview_enabled": True,
+        "correction_tracked": False,
     }])
     from wenzi.enhance.conversation_history import ConversationHistory
     ch = ConversationHistory(data_dir=str(history_dir))
     tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
-    assert tracker.backfill_from_history(ch) == 0
+    assert tracker.rebuild_from_history(ch) == 0
 
 
-def test_backfill_deduplicates_by_timestamp(tmp_path):
+def test_rebuild_clears_existing_data(tmp_path):
+    """Rebuild clears old data before importing."""
     history_dir = tmp_path / "history"
     history_dir.mkdir()
     _write_jsonl(history_dir / "conversation_history.jsonl", [{
@@ -336,10 +352,106 @@ def test_backfill_deduplicates_by_timestamp(tmp_path):
         "enhance_mode": "proofread",
         "stt_model": "FunASR", "llm_model": "gpt-4o",
         "user_corrected": False, "preview_enabled": True,
+        "correction_tracked": True,
     }])
     from wenzi.enhance.conversation_history import ConversationHistory
     ch = ConversationHistory(data_dir=str(history_dir))
     tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
-    tracker.backfill_from_history(ch)
+    tracker.rebuild_from_history(ch)
+    # Rebuild again — should get same count (not doubled)
+    count2 = tracker.rebuild_from_history(ch)
+    assert count2 == 1
+    conn = sqlite3.connect(str(tmp_path / "t.db"))
+    assert conn.execute("SELECT COUNT(*) FROM correction_sessions").fetchone()[0] == 1
+    conn.close()
+
+
+def test_rebuild_stores_input_context(tmp_path):
+    """Rebuild preserves input_context as JSON in correction_sessions."""
+    history_dir = tmp_path / "history"
+    history_dir.mkdir()
+    _write_jsonl(history_dir / "conversation_history.jsonl", [{
+        "timestamp": "2026-03-01T10:00:00+00:00",
+        "asr_text": "我在用cloud做开发",
+        "enhanced_text": "我在用claude做开发",
+        "final_text": "我在用claude做开发",
+        "enhance_mode": "proofread",
+        "stt_model": "FunASR", "llm_model": "gpt-4o",
+        "user_corrected": False, "preview_enabled": True,
+        "correction_tracked": True,
+        "input_context": {"app_name": "Terminal", "bundle_id": "com.apple.Terminal"},
+    }])
+    from wenzi.enhance.conversation_history import ConversationHistory
+    ch = ConversationHistory(data_dir=str(history_dir))
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+    tracker.rebuild_from_history(ch)
+    conn = sqlite3.connect(str(tmp_path / "t.db"))
+    row = conn.execute("SELECT input_context, app_bundle_id FROM correction_sessions").fetchone()
+    conn.close()
+    assert '"Terminal"' in row[0]
+    assert row[1] == "com.apple.Terminal"
+
+
+# ---------------------------------------------------------------------------
+# backfill_from_history()
+# ---------------------------------------------------------------------------
+
+
+def test_backfill_skips_existing_records(tmp_path):
+    """Backfill does not duplicate records already in the database."""
+    history_dir = tmp_path / "history"
+    history_dir.mkdir()
+    _write_jsonl(history_dir / "conversation_history.jsonl", [{
+        "timestamp": "2026-03-01T10:00:00+00:00",
+        "asr_text": "我在用cloud做开发",
+        "enhanced_text": "我在用claude做开发",
+        "final_text": "我在用claude做开发",
+        "enhance_mode": "proofread",
+        "stt_model": "FunASR", "llm_model": "gpt-4o",
+        "user_corrected": False, "preview_enabled": True,
+        "correction_tracked": True,
+    }])
+    from wenzi.enhance.conversation_history import ConversationHistory
+    ch = ConversationHistory(data_dir=str(history_dir))
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+    count1 = tracker.backfill_from_history(ch)
+    assert count1 == 1
     count2 = tracker.backfill_from_history(ch)
     assert count2 == 0
+    conn = sqlite3.connect(str(tmp_path / "t.db"))
+    assert conn.execute("SELECT COUNT(*) FROM correction_sessions").fetchone()[0] == 1
+    conn.close()
+
+
+def test_backfill_preserves_existing_data(tmp_path):
+    """Backfill adds new records without affecting existing ones."""
+    history_dir = tmp_path / "history"
+    history_dir.mkdir()
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+
+    # Record a live session first
+    tracker.record(
+        asr_text="live test", enhanced_text="", final_text="live result",
+        asr_model="FunASR", llm_model="", app_bundle_id="",
+        enhance_mode="proofread", audio_duration=None, user_corrected=False,
+    )
+
+    # Now backfill from history
+    _write_jsonl(history_dir / "conversation_history.jsonl", [{
+        "timestamp": "2026-03-01T10:00:00+00:00",
+        "asr_text": "我在用cloud做开发",
+        "enhanced_text": "我在用claude做开发",
+        "final_text": "我在用claude做开发",
+        "enhance_mode": "proofread",
+        "stt_model": "FunASR", "llm_model": "gpt-4o",
+        "user_corrected": False, "preview_enabled": True,
+        "correction_tracked": True,
+    }])
+    from wenzi.enhance.conversation_history import ConversationHistory
+    ch = ConversationHistory(data_dir=str(history_dir))
+    count = tracker.backfill_from_history(ch)
+    assert count == 1
+
+    conn = sqlite3.connect(str(tmp_path / "t.db"))
+    assert conn.execute("SELECT COUNT(*) FROM correction_sessions").fetchone()[0] == 2
+    conn.close()
