@@ -766,8 +766,8 @@ class SettingsController:
         """Delete STT provider from WebView inline confirmation."""
         app = self._app
         try:
-            asr_cfg = app._config.get("asr", {})
-            providers_cfg = asr_cfg.get("providers", {})
+            app._config.setdefault("asr", {})
+            providers_cfg = app._config["asr"].setdefault("providers", {})
             providers_cfg.pop(provider, None)
 
             # If the deleted provider was active, fall back to local model

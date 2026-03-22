@@ -332,7 +332,6 @@ models:
             "models": models,
         }
         save_config_with_secrets(app._config, app._config_path)
-        self._remove_asr_provider_draft()
 
         # Update menus
         app._menu_builder.build_model_menu()

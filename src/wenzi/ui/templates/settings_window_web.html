@@ -505,54 +505,28 @@ input[type="range"] {
 .modal-actions { display:flex; gap:8px; justify-content:center; }
 .modal-traceback { text-align:left; font-family:monospace; font-size:11px; background:#f5f5f7; border-radius:6px; padding:10px; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-all; color:#1d1d1f; margin-bottom:16px; }
 
-/* LLM Provider slide views */
-.llm-view-container {
+/* Provider slide views (shared by LLM and STT tabs) */
+.prov-view-container {
   position: relative;
   overflow: hidden;
 }
-.llm-list-view, .llm-form-view {
+.prov-list-view, .prov-form-view {
   width: 100%;
   transition: transform 0.3s ease;
 }
-.llm-form-view {
+.prov-form-view {
   position: absolute;
   top: 0;
   left: 0;
   transform: translateX(100%);
 }
-.llm-view-container.show-form .llm-list-view {
+.prov-view-container.show-form .prov-list-view {
   position: absolute;
   top: 0;
   left: 0;
   transform: translateX(-100%);
 }
-.llm-view-container.show-form .llm-form-view {
-  position: static;
-  transform: translateX(0);
-}
-
-/* STT Provider slide views */
-.stt-view-container {
-  position: relative;
-  overflow: hidden;
-}
-.stt-list-view, .stt-form-view {
-  width: 100%;
-  transition: transform 0.3s ease;
-}
-.stt-form-view {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform: translateX(100%);
-}
-.stt-view-container.show-form .stt-list-view {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform: translateX(-100%);
-}
-.stt-view-container.show-form .stt-form-view {
+.prov-view-container.show-form .prov-form-view {
   position: static;
   transform: translateX(0);
 }
@@ -857,9 +831,9 @@ textarea.provider-form-textarea.error {
 
     <!-- Speech Tab -->
     <div id="tab-speech" class="tab-content">
-      <div class="stt-view-container" id="stt-view-container">
+      <div class="prov-view-container" id="stt-view-container">
         <!-- List View -->
-        <div class="stt-list-view" id="stt-list-view">
+        <div class="prov-list-view" id="stt-list-view">
           <div class="content-title-row"><div class="content-title" data-i18n="stt_tab.title">Speech Recognition</div><span class="help-icon" data-doc="provider-model-guide.html#asr-model-selection">?</span></div>
           <div class="setting-group" id="stt-model-list">
             <!-- Dynamically populated by renderSttTab() -->
@@ -867,7 +841,7 @@ textarea.provider-form-textarea.error {
         </div>
 
         <!-- Form View (add/edit) -->
-        <div class="stt-form-view" id="stt-form-view">
+        <div class="prov-form-view" id="stt-form-view">
           <!-- Dynamically populated by _showSttProviderForm() -->
         </div>
       </div>
@@ -875,9 +849,9 @@ textarea.provider-form-textarea.error {
 
     <!-- LLM Tab -->
     <div id="tab-llm" class="tab-content">
-      <div class="llm-view-container" id="llm-view-container">
+      <div class="prov-view-container" id="llm-prov-container">
         <!-- List View -->
-        <div class="llm-list-view" id="llm-list-view">
+        <div class="prov-list-view" id="llm-list-view">
           <div class="content-title-row"><div class="content-title" data-i18n="llm_tab.title">LLM</div><span class="help-icon" data-doc="provider-model-guide.html#ai-llm-provider-configuration">?</span></div>
           <div class="setting-group" id="llm-model-list">
             <!-- Dynamically populated by renderLlmTab() -->
@@ -899,7 +873,7 @@ textarea.provider-form-textarea.error {
         </div>
 
         <!-- Form View (add/edit) -->
-        <div class="llm-form-view" id="llm-form-view">
+        <div class="prov-form-view" id="llm-form-view">
           <!-- Dynamically populated by _showProviderForm() -->
         </div>
       </div>
@@ -1836,11 +1810,11 @@ function _showProviderForm(mode, providerName) {
   container.dataset.formMode = mode;
   container.dataset.formProvider = providerName || '';
 
-  document.getElementById('llm-view-container').classList.add('show-form');
+  document.getElementById('llm-prov-container').classList.add('show-form');
 }
 
 function _hideProviderForm() {
-  document.getElementById('llm-view-container').classList.remove('show-form');
+  document.getElementById('llm-prov-container').classList.remove('show-form');
 }
 
 // Event delegation for provider form view
