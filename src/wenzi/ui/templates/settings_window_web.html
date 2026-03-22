@@ -661,21 +661,6 @@ input[type="range"] {
 .provider-success-banner .check { color: #34c759; font-size: 18px; }
 .provider-success-banner .msg { font-weight: 500; color: #1d7a2f; margin-top: 4px; }
 
-/* Provider list row */
-.provider-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.provider-row:hover { background: rgba(0,0,0,0.03); }
-.provider-row:not(:last-child) { border-bottom: 1px solid #e5e5ea; }
-.provider-row-info .provider-row-name { font-weight: 500; }
-.provider-row-info .provider-row-meta { font-size: 11px; color: #86868b; }
-.provider-row-chevron { color: #007aff; font-size: 18px; }
-.provider-row-meta .verified { color: #34c759; }
 
 /* API key visibility toggle */
 .api-key-wrapper { position: relative; }
@@ -704,8 +689,6 @@ input[type="range"] {
     background: #1c1c1e;
   }
   .provider-form-nav { border-color: #48484a; }
-  .provider-row:hover { background: rgba(255,255,255,0.05); }
-  .provider-row:not(:last-child) { border-color: #48484a; }
   .provider-delete-confirm { background: #3a1c1c; border-color: #ff453a; }
   .provider-success-banner { background: #1a3a1c; border-color: #30d158; }
   .provider-delete-confirm .btn-confirm-cancel { background: #48484a; color: #f5f5f7; }
@@ -1416,7 +1399,6 @@ function renderLlmTab() {
   if (!container) return;
   var models = CONFIG.llm_models || [];
   var current = CONFIG.current_llm || {};
-  var providers = CONFIG.llm_providers || {};
   var html = '';
 
   // Group models by provider
@@ -1431,46 +1413,32 @@ function renderLlmTab() {
     groups[m.provider].push(m);
   }
 
-  // Default model dropdown
-  html += '<div class="group-title">' + _esc(_t('llm_tab.default_model', 'Default Model')) + '</div>';
-  html += '<div class="setting-group"><div class="setting-row">';
-  html += '<div class="setting-left"><div class="setting-label">' + _esc(_t('llm_tab.model', 'Model')) + '</div></div>';
-  html += '<div class="setting-right"><select id="ctl-llm-model" data-action="llm-model-select">';
+  // Render provider groups with radio-selectable models (same style as STT tab)
   for (var g = 0; g < groupOrder.length; g++) {
-    var prov = groupOrder[g];
-    var items = groups[prov];
+    var provider = groupOrder[g];
+    var items = groups[provider];
+    html += '<div class="provider-header">';
+    html += '  <span class="provider-name">' + _esc(provider) + '</span>';
+    html += '  <button class="btn-small" style="margin-left:auto;" data-action="llm-edit" data-provider="' + _esc(provider) + '">Edit</button>';
+    html += '</div>';
     for (var k = 0; k < items.length; k++) {
       var item = items[k];
       var sel = (current.provider === item.provider && current.model === item.model) ? ' selected' : '';
-      html += '<option value="' + _esc(item.provider) + '/' + _esc(item.model) + '"' + sel + '>';
-      html += _esc(item.display);
-      html += '</option>';
+      html += '<div class="model-row' + sel + '" data-action="llm-select" data-provider="' + _esc(item.provider) + '" data-model="' + _esc(item.model) + '">';
+      html += '  <div class="model-radio"></div>';
+      html += '  <div class="model-info">';
+      html += '    <div class="model-name">' + _esc(item.display) + '</div>';
+      html += '  </div>';
+      if (item.has_api_key) {
+        html += '  <div class="model-tag">API Key</div>';
+      }
+      html += '</div>';
     }
   }
-  html += '</select></div></div></div>';
-
-  // Provider list
-  html += '<div class="group-title">' + _esc(_t('llm_tab.providers', 'Providers')) + '</div>';
-  html += '<div class="setting-group" style="padding:0;overflow:hidden;">';
-  for (var g = 0; g < groupOrder.length; g++) {
-    var prov = groupOrder[g];
-    var items = groups[prov];
-    var modelCount = items.length;
-    html += '<div class="provider-row" data-action="llm-edit-provider" data-provider="' + _esc(prov) + '">';
-    html += '  <div class="provider-row-info">';
-    html += '    <div class="provider-row-name">' + _esc(prov) + '</div>';
-    html += '    <div class="provider-row-meta">' + modelCount + (modelCount === 1 ? ' model' : ' models') + '</div>';
-    html += '  </div>';
-    html += '  <div class="provider-row-chevron">&#8250;</div>';
-    html += '</div>';
-  }
-  html += '</div>';
 
   // Add provider button
-  html += '<div style="margin-top:12px;">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;width:100%;padding:10px;border-radius:8px;background:#007aff;color:white;border:none;cursor:pointer;" data-action="llm-add">';
-  html += '+ ' + _esc(_t('llm_tab.add_provider', 'Add Provider'));
-  html += '  </button>';
+  html += '<div class="add-row">';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="llm-add">' + _esc(_t('llm_tab.add_provider', 'Add Provider...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
@@ -1480,26 +1448,21 @@ function renderLlmTab() {
 (function() {
   var container = document.getElementById('llm-model-list');
   if (!container) return;
-
   container.addEventListener('click', function(e) {
-    var row = e.target.closest('[data-action="llm-edit-provider"]');
-    if (row) {
-      _showProviderForm('edit', row.dataset.provider);
+    var editBtn = e.target.closest('[data-action="llm-edit"]');
+    if (editBtn) {
+      e.stopPropagation();
+      _showProviderForm('edit', editBtn.dataset.provider);
       return;
     }
     if (e.target.closest('[data-action="llm-add"]')) {
       _showProviderForm('add', null);
       return;
     }
-  });
-
-  container.addEventListener('change', function(e) {
-    var sel = e.target.closest('[data-action="llm-model-select"]');
-    if (sel) {
-      var parts = sel.value.split('/');
-      if (parts.length >= 2) {
-        postCallback('on_llm_select', parts[0], parts.slice(1).join('/'));
-      }
+    var row = e.target.closest('[data-action="llm-select"]');
+    if (row) {
+      selectModelRow(row);
+      postCallback('on_llm_select', row.dataset.provider, row.dataset.model);
     }
   });
 })();
