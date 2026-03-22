@@ -648,6 +648,81 @@ let sessionInfo = null;
 const outlineItems = [];  // { el, targetEl }
 let activeOutlineIdx = -1;
 
+// ── Subagent resolution map ──
+// Populated by resolveSubagents() before rendering.
+// Keys: tool_use_id of Agent calls. Values: { agentId, description, type, model, exists }
+window._subagentMap = {};
+
+async function resolveSubagents(messages, info) {
+  window._subagentMap = {};
+
+  // Build tool_result map from user messages
+  const resultMap = {};
+  for (const msg of messages) {
+    if (msg.type !== "user") continue;
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part.type === "tool_result" && part.tool_use_id) {
+        resultMap[part.tool_use_id] = part;
+      }
+    }
+  }
+
+  // Find Agent tool_use calls and extract agentIds from results
+  const agentCalls = [];
+  for (const msg of messages) {
+    if (msg.type !== "assistant") continue;
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part.type === "tool_use" && part.name === "Agent") {
+        const result = resultMap[part.id];
+        let agentId = null;
+        if (result) {
+          const text = extractResultText(result);
+          const match = text.match(/agentId:\s*([a-fA-F0-9]+)/);
+          if (match) agentId = match[1];
+        }
+        agentCalls.push({
+          toolUseId: part.id,
+          agentId,
+          description: part.input?.description || "",
+          type: part.input?.subagent_type || "general-purpose",
+          model: part.input?.model || "",
+        });
+      }
+    }
+  }
+
+  if (agentCalls.length === 0) return;
+
+  // Batch check file existence
+  const idsToCheck = agentCalls.filter(a => a.agentId).map(a => a.agentId);
+  let existsMap = {};
+  if (idsToCheck.length > 0 && typeof wz !== "undefined" && wz.call) {
+    try {
+      existsMap = await wz.call("check_subagent_exists", {
+        root_session_path: info.root_session_path,
+        agent_ids: idsToCheck,
+      });
+    } catch (err) {
+      console.error("check_subagent_exists failed:", err);
+    }
+  }
+
+  // Populate global map
+  for (const ac of agentCalls) {
+    window._subagentMap[ac.toolUseId] = {
+      agentId: ac.agentId,
+      description: ac.description,
+      type: ac.type,
+      model: ac.model,
+      exists: ac.agentId ? (existsMap[ac.agentId] === true) : false,
+    };
+  }
+}
+
 // ── Load session via wz bridge ──
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -704,6 +779,7 @@ async function loadSession(info) {
     try { return JSON.parse(line); } catch { return null; }
   }).filter(Boolean);
 
+  await resolveSubagents(messages, info);
   renderConversation(messages);
   renderStats(messages);
 }
@@ -1022,19 +1098,20 @@ function formatToolInput(call) {
   return JSON.stringify(call.input, null, 2);
 }
 
-// ── Format tool result for display ──
-function formatToolResult(result) {
+// ── Extract plain text from a tool result ──
+function extractResultText(result) {
   if (!result) return "";
   const c = result.content;
-  if (typeof c === "string") return truncate(c, 2000);
+  if (typeof c === "string") return c;
   if (Array.isArray(c)) {
-    return c
-      .filter(p => p.type === "text")
-      .map(p => p.text || "")
-      .join("\n")
-      .slice(0, 2000);
+    return c.filter(p => p.type === "text").map(p => p.text || "").join("\n");
   }
-  return JSON.stringify(c, null, 2).slice(0, 2000);
+  return "";
+}
+
+// ── Format tool result for display ──
+function formatToolResult(result) {
+  return truncate(extractResultText(result), 2000);
 }
 
 // ── Thinking block ──
