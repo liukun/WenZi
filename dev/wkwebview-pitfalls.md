@@ -281,6 +281,50 @@ renderHotkeys();  // rebuilds from CONFIG.restart_key (now new)
 before calling the render. Direct DOM manipulation is pointless if a full re-render
 follows.
 
+## 11. JS Native Dialogs Do Not Work (alert / confirm / prompt)
+
+**Commit:** `be485a8`
+
+**Problem:** WKWebView does **not** show JavaScript native dialogs (`alert()`,
+`confirm()`, `prompt()`) by default. These require implementing `WKUIDelegate`
+methods (`webView:runJavaScriptAlertPanelWithMessage:...`,
+`runJavaScriptConfirmPanelWithMessage:...`,
+`runJavaScriptTextInputPanelWithPrompt:...`). Without them:
+
+- `alert()` — silently does nothing
+- `confirm()` — silently returns `false`
+- `prompt()` — silently returns `null`
+
+This is especially insidious because code like `if (confirm(...))` silently
+skips the guarded action with no visible error.
+
+**Solution:** Use custom HTML/CSS modal dialogs instead of native dialogs:
+
+```javascript
+// BROKEN — confirm() silently returns false in WKWebView
+if (confirm('Delete this item?')) {
+    doDelete();
+}
+
+// FIXED — custom modal with callbacks
+showModal(
+    '<div class="modal-message">Delete this item?</div>',
+    [
+        { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+        { label: 'Delete', cls: 'btn-danger', action: function() {
+            closeModal(); doDelete();
+        }}
+    ]
+);
+```
+
+For text input (replacing `prompt()`), use an inline popover or a modal with
+an `<input>` field — see the version-specific install popover in the plugins
+tab for a reference implementation.
+
+**Key takeaway:** Never use `alert()`, `confirm()`, or `prompt()` in WKWebView
+code. Always use custom HTML modals or popovers.
+
 ## Checklist for New WKWebView Panels
 
 - [ ] Implement `_eval_js` with `_page_loaded` gate and `_pending_js` queue
@@ -294,4 +338,5 @@ follows.
 - [ ] Use `prefers-color-scheme: dark` CSS media query for dark mode
 - [ ] Reset `_page_loaded = False` and clear `_pending_js` in `close()`
 - [ ] Use event delegation for dynamic (`innerHTML`) content — never inline handlers
+- [ ] Never use `alert()` / `confirm()` / `prompt()` — use custom HTML modals/popovers
 - [ ] Update `CONFIG` before calling render functions in `_updateState()`
