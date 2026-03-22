@@ -7,6 +7,8 @@ import os
 import re
 import shutil
 import tempfile
+import threading
+import time
 import tomllib
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -228,27 +230,77 @@ class PluginInstaller:
             files = [files]
         return files
 
+    _MAX_DOWNLOAD_RETRIES = 2
+    _MAX_DOWNLOAD_WORKERS = 4
+
     @staticmethod
     def _download_files(
         base_url: str, files: list[str], target_dir: str,
         *, progress: ProgressCallback | None = None,
     ) -> None:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         abs_target = os.path.abspath(target_dir)
         total = len(files)
-        for i, fname in enumerate(files):
+        if not total:
+            return
+
+        # Validate paths before downloading
+        file_paths: dict[str, str] = {}
+        for fname in files:
             file_path = os.path.normpath(os.path.join(target_dir, fname))
             if not os.path.abspath(file_path).startswith(abs_target + os.sep):
                 raise ValueError(f"Path traversal in files list: {fname!r}")
+            file_paths[fname] = file_path
+
+        completed = 0
+        lock = threading.Lock()
+        cancel = threading.Event()
+
+        def _download_one(fname: str) -> None:
+            nonlocal completed
+            if cancel.is_set():
+                return
             url = f"{base_url}/{fname}"
-            logger.debug("Downloading %s (%d/%d) from %s", fname, i + 1, total, url)
-            file_data = read_source(url)
-            parent = os.path.dirname(file_path)
+            for attempt in range(PluginInstaller._MAX_DOWNLOAD_RETRIES + 1):
+                try:
+                    logger.debug("Downloading %s from %s", fname, url)
+                    data = read_source(url)
+                    break
+                except Exception:
+                    if cancel.is_set() or attempt >= PluginInstaller._MAX_DOWNLOAD_RETRIES:
+                        raise
+                    logger.warning(
+                        "Download %s failed (attempt %d), retrying in 1s...",
+                        fname, attempt + 1,
+                    )
+                    time.sleep(1)
+
+            if cancel.is_set():
+                return
+            fp = file_paths[fname]
+            parent = os.path.dirname(fp)
             if parent != abs_target:
                 os.makedirs(parent, exist_ok=True)
-            with open(file_path, "wb") as f:
-                f.write(file_data)
+            with open(fp, "wb") as f:
+                f.write(data)
+
+            with lock:
+                completed += 1
+                current = completed
             if progress:
-                progress(i + 1, total)
+                progress(current, total)
+
+        with ThreadPoolExecutor(
+            max_workers=PluginInstaller._MAX_DOWNLOAD_WORKERS,
+        ) as pool:
+            futures = {pool.submit(_download_one, fname): fname for fname in files}
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception:
+                    cancel.set()
+                    raise
 
     def _resolve_install_dir(self, plugin_id: str) -> str:
         dir_name = plugin_id.replace(".", "_").replace("-", "_")

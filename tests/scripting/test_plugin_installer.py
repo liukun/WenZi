@@ -218,7 +218,10 @@ class TestProgressCallback:
             f"{http_server}/prog/plugin.toml",
             progress=lambda cur, tot: calls.append((cur, tot)),
         )
-        assert calls == [(1, 3), (2, 3), (3, 3)]
+        # Concurrent downloads may complete in any order, but all 3 are reported
+        assert len(calls) == 3
+        assert all(tot == 3 for _, tot in calls)
+        assert sorted(cur for cur, _ in calls) == [1, 2, 3]
 
     def test_install_no_files_skips_progress(self, plugins_dir, serve_dir, http_server):
         """install() with empty files list does not call progress."""
