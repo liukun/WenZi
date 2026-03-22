@@ -15,6 +15,7 @@ class TestPluginStatus:
         assert PluginStatus.UPDATE_AVAILABLE.value == "update_available"
         assert PluginStatus.MANUALLY_PLACED.value == "manually_placed"
         assert PluginStatus.INCOMPATIBLE.value == "incompatible"
+        assert PluginStatus.PINNED.value == "pinned"
 
 
 class TestPluginInfo:
@@ -161,3 +162,72 @@ class TestMergeRegistries:
         assert shared.is_official is True
         unique = [r for r in result if r.meta.id == "com.test.unique"][0]
         assert unique.is_official is False
+
+
+class TestPinnedStatus:
+    def test_pinned_with_update_available(self, tmp_path):
+        """Pinned plugin with newer registry version -> PINNED, not UPDATE_AVAILABLE."""
+        plugins_dir = tmp_path / "plugins"
+        d = plugins_dir / "alpha"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.alpha"\nname = "A"\nversion = "1.0.0"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "1.0.0"\n'
+            'pinned_ref = "1.0.0"\n'
+        )
+        registry = PluginRegistry(plugins_dir=str(plugins_dir))
+        status, ver = registry.compute_status("com.test.alpha", "2.0.0", "", "1.0.0")
+        assert status == PluginStatus.PINNED
+        assert ver == "1.0.0"
+
+    def test_pinned_at_latest_version(self, tmp_path):
+        """Pinned plugin at same version as registry -> INSTALLED."""
+        plugins_dir = tmp_path / "plugins"
+        d = plugins_dir / "alpha"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.alpha"\nname = "A"\nversion = "2.0.0"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "2.0.0"\n'
+            'pinned_ref = "2.0.0"\n'
+        )
+        registry = PluginRegistry(plugins_dir=str(plugins_dir))
+        status, ver = registry.compute_status("com.test.alpha", "2.0.0", "", "1.0.0")
+        assert status == PluginStatus.INSTALLED
+        assert ver == "2.0.0"
+
+    def test_non_pinned_still_shows_update(self, tmp_path):
+        """Non-pinned plugin with update -> UPDATE_AVAILABLE (unchanged behavior)."""
+        plugins_dir = tmp_path / "plugins"
+        d = plugins_dir / "alpha"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.alpha"\nname = "A"\nversion = "1.0.0"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "1.0.0"\n'
+        )
+        registry = PluginRegistry(plugins_dir=str(plugins_dir))
+        status, ver = registry.compute_status("com.test.alpha", "2.0.0", "", "1.0.0")
+        assert status == PluginStatus.UPDATE_AVAILABLE
+        assert ver == "1.0.0"
+
+    def test_pinned_with_nonsemver_version(self, tmp_path):
+        """Pinned from branch/commit with non-semver version -> PINNED."""
+        plugins_dir = tmp_path / "plugins"
+        d = plugins_dir / "alpha"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.alpha"\nname = "A"\nversion = "dev"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "dev"\n'
+            'pinned_ref = "feat/experiment"\n'
+        )
+        registry = PluginRegistry(plugins_dir=str(plugins_dir))
+        status, ver = registry.compute_status("com.test.alpha", "1.0.0", "", "1.0.0")
+        assert status == PluginStatus.PINNED
+        assert ver == "dev"
