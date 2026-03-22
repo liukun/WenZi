@@ -269,3 +269,78 @@ class TestInstallByIdWithRef:
         call_args = ctrl._app._settings_panel.update_state.call_args[0][0]
         assert "plugins_error" in call_args
         assert "40-character" in call_args["plugins_error"]
+
+
+# ── pinned_ref in state dict ──────────────────────────────────────
+
+
+class TestPinnedPluginState:
+    def test_pinned_ref_in_state_dict(self, ctrl, tmp_path):
+        """State dict includes pinned_ref for pinned plugins."""
+        plugins_dir = tmp_path / "test_plugins"
+        d = plugins_dir / "alpha"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.alpha"\nname = "A"\nversion = "1.0.0"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "1.0.0"\n'
+            'pinned_ref = "1.0.0"\n'
+        )
+        ctrl._plugin_registry._plugins_dir = str(plugins_dir)
+
+        info = PluginInfo(
+            meta=PluginMeta(name="A", id="com.test.alpha", version="2.0.0"),
+            source_url="x",
+            registry_name="Official",
+            status=PluginStatus.PINNED,
+            installed_version="1.0.0",
+            is_official=True,
+        )
+        result = ctrl._plugin_infos_to_state([info])
+        assert result[0]["pinned_ref"] == "1.0.0"
+
+    def test_non_pinned_has_empty_pinned_ref(self, ctrl, tmp_path):
+        """State dict has empty pinned_ref for non-pinned plugins."""
+        plugins_dir = tmp_path / "test_plugins"
+        d = plugins_dir / "beta"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.beta"\nname = "B"\nversion = "1.0.0"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "1.0.0"\n'
+        )
+        ctrl._plugin_registry._plugins_dir = str(plugins_dir)
+
+        info = PluginInfo(
+            meta=PluginMeta(name="B", id="com.test.beta", version="1.0.0"),
+            source_url="x",
+            registry_name="Official",
+            status=PluginStatus.INSTALLED,
+            installed_version="1.0.0",
+            is_official=True,
+        )
+        result = ctrl._plugin_infos_to_state([info])
+        assert result[0]["pinned_ref"] == ""
+
+    def test_local_only_plugin_has_pinned_ref(self, ctrl, tmp_path):
+        """Local-only plugin with pinned_ref includes it in state dict."""
+        plugins_dir = tmp_path / "test_plugins"
+        d = plugins_dir / "local_pinned"
+        d.mkdir(parents=True)
+        (d / "plugin.toml").write_text(
+            '[plugin]\nid = "com.test.local"\nname = "L"\nversion = "1.0.0"\n'
+        )
+        (d / "install.toml").write_text(
+            '[install]\nsource_url = "x"\ninstalled_version = "1.0.0"\n'
+            'pinned_ref = "feat/test"\n'
+        )
+        ctrl._plugin_registry._plugins_dir = str(plugins_dir)
+
+        # Pass empty infos so the local plugin gets added by _add_local_only_plugins
+        result = ctrl._plugin_infos_to_state([])
+        local = [r for r in result if r["id"] == "com.test.local"]
+        assert len(local) == 1
+        assert local[0]["pinned_ref"] == "feat/test"
+        assert local[0]["status"] == "installed"

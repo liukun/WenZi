@@ -1521,9 +1521,23 @@ class SettingsController:
 
     def _plugin_infos_to_state(self, infos: list[PluginInfo]) -> list[dict]:
         """Convert PluginInfo list to serialisable state dicts for the UI."""
+        from wenzi.scripting.plugin_meta import load_install_info, scan_local_plugins
+
         scripting = self._app._config.get("scripting", {})
         disabled = set(scripting.get("disabled_plugins", []))
         load_errors = self._get_load_errors_by_id()
+
+        # Scan once — build both pinned_ref index and local plugin data
+        local_scan = scan_local_plugins(self._plugin_registry.plugins_dir)
+        pinned_index: dict[str, str] = {}
+        install_info_cache: dict[str, dict | None] = {}
+        for _name, path, meta in local_scan:
+            if meta.id:
+                ii = load_install_info(path)
+                install_info_cache[meta.id] = ii
+                if ii and ii.get("pinned_ref"):
+                    pinned_index[meta.id] = ii["pinned_ref"]
+
         result = []
         for info in infos:
             pid = info.meta.id
@@ -1542,27 +1556,28 @@ class SettingsController:
                     "installed_version": info.installed_version or "",
                     "is_official": info.is_official,
                     "enabled": is_enabled,
+                    "pinned_ref": pinned_index.get(pid, ""),
                     **self._error_fields(load_errors, pid),
                 }
             )
-        self._add_local_only_plugins(result, disabled, load_errors)
+        self._add_local_only_plugins(
+            result, disabled, load_errors, local_scan, install_info_cache,
+        )
         return result
 
     def _add_local_only_plugins(
         self, result: list[dict], disabled: set, load_errors: dict[str, dict[str, str]],
+        local_scan: list, install_info_cache: dict[str, dict | None],
     ) -> None:
         """Append locally-installed plugins that don't appear in any registry."""
-        from wenzi.scripting.plugin_meta import load_install_info, scan_local_plugins
-
         known_ids = {p["id"] for p in result}
-        for entry, entry_path, meta in scan_local_plugins(
-            self._plugin_registry.plugins_dir
-        ):
+        for entry, _entry_path, meta in local_scan:
             pid = meta.id or entry
             if pid in known_ids:
                 continue
             is_enabled = pid not in disabled and entry not in disabled
-            has_install = load_install_info(entry_path) is not None
+            ii = install_info_cache.get(pid)
+            has_install = ii is not None
             status = (
                 PluginStatus.INSTALLED if has_install else PluginStatus.MANUALLY_PLACED
             )
@@ -1580,6 +1595,7 @@ class SettingsController:
                     "installed_version": meta.version,
                     "is_official": False,
                     "enabled": is_enabled,
+                    "pinned_ref": (ii.get("pinned_ref", "") if ii else ""),
                     **self._error_fields(load_errors, pid),
                 }
             )
