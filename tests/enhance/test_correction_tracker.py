@@ -200,3 +200,72 @@ def test_normal_word_not_excluded(tmp_path):
     conn.close()
     assert row is not None
     assert row[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Injection queries
+# ---------------------------------------------------------------------------
+
+
+def _make_tracker_with_data(tmp_path):
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+    for _ in range(5):
+        tracker.record(asr_text="我在用cloud做开发", enhanced_text="我在用Kubernetes做开发",
+            final_text="我在用Kubernetes做开发", asr_model="FunASR", llm_model="gpt-4o",
+            app_bundle_id="com.apple.Terminal", enhance_mode="proofread",
+            audio_duration=None, user_corrected=False)
+    return tracker
+
+
+def test_get_asr_hotwords_above_threshold(tmp_path):
+    tracker = _make_tracker_with_data(tmp_path)
+    hotwords = tracker.get_asr_hotwords(asr_model="FunASR", app_bundle_id="com.apple.Terminal", min_count=5)
+    assert "Kubernetes" in hotwords
+
+
+def test_get_asr_hotwords_below_threshold(tmp_path):
+    tracker = _make_tracker_with_data(tmp_path)
+    hotwords = tracker.get_asr_hotwords(asr_model="FunASR", app_bundle_id="com.apple.Terminal", min_count=10)
+    assert "Kubernetes" not in hotwords
+
+
+def test_get_asr_hotwords_wrong_model(tmp_path):
+    tracker = _make_tracker_with_data(tmp_path)
+    hotwords = tracker.get_asr_hotwords(asr_model="MLX Whisper", app_bundle_id="com.apple.Terminal", min_count=5)
+    assert "Kubernetes" not in hotwords
+
+
+def test_get_asr_hotwords_respects_top_k(tmp_path):
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+    # Use unique non-common-word targets so they are not excluded
+    words = [("cloudA", "KubernetesA"), ("cloudB", "KubernetesB"), ("cloudC", "KubernetesC")]
+    for orig, corr in words:
+        for _ in range(5):
+            tracker.record(asr_text=f"use {orig} now", enhanced_text="", final_text=f"use {corr} now",
+                asr_model="FunASR", llm_model="", app_bundle_id="",
+                enhance_mode="proofread", audio_duration=None, user_corrected=False)
+    hotwords = tracker.get_asr_hotwords(asr_model="FunASR", app_bundle_id="", min_count=5, top_k=2)
+    assert len(hotwords) <= 2
+
+
+def test_get_llm_vocab_with_user_corrections(tmp_path):
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+    for _ in range(5):
+        tracker.record(asr_text="我在用cloud做开发", enhanced_text="我在用cloud做开发",
+            final_text="我在用Kubernetes做开发", asr_model="FunASR", llm_model="gpt-4o",
+            app_bundle_id="com.apple.Terminal", enhance_mode="proofread",
+            audio_duration=None, user_corrected=True)
+    vocab = tracker.get_llm_vocab(llm_model="gpt-4o", app_bundle_id="com.apple.Terminal", min_count=5)
+    words = [v["corrected_word"] for v in vocab]
+    assert "Kubernetes" in words
+
+
+def test_get_llm_vocab_includes_variants(tmp_path):
+    tracker = CorrectionTracker(db_path=str(tmp_path / "t.db"))
+    for _ in range(5):
+        tracker.record(asr_text="我在用cloud做开发", enhanced_text="我在用cloud做开发",
+            final_text="我在用Kubernetes做开发", asr_model="FunASR", llm_model="gpt-4o",
+            app_bundle_id="", enhance_mode="proofread", audio_duration=None, user_corrected=True)
+    vocab = tracker.get_llm_vocab(llm_model="gpt-4o", app_bundle_id="", min_count=5)
+    entry = next(v for v in vocab if v["corrected_word"] == "Kubernetes")
+    assert "cloud" in entry["variants"]

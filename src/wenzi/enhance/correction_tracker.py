@@ -241,3 +241,70 @@ class CorrectionTracker:
             conn.commit()
         finally:
             conn.close()
+
+    def get_asr_hotwords(
+        self,
+        asr_model: str,
+        app_bundle_id: Optional[str] = None,
+        min_count: int = 5,
+        top_k: int = 20,
+    ) -> list[str]:
+        """Return the top-k corrected words for a given ASR model and app.
+
+        Only non-excluded pairs with cumulative count >= min_count are included,
+        ordered by frequency descending.
+        """
+        _app = app_bundle_id or ""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                """SELECT corrected_word, SUM(count) as freq
+                   FROM correction_pairs
+                   WHERE source = 'asr' AND asr_model = ? AND app_bundle_id = ? AND excluded = 0
+                   GROUP BY corrected_word HAVING freq >= ?
+                   ORDER BY freq DESC LIMIT ?""",
+                (asr_model, _app, min_count, top_k),
+            ).fetchall()
+            return [row[0] for row in rows]
+        finally:
+            conn.close()
+
+    def get_llm_vocab(
+        self,
+        llm_model: str,
+        app_bundle_id: Optional[str] = None,
+        min_count: int = 5,
+        top_k: int = 10,
+    ) -> list[dict]:
+        """Return vocabulary entries for a given LLM model and app.
+
+        Each entry contains the corrected word, its known variants (original forms),
+        and cumulative frequency. Only non-excluded pairs with count >= min_count
+        are included, ordered by frequency descending.
+        """
+        _app = app_bundle_id or ""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                """SELECT corrected_word, SUM(count) as freq
+                   FROM correction_pairs
+                   WHERE source = 'llm' AND llm_model = ? AND app_bundle_id = ? AND excluded = 0
+                   GROUP BY corrected_word HAVING freq >= ?
+                   ORDER BY freq DESC LIMIT ?""",
+                (llm_model, _app, min_count, top_k),
+            ).fetchall()
+            results = []
+            for corrected, freq in rows:
+                variants = conn.execute(
+                    """SELECT DISTINCT original_word FROM correction_pairs
+                       WHERE source = 'llm' AND corrected_word = ? AND llm_model = ? AND app_bundle_id = ?""",
+                    (corrected, llm_model, _app),
+                ).fetchall()
+                results.append({
+                    "corrected_word": corrected,
+                    "variants": [v[0] for v in variants],
+                    "frequency": freq,
+                })
+            return results
+        finally:
+            conn.close()
