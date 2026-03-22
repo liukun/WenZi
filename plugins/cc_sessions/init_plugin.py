@@ -66,6 +66,29 @@ def _check_subagent_exists(
     }
 
 
+def _parse_subagent_meta(jsonl_path: str) -> dict:
+    """Extract basic metadata from the first few lines of a subagent JSONL."""
+    meta: dict = {"cwd": "", "version": "", "git_branch": "", "project": ""}
+    try:
+        with open(jsonl_path) as f:
+            for i, line in enumerate(f):
+                if i >= 20:
+                    break
+                try:
+                    msg = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                if not meta["cwd"] and msg.get("cwd"):
+                    meta["cwd"] = msg["cwd"]
+                if not meta["version"] and msg.get("version"):
+                    meta["version"] = msg["version"]
+                if not meta["git_branch"] and msg.get("git_branch"):
+                    meta["git_branch"] = msg["git_branch"]
+    except OSError:
+        pass
+    return meta
+
+
 def _filter_sessions(
     sessions: list[Dict[str, Any]],
     project_filter: str | None,
@@ -170,6 +193,81 @@ def register(wz) -> None:
             agent_ids = data.get("agent_ids", [])
             return _check_subagent_exists(root_path, agent_ids)
 
+        @panel.handle("open_subagent")
+        def open_subagent(data):
+            _open_subagent_viewer(
+                data.get("root_session_path", ""),
+                data.get("parent_file_path", ""),
+                data.get("agent_id", ""),
+                data.get("description", ""),
+            )
+
+        panel.show()
+
+    def _open_subagent_viewer(
+        root_session_path: str,
+        parent_file_path: str,
+        agent_id: str,
+        description: str,
+    ) -> None:
+        """Open a viewer panel for a subagent session."""
+        subagent_path = _resolve_subagent_path(root_session_path, agent_id)
+        if not os.path.isfile(subagent_path):
+            logger.warning("Subagent file not found: %s", subagent_path)
+            return
+
+        meta = _parse_subagent_meta(subagent_path)
+        session_id = f"agent-{agent_id}"
+
+        panel = wz.ui.webview_panel(
+            title=f"Subagent: {description}",
+            html_file=viewer_html_path,
+            width=900,
+            height=700,
+            resizable=True,
+            allowed_read_paths=[
+                os.path.expanduser("~/.claude/"),
+            ],
+        )
+
+        @panel.handle("get_session_info")
+        def get_session_info(_data):
+            return {
+                "file": subagent_path,
+                "project": meta.get("project", ""),
+                "cwd": meta.get("cwd", ""),
+                "session_id": session_id,
+                "git_branch": meta.get("git_branch", ""),
+                "version": meta.get("version", ""),
+                "root_session_path": root_session_path,
+                "parent_file_path": parent_file_path,
+                "is_subagent": True,
+            }
+
+        @panel.handle("check_subagent_exists")
+        def check_subagent_exists(data):
+            root_path = data.get("root_session_path", "")
+            agent_ids = data.get("agent_ids", [])
+            return _check_subagent_exists(root_path, agent_ids)
+
+        @panel.handle("open_subagent")
+        def open_subagent(data):
+            _open_subagent_viewer(
+                data.get("root_session_path", ""),
+                data.get("parent_file_path", ""),
+                data.get("agent_id", ""),
+                data.get("description", ""),
+            )
+
+        @panel.handle("open_parent_session")
+        def open_parent(_data):
+            panel.close()
+
+        def _copy_text(text: str) -> None:
+            from wenzi.scripting.sources import copy_to_clipboard
+            copy_to_clipboard(text)
+
+        panel.on("copy_resume", lambda data: _copy_text(data.get("text", "")))
         panel.show()
 
     def _delete_session(session: Dict[str, Any]) -> None:

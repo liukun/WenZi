@@ -71,3 +71,38 @@ class TestCheckSubagentExists:
         fix = _make_subagent_fixture(tmp_path)
         result = _check_subagent_exists(fix["parent_path"], [])
         assert result == {}
+
+
+class TestParseSubagentMeta:
+    def test_extracts_basic_fields(self, tmp_path):
+        from plugins.cc_sessions.init_plugin import _parse_subagent_meta
+
+        jsonl_path = tmp_path / "agent-test.jsonl"
+        lines = [
+            json.dumps({"type": "user", "agentId": "abc", "cwd": "/work/project",
+                         "version": "2.1.81", "message": {"role": "user", "content": "do stuff"}}),
+            json.dumps({"type": "assistant", "agentId": "abc",
+                         "message": {"role": "assistant", "model": "claude-haiku-4-5-20251001",
+                                     "content": [{"type": "text", "text": "ok"}]}}),
+        ]
+        jsonl_path.write_text("\n".join(lines) + "\n")
+
+        meta = _parse_subagent_meta(str(jsonl_path))
+        assert meta["cwd"] == "/work/project"
+        assert meta["version"] == "2.1.81"
+
+    def test_missing_fields_return_defaults(self, tmp_path):
+        from plugins.cc_sessions.init_plugin import _parse_subagent_meta
+
+        jsonl_path = tmp_path / "agent-test.jsonl"
+        jsonl_path.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}) + "\n")
+
+        meta = _parse_subagent_meta(str(jsonl_path))
+        assert meta["cwd"] == ""
+        assert meta["version"] == ""
+
+    def test_nonexistent_file(self):
+        from plugins.cc_sessions.init_plugin import _parse_subagent_meta
+
+        meta = _parse_subagent_meta("/nonexistent/path.jsonl")
+        assert meta["cwd"] == ""
