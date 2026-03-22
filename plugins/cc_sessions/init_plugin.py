@@ -85,6 +85,25 @@ def register(wz) -> None:
     from .scanner import SessionScanner
 
     scanner = SessionScanner()
+
+    def _clear_cache(_args: str) -> None:
+        scanner.clear_cache()
+        try:
+            from PyObjCTools import AppHelper
+            def _hud():
+                from wenzi.ui.hud import show_hud
+                show_hud("Session cache cleared")
+            AppHelper.callAfter(_hud)
+        except Exception:
+            logger.debug("HUD notification failed", exc_info=True)
+
+    wz.chooser.register_command(
+        name="cc-sessions:clear-cache",
+        title="CC Sessions: Clear Cache",
+        subtitle="Remove cached session metadata and rescan",
+        action=_clear_cache,
+    )
+
     from .identicon import generate as generate_identicon
 
     plugin_dir = os.path.dirname(os.path.abspath(__file__))

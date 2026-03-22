@@ -382,6 +382,13 @@ class SessionScanner:
         # In-memory cache for index supplements: {index_path: (mtime, {sid: {summary, customTitle}})}
         self._index_supplements: dict[str, tuple[float, dict[str, dict[str, str]]]] = {}
 
+    def clear_cache(self) -> None:
+        """Clear all caches (disk, in-memory) so sessions are rescanned fresh."""
+        if self._cache:
+            self._cache.clear()
+        self._index_supplements.clear()
+        _project_name_cache.clear()
+
     def scan_all(self) -> list[dict[str, Any]]:
         """Return all sessions sorted by modified descending."""
         if not self._base_dir.is_dir():
