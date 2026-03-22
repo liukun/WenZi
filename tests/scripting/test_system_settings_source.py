@@ -223,9 +223,15 @@ class TestSystemSettingsSource:
         cache_dir = tmp_path / "icon_cache"
 
         fake_png = b"\x89PNG-fake"
-        with patch(
-            "wenzi.scripting.sources.system_settings_source._get_icon_png",
-            return_value=fake_png,
+        # Disable background prewarm to avoid race condition: the prewarm
+        # thread can mark the icon cache entry as "" (in-progress) before
+        # the search thread's _get_icon call, causing it to return early.
+        with (
+            patch(
+                "wenzi.scripting.sources.system_settings_source._get_icon_png",
+                return_value=fake_png,
+            ),
+            patch.object(SystemSettingsSource, "_prewarm_icons"),
         ):
             src = SystemSettingsSource(
                 extensions_dir=str(ext_dir),

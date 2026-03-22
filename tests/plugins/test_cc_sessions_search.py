@@ -155,3 +155,19 @@ class TestTimeAgo:
 
         assert _time_ago("not-a-date") == ""
         assert _time_ago("") == ""
+
+
+def test_generate_produces_data_uri_for_session_projects():
+    """Verify identicon.generate produces valid data URIs for real session project names."""
+    from cc_sessions.identicon import generate
+
+    for s in _make_sessions():
+        icon = generate(s["project"])
+        assert icon.startswith("data:image/svg+xml;base64,"), (
+            f"Icon for {s['project']} should be a data URI, got: {icon[:50]}"
+        )
+        assert "file://" not in icon
+
+    # Same project name → same icon
+    vt_icons = [generate(s["project"]) for s in _make_sessions() if s["project"] == "VoiceText"]
+    assert len(set(vt_icons)) == 1, "Same project must produce same icon"
