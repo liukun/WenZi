@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
+    from wenzi.enhance.correction_tracker import CorrectionTracker
     from wenzi.input_context import InputContext
 
 from .mode_loader import (
@@ -208,6 +209,7 @@ class TextEnhancer:
         data_dir: str | None = None,
         cache_dir: str | None = None,
         conversation_history: Optional[ConversationHistory] = None,
+        correction_tracker: Optional[CorrectionTracker] = None,
     ) -> None:
         self._enabled = config.get("enabled", False)
         self._timeout = config.get("timeout", 30)
@@ -264,6 +266,9 @@ class TextEnhancer:
             if data_dir:
                 kwargs["data_dir"] = data_dir
             self._vocab_index = VocabularyIndex(vocab_cfg, **kwargs)
+
+        # Correction tracker (optional)
+        self._correction_tracker = correction_tracker
 
         # Conversation history
         history_cfg = config.get("conversation_history", {})
@@ -684,6 +689,7 @@ class TextEnhancer:
                 logger.warning("Conversation history retrieval failed: %s", e)
 
         vocab_lines = ""
+        vocab_existing_terms: set[str] = set()
         if self._vocab_enabled and self._vocab_index is not None:
             try:
                 if not self._vocab_index.is_loaded:
@@ -693,12 +699,51 @@ class TextEnhancer:
                 )
                 if entries:
                     vocab_lines = self._vocab_index.format_entry_lines(entries)
+                    vocab_existing_terms = {e.term.lower() for e in entries}
                     logger.info(
                         "Vocabulary matched: %s",
                         ", ".join(e.term for e in entries),
                     )
             except Exception as e:
                 logger.warning("Vocabulary retrieval failed: %s", e)
+
+        # Merge correction tracker LLM vocab entries (deduplicated by term)
+        if self._correction_tracker is not None:
+            try:
+                app_bundle_id = (
+                    input_context.bundle_id
+                    if input_context is not None and hasattr(input_context, "bundle_id")
+                    else None
+                )
+                tracker_vocab = self._correction_tracker.get_llm_vocab(
+                    llm_model=self._active_model,
+                    app_bundle_id=app_bundle_id,
+                )
+                if tracker_vocab:
+                    from .vocabulary import VocabularyEntry
+                    tracker_entries = []
+                    seen_terms = set(vocab_existing_terms)
+                    for item in tracker_vocab:
+                        term = item["corrected_word"]
+                        if term.lower() not in seen_terms:
+                            seen_terms.add(term.lower())
+                            tracker_entries.append(VocabularyEntry(
+                                term=term,
+                                variants=item.get("variants", []),
+                                frequency=item.get("frequency", 1),
+                            ))
+                    if tracker_entries:
+                        tracker_lines = VocabularyIndex.format_entry_lines(tracker_entries)
+                        if vocab_lines:
+                            vocab_lines = vocab_lines + "\n" + tracker_lines
+                        else:
+                            vocab_lines = tracker_lines
+                        logger.info(
+                            "Correction tracker vocab merged: %s",
+                            ", ".join(e.term for e in tracker_entries),
+                        )
+            except Exception as e:
+                logger.warning("Correction tracker vocab retrieval failed: %s", e)
 
         env_line = None
         if input_context is not None:
@@ -1175,6 +1220,7 @@ def create_enhancer(
     data_dir: str | None = None,
     cache_dir: str | None = None,
     conversation_history: Optional[ConversationHistory] = None,
+    correction_tracker: Optional[CorrectionTracker] = None,
 ) -> Optional[TextEnhancer]:
     """Factory function to create a TextEnhancer from app config.
 
@@ -1189,4 +1235,5 @@ def create_enhancer(
         data_dir=data_dir,
         cache_dir=cache_dir,
         conversation_history=conversation_history,
+        correction_tracker=correction_tracker,
     )

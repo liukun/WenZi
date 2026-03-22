@@ -206,6 +206,7 @@ class ConversationHistory:
         user_corrected: bool = False,
         audio_duration: float = 0.0,
         input_context: Any = None,
+        correction_tracked: bool = False,
     ) -> str:
         """Write a single conversation record to the JSONL file.
 
@@ -226,6 +227,7 @@ class ConversationHistory:
             "llm_model": llm_model,
             "user_corrected": user_corrected,
             "audio_duration": round(audio_duration, 1),
+            "correction_tracked": correction_tracked,
         }
 
         if input_context is not None:

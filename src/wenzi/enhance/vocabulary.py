@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from wenzi.enhance.conversation_history import ConversationHistory
+    from wenzi.enhance.correction_tracker import CorrectionTracker
 
 from wenzi.config import DEFAULT_DATA_DIR
 
@@ -581,6 +582,9 @@ def build_hotword_list(
     max_count: int = 10,
     max_recent: int = 15,
     max_age_hours: float = 2.0,
+    correction_tracker: Optional[CorrectionTracker] = None,
+    asr_model: Optional[str] = None,
+    app_bundle_id: Optional[str] = None,
 ) -> Optional[List[str]]:
     """Build a two-layer hotword list for ASR injection.
 
@@ -595,6 +599,9 @@ def build_hotword_list(
     details = build_hotword_list_detailed(
         vocab_index, conversation_history, base_detail,
         max_count=max_count, max_recent=max_recent, max_age_hours=max_age_hours,
+        correction_tracker=correction_tracker,
+        asr_model=asr_model,
+        app_bundle_id=app_bundle_id,
     )
     return [d.term for d in details] if details else None
 
@@ -607,14 +614,20 @@ def build_hotword_list_detailed(
     max_count: int = 10,
     max_recent: int = 15,
     max_age_hours: float = 2.0,
+    correction_tracker: Optional[CorrectionTracker] = None,
+    asr_model: Optional[str] = None,
+    app_bundle_id: Optional[str] = None,
 ) -> List[HotwordDetail]:
     """Build a two-layer hotword list with full metadata for display.
 
     Layer 1 (context): terms from recent conversation history.
     Layer 2 (base): static high-frequency hotwords.
+    Layer 3 (correction tracker): high-frequency corrected words from the
+        correction tracker, merged in after base-layer terms (deduplicated).
 
     Context-layer terms are placed first; base-layer terms fill remaining
-    slots (deduplicated).
+    slots (deduplicated). Correction tracker hotwords supplement remaining
+    slots if provided.
     """
     context_details: List[HotwordDetail] = []
     now = datetime.now(timezone.utc).timestamp()
@@ -640,10 +653,23 @@ def build_hotword_list_detailed(
         except Exception as e:
             logger.warning("Failed to build context hotword details: %s", e)
 
-    # Merge: context first, base fills remaining slots (deduplicated)
+    # Collect correction tracker hotwords if provided
+    tracker_details: List[HotwordDetail] = []
+    if correction_tracker is not None and asr_model:
+        try:
+            tracker_words = correction_tracker.get_asr_hotwords(
+                asr_model=asr_model,
+                app_bundle_id=app_bundle_id,
+            )
+            for word in tracker_words:
+                tracker_details.append(HotwordDetail(term=word, layer=LAYER_BASE))
+        except Exception as e:
+            logger.warning("Failed to get correction tracker hotwords: %s", e)
+
+    # Merge: context first, base fills remaining slots, tracker supplements (all deduplicated)
     seen: set[str] = set()
     result: List[HotwordDetail] = []
-    for detail in [*context_details, *(base_hotwords_detail or ())]:
+    for detail in [*context_details, *(base_hotwords_detail or ()), *tracker_details]:
         lower = detail.term.lower()
         if lower not in seen and len(result) < max_count:
             seen.add(lower)

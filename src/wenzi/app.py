@@ -268,6 +268,20 @@ class WenZiApp(StatusBarApp):
         self._conversation_history = ConversationHistory(data_dir=self._data_dir)
         self._usage_stats = UsageStats(data_dir=self._data_dir)
 
+        # Correction tracker: records ASR/LLM correction sessions
+        from wenzi.enhance.correction_tracker import CorrectionTracker
+        self._correction_tracker = CorrectionTracker(
+            db_path=os.path.join(self._data_dir, "correction_tracker.db"),
+        )
+        if self._correction_tracker.is_empty():
+            logger.info("Correction tracker DB is empty, rebuilding from history in background")
+            threading.Thread(
+                target=self._correction_tracker.rebuild_from_history,
+                args=(self._conversation_history,),
+                daemon=True,
+                name="correction-rebuild",
+            ).start()
+
         # Feedback: sound + visual indicator
         fb_cfg = self._config.get("feedback", {})
         self._sound_manager = SoundManager(
@@ -330,6 +344,7 @@ class WenZiApp(StatusBarApp):
             data_dir=self._data_dir,
             cache_dir=self._cache_dir,
             conversation_history=self._conversation_history,
+            correction_tracker=self._correction_tracker,
         )
         ai_cfg = self._config.get("ai_enhance", {})
         self._enhance_mode: str = ai_cfg.get("mode", "proofread")
@@ -641,11 +656,20 @@ class WenZiApp(StatusBarApp):
 
         base_detail = load_hotwords_detailed(data_dir=self._data_dir)
 
+        # Determine current ASR model and app bundle ID for correction tracker
+        asr_model = self._current_stt_model()
+        input_ctx = getattr(self, "_recording_controller", None)
+        input_ctx = getattr(input_ctx, "input_context", None) if input_ctx else None
+        app_bundle_id = getattr(input_ctx, "bundle_id", None) if input_ctx else None
+
         details = build_hotword_list_detailed(
             vocab_index,
             self._conversation_history,
             base_detail,
             max_count=max_hotwords,
+            correction_tracker=self._correction_tracker,
+            asr_model=asr_model,
+            app_bundle_id=app_bundle_id,
         )
 
         terms = [d.term for d in details]

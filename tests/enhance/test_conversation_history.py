@@ -1331,3 +1331,30 @@ class TestInputContextStorage:
         line = ConversationHistory.format_entry_line(entry, context_level="detailed")
         assert line.startswith("- Chrome - ")
         assert "github.com" not in line
+
+
+# ---------------------------------------------------------------------------
+# Task 7: correction_tracked field
+# ---------------------------------------------------------------------------
+
+
+def test_log_includes_correction_tracked_field(tmp_path):
+    """log() accepts and stores correction_tracked field."""
+    ch = ConversationHistory(data_dir=str(tmp_path))
+    ch.log(
+        asr_text="hello", enhanced_text="hello", final_text="hello",
+        enhance_mode="proofread", preview_enabled=True, correction_tracked=True,
+    )
+    records = ch.get_all()
+    assert records[0].get("correction_tracked") is True
+
+
+def test_log_correction_tracked_defaults_false(tmp_path):
+    """correction_tracked defaults to False when not provided."""
+    ch = ConversationHistory(data_dir=str(tmp_path))
+    ch.log(
+        asr_text="hello", enhanced_text="hello", final_text="hello",
+        enhance_mode="proofread", preview_enabled=True,
+    )
+    records = ch.get_all()
+    assert records[0].get("correction_tracked") is False
