@@ -687,3 +687,66 @@ class TestProjectNameResolution:
 
         # Cleanup
         _project_name_cache.pop(cwd, None)
+
+    def test_resolve_from_subdirectory(self, tmp_path: Path):
+        """Session started from repo subdirectory resolves to repo name."""
+        from cc_sessions.scanner import _project_name_cache
+
+        # Set up git repo with remote
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = git@github.com:Airead/WenZi.git\n"
+        )
+        sub = tmp_path / "docs"
+        sub.mkdir()
+
+        cwd = str(sub)
+        _project_name_cache.pop(cwd, None)
+        assert _resolve_project_name(cwd, "docs") == "WenZi"
+        _project_name_cache.pop(cwd, None)
+
+    def test_resolve_subdirectory_no_remote(self, tmp_path: Path):
+        """Subdirectory of repo without remote falls back to repo dir basename."""
+        from cc_sessions.scanner import _project_name_cache
+
+        # Git repo without remote
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "config").write_text("[core]\n    bare = false\n")
+        sub = tmp_path / "src" / "lib"
+        sub.mkdir(parents=True)
+
+        cwd = str(sub)
+        _project_name_cache.pop(cwd, None)
+        # Should resolve to tmp_path basename, not "lib"
+        assert _resolve_project_name(cwd, "lib") == tmp_path.name
+        _project_name_cache.pop(cwd, None)
+
+    def test_scan_jsonl_subdirectory_resolves_to_repo(self, tmp_path: Path):
+        """Integration: JSONL with subdirectory CWD resolves project from git root."""
+        from cc_sessions.scanner import _project_name_cache
+
+        # Set up git repo
+        repo = tmp_path / "MyProject"
+        repo.mkdir()
+        git_dir = repo / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = git@github.com:User/MyProject.git\n"
+        )
+        sub = repo / "docs"
+        sub.mkdir()
+
+        cwd = str(sub)
+        jsonl = tmp_path / "s1.jsonl"
+        jsonl.write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "cwd": cwd, "message": {"content": "Hello"}}) + "\n"
+        )
+        _project_name_cache.pop(cwd, None)
+        result = _scan_session_jsonl(jsonl, "docs")
+        assert result is not None
+        assert result["project"] == "MyProject"
+        _project_name_cache.pop(cwd, None)

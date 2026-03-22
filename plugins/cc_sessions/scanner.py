@@ -135,8 +135,12 @@ _project_name_cache: dict[str, str] = {}
 def _resolve_project_name(cwd: str, fallback: str) -> str:
     """Resolve the project name from *cwd*, with caching.
 
-    Priority: git remote origin repo name > cwd basename (before ``.``)
-    > *fallback* (directory-name derived).
+    Priority: git remote origin repo name > git root / cwd basename
+    (before ``.'') > *fallback* (directory-name derived).
+
+    When *cwd* is a subdirectory of a git repo, the repo root is used
+    for name resolution so that all sessions in the same repo share
+    one project name.
     """
     if not cwd:
         return fallback
@@ -144,7 +148,9 @@ def _resolve_project_name(cwd: str, fallback: str) -> str:
     if cached is not None:
         return cached
 
-    name = _git_remote_name(cwd) or _name_from_cwd(cwd) or fallback
+    git_root = _find_git_root(cwd)
+    effective = git_root or cwd
+    name = _git_remote_name(effective) or _name_from_cwd(effective) or fallback
     _project_name_cache[cwd] = name
     return name
 
