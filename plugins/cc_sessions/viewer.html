@@ -114,6 +114,37 @@
   }
   .copy-btn:hover { opacity: 0.85; }
 
+  .parent-link {
+    color: var(--copy-btn-color);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 4px;
+  }
+  .parent-link:hover {
+    background: var(--copy-btn-bg);
+  }
+
+  .view-session-btn {
+    font-size: 10px;
+    color: var(--copy-btn-color);
+    background: var(--copy-btn-bg);
+    border: none;
+    border-radius: 3px;
+    padding: 1px 6px;
+    cursor: pointer;
+    margin-left: auto;
+    margin-right: 4px;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .view-session-btn:hover {
+    opacity: 0.85;
+  }
+
   .main-content {
     display: flex;
     flex: 1;
@@ -514,6 +545,7 @@
 
 <div class="app">
   <div class="info-bar" id="info-bar">
+    <a class="parent-link" id="parent-link" style="display:none;" href="#">&#8592; Parent Session</a>
     <span class="label">Project:</span>
     <span class="value" id="info-project">—</span>
     <span class="sep">|</span>
@@ -573,6 +605,7 @@ const TOOL_META = {
   Edit:       { icon: "\u270F\uFE0F",  css: "tool-edit",  mergeable: true },
   Bash:       { icon: "\u25B6\uFE0F",  css: "tool-bash",  mergeable: false },
   Write:      { icon: "\u{1F4DD}", css: "tool-write", mergeable: false },
+  Agent:      { icon: "\u{1F916}", css: "tool-other", mergeable: false },
 };
 
 function getToolMeta(name) {
@@ -588,6 +621,7 @@ function toolDetail(name, input) {
   if (name === "Edit" && input.file_path) return basename(input.file_path);
   if (name === "Write" && input.file_path) return basename(input.file_path);
   if (name === "Bash" && input.command) return truncate(input.command, 60);
+  if (name === "Agent" && input.description) return truncate(input.description, 60);
   // Generic fallback
   const first = Object.values(input)[0];
   return typeof first === "string" ? truncate(first, 50) : "";
@@ -648,6 +682,93 @@ let sessionInfo = null;
 const outlineItems = [];  // { el, targetEl }
 let activeOutlineIdx = -1;
 
+// ── Subagent resolution ──
+// { toolUseId → { agentId, description, type, model, exists } }
+window._subagentMap = {};
+
+function buildToolResultMap(messages) {
+  const map = {};
+  for (const msg of messages) {
+    if (msg.type !== "user") continue;
+    const content = msg.message?.content || msg.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part.type === "tool_result" && part.tool_use_id) {
+        map[part.tool_use_id] = part;
+      }
+    }
+  }
+  return map;
+}
+
+function openSubagent(agentId, description) {
+  wz.call("open_subagent", {
+    root_session_path: sessionInfo.root_session_path,
+    parent_file_path: sessionInfo.file,
+    agent_id: agentId,
+    description: description,
+  });
+}
+
+async function resolveSubagents(messages, info) {
+  window._subagentMap = {};
+
+  const resultMap = buildToolResultMap(messages);
+
+  // Find Agent tool_use calls and extract agentIds from results
+  const agentCalls = [];
+  for (const msg of messages) {
+    if (msg.type !== "assistant") continue;
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part.type === "tool_use" && part.name === "Agent") {
+        const result = resultMap[part.id];
+        let agentId = null;
+        if (result) {
+          const text = extractResultText(result);
+          const match = text.match(/agentId:\s*([a-fA-F0-9]+)/);
+          if (match) agentId = match[1];
+        }
+        agentCalls.push({
+          toolUseId: part.id,
+          agentId,
+          description: part.input?.description || "",
+          type: part.input?.subagent_type || "general-purpose",
+          model: part.input?.model || "",
+        });
+      }
+    }
+  }
+
+  if (agentCalls.length === 0) return;
+
+  // Batch check file existence
+  const idsToCheck = agentCalls.filter(a => a.agentId).map(a => a.agentId);
+  let existsMap = {};
+  if (idsToCheck.length > 0 && typeof wz !== "undefined" && wz.call) {
+    try {
+      existsMap = await wz.call("check_subagent_exists", {
+        root_session_path: info.root_session_path,
+        agent_ids: idsToCheck,
+      });
+    } catch (err) {
+      console.error("check_subagent_exists failed:", err);
+    }
+  }
+
+  // Populate global map
+  for (const ac of agentCalls) {
+    window._subagentMap[ac.toolUseId] = {
+      agentId: ac.agentId,
+      description: ac.description,
+      type: ac.type,
+      model: ac.model,
+      exists: ac.agentId ? (existsMap[ac.agentId] === true) : false,
+    };
+  }
+}
+
 // ── Load session via wz bridge ──
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -670,16 +791,29 @@ async function loadSession(info) {
   if (info.git_branch) document.getElementById("info-branch").textContent = info.git_branch;
   if (info.version) document.getElementById("info-version").textContent = info.version;
 
-  // Setup copy-resume button
-  document.getElementById("btn-copy-resume").addEventListener("click", () => {
-    const cwd = (info.cwd || ".").replace(/'/g, "'\\''");
-    const cmd = `cd '${cwd}' && claude --resume ${info.session_id || ""}`;
-    wz.send("copy_resume", { text: cmd });
-    const btn = document.getElementById("btn-copy-resume");
-    const orig = btn.textContent;
-    btn.textContent = "\u2713 Copied!";
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  });
+  // Subagent mode: show parent link, hide resume button
+  if (info.is_subagent) {
+    const parentLink = document.getElementById("parent-link");
+    parentLink.style.display = "";
+    parentLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      wz.call("open_parent_session", {
+        parent_file_path: info.parent_file_path,
+      });
+    });
+    document.getElementById("btn-copy-resume").style.display = "none";
+  } else {
+    // Setup copy-resume button
+    document.getElementById("btn-copy-resume").addEventListener("click", () => {
+      const cwd = (info.cwd || ".").replace(/'/g, "'\\''");
+      const cmd = `cd '${cwd}' && claude --resume ${info.session_id || ""}`;
+      wz.send("copy_resume", { text: cmd });
+      const btn = document.getElementById("btn-copy-resume");
+      const orig = btn.textContent;
+      btn.textContent = "\u2713 Copied!";
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+  }
 
   // Load JSONL via wz-file:// custom scheme (file:// fetch is blocked in WKWebView)
   let text;
@@ -704,6 +838,7 @@ async function loadSession(info) {
     try { return JSON.parse(line); } catch { return null; }
   }).filter(Boolean);
 
+  await resolveSubagents(messages, info);
   renderConversation(messages);
   renderStats(messages);
 }
@@ -719,23 +854,13 @@ function renderConversation(messages) {
   activeOutlineIdx = -1;
   _lastRenderedTime = "";
 
-  // Filter: skip sidechain and non-conversation types
+  // Filter: skip non-conversation types; skip sidechain only for root sessions
+  // (subagent messages are ALL sidechain, so we must include them)
   const validTypes = new Set(["user", "assistant"]);
-  const turns = messages.filter(m => validTypes.has(m.type) && !m.isSidechain);
+  const isSubagent = sessionInfo && sessionInfo.is_subagent;
+  const turns = messages.filter(m => validTypes.has(m.type) && (isSubagent || !m.isSidechain));
 
-  // Pre-process: extract tool_results from user messages into a global map
-  // (Claude Code puts tool_result in the next user message, not in the assistant message)
-  const globalResultMap = {};
-  for (const msg of turns) {
-    if (msg.type !== "user") continue;
-    const content = msg.message?.content || msg.content;
-    if (!Array.isArray(content)) continue;
-    for (const part of content) {
-      if (part.type === "tool_result" && part.tool_use_id) {
-        globalResultMap[part.tool_use_id] = part;
-      }
-    }
-  }
+  const globalResultMap = buildToolResultMap(turns);
 
   let i = 0;
   while (i < turns.length) {
@@ -986,6 +1111,23 @@ function createToolSingle(call, result) {
     <span class="tool-detail">${escapeHtml(detail)}</span>
     <span class="tool-arrow">&#9654;</span>
   `;
+
+  // Add "View Session" button for Agent tool calls with resolved subagent
+  if (call.name === "Agent" && call.id) {
+    const sub = window._subagentMap[call.id];
+    if (sub && sub.exists) {
+      const viewBtn = document.createElement("button");
+      viewBtn.className = "view-session-btn";
+      viewBtn.textContent = "View Session";
+      viewBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSubagent(sub.agentId, sub.description);
+      });
+      const arrow = headerEl.querySelector(".tool-arrow");
+      headerEl.insertBefore(viewBtn, arrow);
+    }
+  }
+
   block.appendChild(headerEl);
 
   const body = document.createElement("div");
@@ -1022,19 +1164,20 @@ function formatToolInput(call) {
   return JSON.stringify(call.input, null, 2);
 }
 
-// ── Format tool result for display ──
-function formatToolResult(result) {
+// ── Extract plain text from a tool result ──
+function extractResultText(result) {
   if (!result) return "";
   const c = result.content;
-  if (typeof c === "string") return truncate(c, 2000);
+  if (typeof c === "string") return c;
   if (Array.isArray(c)) {
-    return c
-      .filter(p => p.type === "text")
-      .map(p => p.text || "")
-      .join("\n")
-      .slice(0, 2000);
+    return c.filter(p => p.type === "text").map(p => p.text || "").join("\n");
   }
-  return JSON.stringify(c, null, 2).slice(0, 2000);
+  return JSON.stringify(c, null, 2);
+}
+
+// ── Format tool result for display ──
+function formatToolResult(result) {
+  return truncate(extractResultText(result), 2000);
 }
 
 // ── Thinking block ──
@@ -1158,6 +1301,13 @@ function renderStats(messages) {
     el.style.width = el.dataset.pct + "%";
     el.style.backgroundColor = el.dataset.color;
   });
+
+  panel.querySelectorAll(".subagent-link").forEach(link => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      openSubagent(link.dataset.agentId, link.dataset.description);
+    });
+  });
 }
 
 function computeStats(messages) {
@@ -1169,6 +1319,7 @@ function computeStats(messages) {
   const skillCounts = {};
   const subagents = [];
   let taskCreated = 0, taskUpdated = 0;
+  const isSubagentSession = sessionInfo && sessionInfo.is_subagent;
 
   for (const msg of messages) {
     const ts = msg.timestamp;
@@ -1177,7 +1328,7 @@ function computeStats(messages) {
       lastTs = ts;
     }
 
-    if (msg.type === "user" && !msg.isSidechain) {
+    if (msg.type === "user" && (isSubagentSession || !msg.isSidechain)) {
       const content = msg.message?.content;
       if (typeof content === "string") userMsgCount++;
     }
@@ -1210,6 +1361,7 @@ function computeStats(messages) {
           description: p.input?.description || "",
           type: p.input?.subagent_type || "general-purpose",
           model: p.input?.model || "",
+          toolUseId: p.id,
         });
       } else if (name === "TaskCreate") {
         taskCreated++;
@@ -1326,10 +1478,21 @@ function buildStatsHTML(s) {
     // List individual subagent descriptions
     html += '<div style="margin-top:6px;border-top:1px solid var(--border-color);padding-top:6px;">';
     for (const sa of s.subagents) {
+      const sub = window._subagentMap[sa.toolUseId];
       const modelTag = sa.model ? ` <span style="opacity:0.5">(${escapeHtml(sa.model)})</span>` : "";
-      html += `<div class="stats-list-item">
-        <span class="name">${escapeHtml(sa.description)}${modelTag}</span>
-      </div>`;
+      if (sub && sub.exists) {
+        html += `<div class="stats-list-item">
+          <a href="#" class="subagent-link" data-agent-id="${escapeHtml(sub.agentId)}"
+             data-description="${escapeHtml(sa.description)}"
+             style="color:var(--copy-btn-color);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">
+            ${escapeHtml(sa.description)}${modelTag}
+          </a>
+        </div>`;
+      } else {
+        html += `<div class="stats-list-item">
+          <span class="name">${escapeHtml(sa.description)}${modelTag}</span>
+        </div>`;
+      }
     }
     html += '</div></div>';
   }

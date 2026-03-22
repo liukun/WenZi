@@ -9,6 +9,7 @@ from cc_sessions.scanner import (
     SessionScanner,
     _choose_title,
     _clean_first_prompt,
+    _find_git_root,
     _git_remote_name,
     _name_from_cwd,
     _project_name_from_dir,
@@ -35,6 +36,59 @@ class TestProjectNameFromDir:
 
     def test_leading_trailing_dashes(self):
         assert _project_name_from_dir("--foo--") == "foo"
+
+
+# ---------------------------------------------------------------------------
+# _find_git_root
+# ---------------------------------------------------------------------------
+
+
+class TestFindGitRoot:
+    def test_finds_git_at_cwd(self, tmp_path: Path):
+        """CWD is the repo root itself."""
+        (tmp_path / ".git").mkdir()
+        assert _find_git_root(str(tmp_path)) == str(tmp_path)
+
+    def test_finds_git_in_parent(self, tmp_path: Path):
+        """CWD is a subdirectory of the repo."""
+        (tmp_path / ".git").mkdir()
+        sub = tmp_path / "docs"
+        sub.mkdir()
+        assert _find_git_root(str(sub)) == str(tmp_path)
+
+    def test_finds_git_multiple_levels_up(self, tmp_path: Path):
+        """CWD is nested several levels deep."""
+        (tmp_path / ".git").mkdir()
+        deep = tmp_path / "a" / "b" / "c"
+        deep.mkdir(parents=True)
+        assert _find_git_root(str(deep)) == str(tmp_path)
+
+    def test_returns_empty_when_no_git(self, tmp_path: Path):
+        """No .git anywhere up to root."""
+        sub = tmp_path / "no-repo" / "child"
+        sub.mkdir(parents=True)
+        assert _find_git_root(str(sub)) == ""
+
+    def test_finds_git_file_worktree(self, tmp_path: Path):
+        """CWD has a .git file (worktree), treated as git root."""
+        (tmp_path / ".git").write_text("gitdir: /some/path\n")
+        sub = tmp_path / "src"
+        sub.mkdir()
+        assert _find_git_root(str(sub)) == str(tmp_path)
+
+    def test_innermost_repo_wins(self, tmp_path: Path):
+        """Nested repos: inner .git found first."""
+        (tmp_path / ".git").mkdir()
+        inner = tmp_path / "submodule"
+        inner.mkdir()
+        (inner / ".git").mkdir()
+        child = inner / "lib"
+        child.mkdir()
+        assert _find_git_root(str(child)) == str(inner)
+
+    def test_nonexistent_path(self):
+        """CWD that no longer exists on disk returns empty."""
+        assert _find_git_root("/nonexistent/path/that/does/not/exist") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -633,3 +687,90 @@ class TestProjectNameResolution:
 
         # Cleanup
         _project_name_cache.pop(cwd, None)
+
+    def test_resolve_from_subdirectory(self, tmp_path: Path):
+        """Session started from repo subdirectory resolves to repo name."""
+        from cc_sessions.scanner import _project_name_cache
+
+        # Set up git repo with remote
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = git@github.com:Airead/WenZi.git\n"
+        )
+        sub = tmp_path / "docs"
+        sub.mkdir()
+
+        cwd = str(sub)
+        _project_name_cache.pop(cwd, None)
+        assert _resolve_project_name(cwd, "docs") == "WenZi"
+        _project_name_cache.pop(cwd, None)
+
+    def test_resolve_subdirectory_no_remote(self, tmp_path: Path):
+        """Subdirectory of repo without remote falls back to repo dir basename."""
+        from cc_sessions.scanner import _project_name_cache
+
+        # Git repo without remote
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "config").write_text("[core]\n    bare = false\n")
+        sub = tmp_path / "src" / "lib"
+        sub.mkdir(parents=True)
+
+        cwd = str(sub)
+        _project_name_cache.pop(cwd, None)
+        assert _resolve_project_name(cwd, "lib") == tmp_path.name
+        _project_name_cache.pop(cwd, None)
+
+    def test_scan_jsonl_subdirectory_resolves_to_repo(self, tmp_path: Path):
+        """Integration: JSONL with subdirectory CWD resolves project from git root."""
+        from cc_sessions.scanner import _project_name_cache
+
+        # Set up git repo
+        repo = tmp_path / "MyProject"
+        repo.mkdir()
+        git_dir = repo / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[remote "origin"]\n'
+            "    url = git@github.com:User/MyProject.git\n"
+        )
+        sub = repo / "docs"
+        sub.mkdir()
+
+        cwd = str(sub)
+        jsonl = tmp_path / "s1.jsonl"
+        jsonl.write_text(
+            json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                        "cwd": cwd, "message": {"content": "Hello"}}) + "\n"
+        )
+        _project_name_cache.pop(cwd, None)
+        result = _scan_session_jsonl(jsonl, "docs")
+        assert result is not None
+        assert result["project"] == "MyProject"
+        _project_name_cache.pop(cwd, None)
+
+
+class TestScannerClearCache:
+    """Test SessionScanner.clear_cache() method."""
+
+    def test_clear_cache_resets_all(self, tmp_path: Path):
+        """clear_cache() empties disk cache, index supplements, and project name cache."""
+        from cc_sessions.scanner import _project_name_cache
+
+        base = tmp_path / "projects"
+        base.mkdir()
+        cache_path = tmp_path / "cache.json"
+        scanner = SessionScanner(base_dir=base, cache_path=cache_path)
+
+        scanner._cache.put("test.jsonl", 1.0, {"session_id": "t"})
+        scanner._cache.save()
+        scanner._index_supplements["idx"] = (1.0, {})
+        _project_name_cache["test_cwd"] = "TestProject"
+
+        scanner.clear_cache()
+
+        assert scanner._cache.get("test.jsonl") is None
+        assert not cache_path.exists()
+        assert scanner._index_supplements == {}
+        assert "test_cwd" not in _project_name_cache

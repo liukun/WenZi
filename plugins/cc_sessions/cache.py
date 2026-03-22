@@ -9,7 +9,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_CACHE_VERSION = 2
+_CACHE_VERSION = 3
 
 
 class SessionCache:
@@ -33,6 +33,15 @@ class SessionCache:
     def put(self, file_path: str, mtime: float, data: dict[str, Any]) -> None:
         """Store or update a session entry."""
         self._put_entry(self._sessions, file_path, mtime, data)
+
+    def clear(self) -> None:
+        """Remove all cached entries and delete the cache file."""
+        self._sessions.clear()
+        try:
+            self._path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to delete cache file", exc_info=True)
+        self._dirty = False
 
     def prune(self, live_paths: set[str]) -> None:
         """Remove entries whose paths are not in *live_paths*."""

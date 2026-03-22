@@ -21,7 +21,7 @@ class TestSessionCacheInit:
         """Cache loads data from an existing file."""
         cache_path = tmp_path / "cache.json"
         data = {
-            "version": 2,
+            "version": 3,
             "sessions": {
                 "/tmp/s1.jsonl": {
                     "mtime": 1000.0,
@@ -100,7 +100,7 @@ class TestSessionCacheSave:
         cache.save()
         assert cache_path.is_file()
         loaded = json.loads(cache_path.read_text())
-        assert loaded["version"] == 2
+        assert loaded["version"] == 3
         assert "/tmp/s1.jsonl" in loaded["sessions"]
 
     def test_save_only_when_dirty(self, tmp_path: Path):
@@ -118,3 +118,19 @@ class TestSessionCacheSave:
         cache2 = SessionCache(cache_path)
         entry = cache2.get("/tmp/s1.jsonl")
         assert entry == (100.0, {"session_id": "s1", "title": "Hello"})
+
+
+class TestSessionCacheClear:
+    """Test clear() method."""
+
+    def test_clear_removes_entries_and_file(self, tmp_path: Path):
+        """clear() empties in-memory data and deletes the cache file."""
+        cache_file = tmp_path / "cache.json"
+        cache = SessionCache(cache_file)
+        cache.put("a.jsonl", 1.0, {"session_id": "a"})
+        cache.save()
+        assert cache_file.exists()
+
+        cache.clear()
+        assert cache.get("a.jsonl") is None
+        assert not cache_file.exists()

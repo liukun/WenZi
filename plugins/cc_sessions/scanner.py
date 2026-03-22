@@ -107,6 +107,27 @@ def _project_name_from_dir(dirname: str) -> str:
     return parts[-1] if parts else dirname
 
 
+def _find_git_root(cwd: str) -> str:
+    """Walk up from *cwd* to filesystem root looking for ``.git``.
+
+    Returns the path containing ``.git`` (directory or file), or ``""``
+    if none is found.
+    """
+    try:
+        current = Path(cwd).resolve()
+    except (OSError, ValueError):
+        return ""
+    if not current.exists():
+        return ""
+    while True:
+        if (current / ".git").exists():
+            return str(current)
+        parent = current.parent
+        if parent == current:  # reached filesystem root
+            return ""
+        current = parent
+
+
 # Cache: cwd path -> resolved project name
 _project_name_cache: dict[str, str] = {}
 
@@ -114,8 +135,12 @@ _project_name_cache: dict[str, str] = {}
 def _resolve_project_name(cwd: str, fallback: str) -> str:
     """Resolve the project name from *cwd*, with caching.
 
-    Priority: git remote origin repo name > cwd basename (before ``.``)
-    > *fallback* (directory-name derived).
+    Priority: git remote origin repo name > git root / cwd basename
+    (before ``"."``) > *fallback* (directory-name derived).
+
+    When *cwd* is a subdirectory of a git repo, the repo root is used
+    for name resolution so that all sessions in the same repo share
+    one project name.
     """
     if not cwd:
         return fallback
@@ -123,7 +148,9 @@ def _resolve_project_name(cwd: str, fallback: str) -> str:
     if cached is not None:
         return cached
 
-    name = _git_remote_name(cwd) or _name_from_cwd(cwd) or fallback
+    git_root = _find_git_root(cwd)
+    effective = git_root or cwd
+    name = _git_remote_name(effective) or _name_from_cwd(effective) or fallback
     _project_name_cache[cwd] = name
     return name
 
@@ -354,6 +381,13 @@ class SessionScanner:
 
         # In-memory cache for index supplements: {index_path: (mtime, {sid: {summary, customTitle}})}
         self._index_supplements: dict[str, tuple[float, dict[str, dict[str, str]]]] = {}
+
+    def clear_cache(self) -> None:
+        """Clear all caches (disk, in-memory) so sessions are rescanned fresh."""
+        if self._cache:
+            self._cache.clear()
+        self._index_supplements.clear()
+        _project_name_cache.clear()
 
     def scan_all(self) -> list[dict[str, Any]]:
         """Return all sessions sorted by modified descending."""
