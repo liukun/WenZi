@@ -1,7 +1,7 @@
 name = "WenZi Official"
 
 [[plugins]]
-id = "com.airead.wenzi.cc-sessions"
+id = "io.github.airead.wenzi.cc-sessions"
 name = "Claude Code Sessions"
 description = "Browse and view Claude Code session history through the launcher"
 version = "0.1.0"
