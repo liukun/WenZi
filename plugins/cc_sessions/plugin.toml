@@ -1,4 +1,5 @@
 [plugin]
+id = "com.airead.wenzi.cc-sessions"
 name = "Claude Code Sessions"
 description = "Browse and view Claude Code session history through the launcher"
 version = "0.1.0"
@@ -6,3 +7,16 @@ author = "WenZi"
 url = "https://github.com/Airead/WenZi"
 icon = "claude_icon.png"
 min_wenzi_version = "0.1.7"
+files = [
+    "__init__.py",
+    "init_plugin.py",
+    "scanner.py",
+    "reader.py",
+    "cache.py",
+    "preview.py",
+    "viewer.html",
+    "claude_icon.png",
+    "vendor/github-dark.min.css",
+    "vendor/highlight.min.js",
+    "vendor/marked.min.js",
+]
