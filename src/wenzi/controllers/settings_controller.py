@@ -1387,14 +1387,17 @@ class SettingsController:
     def _on_plugin_toggle(self, plugin_id: str, enabled: bool) -> None:
         """Enable or disable a plugin."""
         disabled = list(self._app._config.get("disabled_plugins", []))
+        changed = False
         if enabled and plugin_id in disabled:
             disabled.remove(plugin_id)
-            self._app._config["disabled_plugins"] = disabled
-            self._save_and_reload()
+            changed = True
         elif not enabled and plugin_id not in disabled:
             disabled.append(plugin_id)
-            self._app._config["disabled_plugins"] = disabled
-            self._save_and_reload()
+            changed = True
+        if not changed:
+            return
+        self._app._config["disabled_plugins"] = disabled
+        self._save_and_reload()
         self._needs_reload = True
         self._refresh_plugin_state()
         self._app._settings_panel.update_state({"show_reload_banner": True})

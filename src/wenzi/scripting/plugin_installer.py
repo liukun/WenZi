@@ -128,11 +128,16 @@ class PluginInstaller:
         return install_dir
 
     @staticmethod
+    def _escape_toml_string(value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+    @staticmethod
     def _write_install_toml(plugin_dir: str, source_url: str, version: str) -> None:
+        esc = PluginInstaller._escape_toml_string
         content = (
             "[install]\n"
-            f'source_url = "{source_url}"\n'
-            f'installed_version = "{version}"\n'
+            f'source_url = "{esc(source_url)}"\n'
+            f'installed_version = "{esc(version)}"\n'
             f'installed_at = "{datetime.now(timezone.utc).isoformat()}"\n'
         )
         with open(os.path.join(plugin_dir, INSTALL_TOML), "w") as f:
