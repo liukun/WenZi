@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shlex
@@ -44,6 +45,25 @@ def _time_ago(iso_timestamp: str) -> str:
         return f"{months} month{'s' if months != 1 else ''} ago"
     except (ValueError, TypeError):
         return ""
+
+
+def _resolve_subagent_path(root_session_path: str, agent_id: str) -> str:
+    """Resolve subagent JSONL path from root session path and agent ID."""
+    root_dir = os.path.dirname(root_session_path)
+    session_id = os.path.splitext(os.path.basename(root_session_path))[0]
+    return os.path.join(
+        root_dir, session_id, "subagents", f"agent-{agent_id}.jsonl"
+    )
+
+
+def _check_subagent_exists(
+    root_session_path: str, agent_ids: list,
+) -> dict:
+    """Check which subagent JSONL files exist on disk."""
+    return {
+        aid: os.path.isfile(_resolve_subagent_path(root_session_path, aid))
+        for aid in agent_ids
+    }
 
 
 def _filter_sessions(
