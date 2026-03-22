@@ -159,7 +159,7 @@ class TestTimeAgo:
 
 def test_search_items_use_identicon_not_static_png():
     """After integration, search items must have data URI icons, not file:// PNGs."""
-    from cc_sessions.init_plugin import _filter_sessions, _time_ago
+    from cc_sessions.init_plugin import _filter_sessions
     from cc_sessions.identicon import generate
 
     sessions = _make_sessions()
