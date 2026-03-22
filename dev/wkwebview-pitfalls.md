@@ -202,6 +202,85 @@ self._btn_meta[id(btn)] = {"key": "value"}
 WKWebView (all UI state lives in JS/DOM), but still applies to any NSObject
 delegate instances.
 
+## 9. innerHTML Inline Event Handlers Are Dead in WKWebView
+
+**Commit:** (fix/settings-bug branch)
+
+**Problem:** Inline event handlers (`onclick`, `onchange`) in HTML inserted via
+`innerHTML` do **not fire** in WKWebView. Static HTML in the template with the same
+handlers works fine.
+
+```javascript
+// BROKEN — handler never fires
+html += '<select onchange="postCallback(\\x27on_restart_key_select\\x27, this.value)">';
+container.innerHTML = html;
+
+// WORKS — static HTML in template
+<select onchange="postCallback('on_language_change', this.value)">
+```
+
+The `\\x27` escaping is not the cause — the root issue is that WKWebView does not
+compile inline event handler attributes on DOM elements created via `innerHTML`.
+
+**Solution:** Use **event delegation** on the static container element. Put data in
+`data-*` attributes, bind listeners once on the container:
+
+```javascript
+// HTML generation — data attributes only, no inline handlers
+html += '<select data-action="restart-key">';
+html += '<div class="toggle" data-action="hotkey-toggle" data-key="fn">';
+container.innerHTML = html;
+
+// Event delegation — bind once on static container, survives innerHTML rebuilds
+container.addEventListener('click', function(e) {
+  var toggle = e.target.closest('[data-action="hotkey-toggle"]');
+  if (toggle) {
+    toggle.classList.toggle('on');
+    postCallback('on_hotkey_toggle', toggle.dataset.key,
+                 toggle.classList.contains('on'));
+  }
+});
+
+container.addEventListener('change', function(e) {
+  var sel = e.target;
+  if (sel.dataset.action === 'restart-key') {
+    postCallback('on_restart_key_select', sel.value);
+  }
+});
+```
+
+This matches the pattern used by `result_window_web.html` and
+`history_browser_window_web.html`, which use `addEventListener` / event delegation
+for all dynamic content.
+
+**Key takeaway:** Never use inline `onclick`/`onchange` in dynamically generated
+HTML. Always use event delegation on the static parent container.
+
+## 10. _updateState Must Update CONFIG Before Re-rendering
+
+**Commit:** (fix/settings-bug branch)
+
+**Problem:** `_updateState()` updated DOM elements by ID (e.g. setting a select
+value), then called `renderHotkeys()` which rebuilt the entire `innerHTML` from
+`CONFIG`. Since `CONFIG` was not updated first, the re-render overwrote the new
+value with the old one.
+
+```javascript
+// BROKEN — render overwrites the DOM update
+if (state.restart_key !== undefined) {
+    document.getElementById('ctl-restart-key').value = state.restart_key;  // set new
+}
+renderHotkeys();  // rebuilds from CONFIG.restart_key (still old!) — overwrites
+
+// FIXED — update CONFIG first, let render use new value
+if (state.restart_key !== undefined) CONFIG.restart_key = state.restart_key;
+renderHotkeys();  // rebuilds from CONFIG.restart_key (now new)
+```
+
+**Key takeaway:** For any value consumed by a render function, update `CONFIG`
+before calling the render. Direct DOM manipulation is pointless if a full re-render
+follows.
+
 ## Checklist for New WKWebView Panels
 
 - [ ] Implement `_eval_js` with `_page_loaded` gate and `_pending_js` queue
@@ -214,3 +293,5 @@ delegate instances.
 - [ ] Show panel synchronously in menu callback (no `callAfter`)
 - [ ] Use `prefers-color-scheme: dark` CSS media query for dark mode
 - [ ] Reset `_page_loaded = False` and clear `_pending_js` in `close()`
+- [ ] Use event delegation for dynamic (`innerHTML`) content — never inline handlers
+- [ ] Update `CONFIG` before calling render functions in `_updateState()`

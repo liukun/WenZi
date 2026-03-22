@@ -919,6 +919,12 @@ function setToggle(id, value) {
   if (value) { el.classList.add('on'); } else { el.classList.remove('on'); }
 }
 
+function selectModelRow(row) {
+  var card = row.closest('.setting-group');
+  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
+  row.classList.add('selected');
+}
+
 function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
   document.querySelectorAll('.sidebar-item').forEach(function(s) { s.classList.remove('active'); });
@@ -960,37 +966,35 @@ function renderHotkeys() {
     html += '    <div class="setting-label">' + _esc(label) + '</div>';
     html += '  </div>';
     html += '  <div class="setting-right">';
-    // Mode dropdown: Default AI Mode, then available enhance modes
-    html += '    <select onchange="hotkeyModeChanged(\\x27' + _esc(key) + '\\x27, this.value)">';
+    // Mode dropdown
+    html += '    <select data-action="hotkey-mode" data-key="' + _esc(key) + '">';
     html += '      <option value="_default"' + (!mode || mode === '_default' ? ' selected' : '') + '>' + _esc(_t('general_tab.default_ai_mode', 'Default AI Mode')) + '</option>';
     html += '      <option value="off"' + (mode === 'off' ? ' selected' : '') + '>' + _esc(_t('general_tab.off', 'Off')) + '</option>';
     var modes = CONFIG.enhance_modes || [];
     for (var j = 0; j < modes.length; j++) {
       html += '      <option value="' + _esc(modes[j].id) + '"' + (mode === modes[j].id ? ' selected' : '') + '>' + _esc(modes[j].name) + '</option>';
     }
-    // Delete option for non-fn keys
     if (key.toLowerCase() !== 'fn') {
       html += '      <option value="_delete">' + _esc(_t('general_tab.delete_hotkey', 'Delete Hotkey')) + '</option>';
     }
     html += '    </select>';
-    html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-hotkey="' + _esc(key) + '"';
-    html += '         onclick="this.classList.toggle(\\x27on\\x27); postCallback(\\x27on_hotkey_toggle\\x27, \\x27' + _esc(key) + '\\x27, this.classList.contains(\\x27on\\x27))"></div>';
+    html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-action="hotkey-toggle" data-key="' + _esc(key) + '"></div>';
     html += '  </div>';
     html += '</div>';
   }
   // Record hotkey button
   html += '<div class="setting-row" style="justify-content:center; padding:8px;">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_record_hotkey\\x27)">' + _esc(_t('general_tab.record_hotkey', 'Record Hotkey...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="record-hotkey">' + _esc(_t('general_tab.record_hotkey', 'Record Hotkey...')) + '</button>';
   html += '</div>';
   // Restart key select
   var restartKey = CONFIG.restart_key || 'cmd';
   html += '<div class="setting-row">';
   html += '  <div class="setting-left"><div class="setting-label">' + _esc(_t('general_tab.restart_key', 'Restart Key')) + '</div></div>';
   html += '  <div class="setting-right">';
-  html += '    <select id="ctl-restart-key" onchange="postCallback(\\x27on_restart_key_select\\x27, this.value)">';
-  html += '      <option value="cmd"' + (restartKey === 'cmd' ? ' selected' : '') + '>\\u2318 Command</option>';
-  html += '      <option value="alt"' + (restartKey === 'alt' ? ' selected' : '') + '>\\u2325 Option</option>';
-  html += '      <option value="ctrl"' + (restartKey === 'ctrl' ? ' selected' : '') + '>\\u2303 Control</option>';
+  html += '    <select id="ctl-restart-key" data-action="restart-key">';
+  html += '      <option value="cmd"' + (restartKey === 'cmd' ? ' selected' : '') + '>\u2318 Command</option>';
+  html += '      <option value="alt"' + (restartKey === 'alt' ? ' selected' : '') + '>\u2325 Option</option>';
+  html += '      <option value="ctrl"' + (restartKey === 'ctrl' ? ' selected' : '') + '>\u2303 Control</option>';
   html += '    </select>';
   html += '  </div>';
   html += '</div>';
@@ -999,7 +1003,7 @@ function renderHotkeys() {
   html += '<div class="setting-row">';
   html += '  <div class="setting-left"><div class="setting-label">' + _esc(_t('general_tab.cancel_key', 'Cancel Key')) + '</div></div>';
   html += '  <div class="setting-right">';
-  html += '    <select id="ctl-cancel-key" onchange="postCallback(\\x27on_cancel_key_select\\x27, this.value)">';
+  html += '    <select id="ctl-cancel-key" data-action="cancel-key">';
   html += '      <option value="space"' + (cancelKey === 'space' ? ' selected' : '') + '>Space</option>';
   html += '      <option value="esc"' + (cancelKey === 'esc' ? ' selected' : '') + '>Esc</option>';
   html += '    </select>';
@@ -1009,6 +1013,38 @@ function renderHotkeys() {
   html += '<div class="setting-row"><div class="setting-left"><div class="setting-desc">' + _esc(_t('general_tab.restart_cancel_hint', 'Hold hotkey + press key to restart or cancel recording')) + '</div></div></div>';
   container.innerHTML = html;
 }
+
+// Event delegation for hotkeys-group (avoids innerHTML inline handler issue)
+(function() {
+  var container = document.getElementById('hotkeys-group');
+  if (!container) return;
+
+  container.addEventListener('click', function(e) {
+    var toggle = e.target.closest('[data-action="hotkey-toggle"]');
+    if (toggle) {
+      toggle.classList.toggle('on');
+      postCallback('on_hotkey_toggle', toggle.dataset.key, toggle.classList.contains('on'));
+      return;
+    }
+    if (e.target.closest('[data-action="record-hotkey"]')) {
+      postCallback('on_record_hotkey');
+      return;
+    }
+  });
+
+  container.addEventListener('change', function(e) {
+    var sel = e.target;
+    if (!sel.matches('select')) return;
+    var action = sel.dataset.action;
+    if (action === 'hotkey-mode') {
+      hotkeyModeChanged(sel.dataset.key, sel.value);
+    } else if (action === 'restart-key') {
+      postCallback('on_restart_key_select', sel.value);
+    } else if (action === 'cancel-key') {
+      postCallback('on_cancel_key_select', sel.value);
+    }
+  });
+})();
 
 function hotkeyModeChanged(keyName, value) {
   if (value === '_delete') {
@@ -1043,7 +1079,7 @@ function renderSttTab() {
     for (var i = 0; i < presets.length; i++) {
       var p = presets[i];
       var sel = (!currentRemote && p.id === currentPreset) ? ' selected' : '';
-      html += '<div class="model-row' + sel + '" onclick="selectStt(\\x27preset\\x27, \\x27' + _esc(p.id) + '\\x27, null, this)">';
+      html += '<div class="model-row' + sel + '" data-action="stt-select" data-type="preset" data-id="' + _esc(p.id) + '">';
       html += '  <div class="model-radio"></div>';
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(p.name) + '</div>';
@@ -1066,15 +1102,14 @@ function renderSttTab() {
     html += '</div>';
     for (var j = 0; j < remotes.length; j++) {
       var r = remotes[j];
-      // currentRemote is a [provider, model] pair or null
       var rsel = (currentRemote && currentRemote[0] === r.provider && currentRemote[1] === r.model) ? ' selected' : '';
-      html += '<div class="model-row' + rsel + '" onclick="selectStt(\\x27remote\\x27, \\x27' + _esc(r.provider) + '\\x27, \\x27' + _esc(r.model) + '\\x27, this)">';
+      html += '<div class="model-row' + rsel + '" data-action="stt-select" data-type="remote" data-id="' + _esc(r.provider) + '" data-model="' + _esc(r.model) + '">';
       html += '  <div class="model-radio"></div>';
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(r.display) + '</div>';
       html += '  </div>';
       html += '  <div class="model-actions">';
-      html += '    <button class="btn-small danger" onclick="event.stopPropagation(); postCallback(\\x27on_stt_remove_provider\\x27, \\x27' + _esc(r.provider) + '\\x27)">' + _esc(_t('stt_tab.remove_provider', 'Remove...')) + '</button>';
+      html += '    <button class="btn-small danger" data-action="stt-remove" data-provider="' + _esc(r.provider) + '">' + _esc(_t('stt_tab.remove_provider', 'Remove...')) + '</button>';
       html += '  </div>';
       html += '</div>';
     }
@@ -1082,22 +1117,38 @@ function renderSttTab() {
 
   // Add provider button
   html += '<div class="add-row">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_stt_add_provider\\x27)">' + _esc(_t('stt_tab.add_provider', 'Add Provider...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="stt-add">' + _esc(_t('stt_tab.add_provider', 'Add Provider...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
 }
 
-function selectStt(type, id, model, row) {
-  var card = row.closest('.setting-group');
-  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
-  row.classList.add('selected');
-  if (type === 'preset') {
-    postCallback('on_stt_select', id);
-  } else {
-    postCallback('on_stt_remote_select', id, model);
-  }
-}
+// Event delegation for stt-model-list
+(function() {
+  var container = document.getElementById('stt-model-list');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var removeBtn = e.target.closest('[data-action="stt-remove"]');
+    if (removeBtn) {
+      e.stopPropagation();
+      postCallback('on_stt_remove_provider', removeBtn.dataset.provider);
+      return;
+    }
+    if (e.target.closest('[data-action="stt-add"]')) {
+      postCallback('on_stt_add_provider');
+      return;
+    }
+    var row = e.target.closest('[data-action="stt-select"]');
+    if (row) {
+      selectModelRow(row);
+      if (row.dataset.type === 'preset') {
+        postCallback('on_stt_select', row.dataset.id);
+      } else {
+        postCallback('on_stt_remote_select', row.dataset.id, row.dataset.model);
+      }
+    }
+  });
+})();
 
 function _updateSttSelection(data) {
   // Update CONFIG and re-render speech tab
@@ -1134,12 +1185,12 @@ function renderLlmTab() {
     var items = groups[provider];
     html += '<div class="provider-header">';
     html += '  <span class="provider-name">' + _esc(provider) + '</span>';
-    html += '  <button class="btn-small danger" style="margin-left:auto;" onclick="event.stopPropagation(); postCallback(\\x27on_llm_remove_provider\\x27, \\x27' + _esc(provider) + '\\x27)">' + _esc(_t('llm_tab.remove', 'Remove...')) + '</button>';
+    html += '  <button class="btn-small danger" style="margin-left:auto;" data-action="llm-remove" data-provider="' + _esc(provider) + '">' + _esc(_t('llm_tab.remove', 'Remove...')) + '</button>';
     html += '</div>';
     for (var k = 0; k < items.length; k++) {
       var item = items[k];
       var sel = (current.provider === item.provider && current.model === item.model) ? ' selected' : '';
-      html += '<div class="model-row' + sel + '" onclick="selectLlm(\\x27' + _esc(item.provider) + '\\x27, \\x27' + _esc(item.model) + '\\x27, this)">';
+      html += '<div class="model-row' + sel + '" data-action="llm-select" data-provider="' + _esc(item.provider) + '" data-model="' + _esc(item.model) + '">';
       html += '  <div class="model-radio"></div>';
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(item.display) + '</div>';
@@ -1151,20 +1202,36 @@ function renderLlmTab() {
     }
   }
 
-  // Add provider + remove
+  // Add provider
   html += '<div class="add-row">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_llm_add_provider\\x27)">' + _esc(_t('llm_tab.add_provider', 'Add Provider...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="llm-add">' + _esc(_t('llm_tab.add_provider', 'Add Provider...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
 }
 
-function selectLlm(provider, model, row) {
-  var card = row.closest('.setting-group');
-  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
-  row.classList.add('selected');
-  postCallback('on_llm_select', provider, model);
-}
+// Event delegation for llm-model-list
+(function() {
+  var container = document.getElementById('llm-model-list');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var removeBtn = e.target.closest('[data-action="llm-remove"]');
+    if (removeBtn) {
+      e.stopPropagation();
+      postCallback('on_llm_remove_provider', removeBtn.dataset.provider);
+      return;
+    }
+    if (e.target.closest('[data-action="llm-add"]')) {
+      postCallback('on_llm_add_provider');
+      return;
+    }
+    var row = e.target.closest('[data-action="llm-select"]');
+    if (row) {
+      selectModelRow(row);
+      postCallback('on_llm_select', row.dataset.provider, row.dataset.model);
+    }
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* AI tab: Enhance modes                                               */
@@ -1179,7 +1246,7 @@ function renderAiModes() {
 
   // "Off" option — always first
   var offSel = (current === 'off') ? ' selected' : '';
-  html += '<div class="model-row' + offSel + '" onclick="selectEnhanceMode(\\x27off\\x27, this)">';
+  html += '<div class="model-row' + offSel + '" data-action="enhance-select" data-mode="off">';
   html += '  <div class="model-radio"></div>';
   html += '  <div class="model-info">';
   html += '    <div class="model-name">' + _esc(_t('ai_tab.off', 'Off')) + '</div>';
@@ -1189,30 +1256,46 @@ function renderAiModes() {
   for (var i = 0; i < modes.length; i++) {
     var m = modes[i];
     var sel = (m.id === current) ? ' selected' : '';
-    html += '<div class="model-row' + sel + '" onclick="selectEnhanceMode(\\x27' + _esc(m.id) + '\\x27, this)">';
+    html += '<div class="model-row' + sel + '" data-action="enhance-select" data-mode="' + _esc(m.id) + '">';
     html += '  <div class="model-radio"></div>';
     html += '  <div class="model-info">';
     html += '    <div class="model-name">' + _esc(m.name) + '</div>';
     html += '  </div>';
     html += '  <div class="model-actions">';
-    html += '    <button class="btn-small" onclick="event.stopPropagation(); postCallback(\\x27on_enhance_mode_edit\\x27, \\x27' + _esc(m.id) + '\\x27)">' + _esc(_t('ai_tab.edit', 'Edit')) + '</button>';
+    html += '    <button class="btn-small" data-action="enhance-edit" data-mode="' + _esc(m.id) + '">' + _esc(_t('ai_tab.edit', 'Edit')) + '</button>';
     html += '  </div>';
     html += '</div>';
   }
 
   html += '<div class="add-row">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_enhance_add_mode\\x27)">' + _esc(_t('ai_tab.add_mode', 'Add Mode...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="enhance-add">' + _esc(_t('ai_tab.add_mode', 'Add Mode...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
 }
 
-function selectEnhanceMode(modeId, row) {
-  var card = row.closest('.setting-group');
-  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
-  row.classList.add('selected');
-  postCallback('on_enhance_mode_select', modeId);
-}
+// Event delegation for ai-modes-group
+(function() {
+  var container = document.getElementById('ai-modes-group');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var editBtn = e.target.closest('[data-action="enhance-edit"]');
+    if (editBtn) {
+      e.stopPropagation();
+      postCallback('on_enhance_mode_edit', editBtn.dataset.mode);
+      return;
+    }
+    if (e.target.closest('[data-action="enhance-add"]')) {
+      postCallback('on_enhance_add_mode');
+      return;
+    }
+    var row = e.target.closest('[data-action="enhance-select"]');
+    if (row) {
+      selectModelRow(row);
+      postCallback('on_enhance_mode_select', row.dataset.mode);
+    }
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* Launcher tab: Sources                                               */
@@ -1242,17 +1325,16 @@ function renderLauncherSources() {
     html += '  <div class="setting-left">';
     html += '    <div class="setting-label">' + _esc(label) + '</div>';
     if (src.prefix) {
-      html += '    <div class="setting-desc">' + _esc(_t('launcher_tab.prefix', 'Prefix:')) + ' <input type="text" value="' + _esc(src.prefix) + '" style="width:40px;font-size:11px;padding:1px 4px;" onchange="postCallback(\\x27on_launcher_prefix_change\\x27, \\x27' + _esc(src.prefix_key) + '\\x27, this.value)"></div>';
+      html += '    <div class="setting-desc">' + _esc(_t('launcher_tab.prefix', 'Prefix:')) + ' <input type="text" value="' + _esc(src.prefix) + '" style="width:40px;font-size:11px;padding:1px 4px;" data-action="launcher-prefix" data-key="' + _esc(src.prefix_key) + '"></div>';
     }
     html += '  </div>';
     html += '  <div class="setting-right">';
     if (src.prefix_key) {
       html += '    <span class="hotkey-badge" data-source-hotkey="' + _esc(src.prefix_key) + '">' + _esc(src.hotkey || _t('launcher_tab.none', 'None')) + '</span>';
-      html += '    <button class="btn-small" onclick="postCallback(\\x27on_launcher_source_hotkey_record\\x27, \\x27' + _esc(src.prefix_key) + '\\x27)">' + _esc(_t('launcher_tab.record', 'Record')) + '</button>';
-      html += '    <button class="btn-small danger" onclick="postCallback(\\x27on_launcher_source_hotkey_clear\\x27, \\x27' + _esc(src.prefix_key) + '\\x27)">' + _esc(_t('launcher_tab.clear', 'Clear')) + '</button>';
+      html += '    <button class="btn-small" data-action="launcher-hotkey-record" data-key="' + _esc(src.prefix_key) + '">' + _esc(_t('launcher_tab.record', 'Record')) + '</button>';
+      html += '    <button class="btn-small danger" data-action="launcher-hotkey-clear" data-key="' + _esc(src.prefix_key) + '">' + _esc(_t('launcher_tab.clear', 'Clear')) + '</button>';
     }
-    html += '    <div class="toggle' + (enabled ? ' on' : '') + '"';
-    html += '         onclick="this.classList.toggle(\\x27on\\x27); postCallback(\\x27on_launcher_source_toggle\\x27, \\x27' + _esc(src.config_key) + '\\x27, this.classList.contains(\\x27on\\x27))"></div>';
+    html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-action="launcher-source-toggle" data-key="' + _esc(src.config_key) + '"></div>';
     html += '  </div>';
     html += '</div>';
     // Clipboard warning
@@ -1290,6 +1372,38 @@ function renderLauncherSources() {
 
   container.innerHTML = html;
 }
+
+// Event delegation for launcher-sources-group
+(function() {
+  var container = document.getElementById('launcher-sources-group');
+  if (!container) return;
+
+  container.addEventListener('click', function(e) {
+    var toggle = e.target.closest('[data-action="launcher-source-toggle"]');
+    if (toggle) {
+      toggle.classList.toggle('on');
+      postCallback('on_launcher_source_toggle', toggle.dataset.key, toggle.classList.contains('on'));
+      return;
+    }
+    var recordBtn = e.target.closest('[data-action="launcher-hotkey-record"]');
+    if (recordBtn) {
+      postCallback('on_launcher_source_hotkey_record', recordBtn.dataset.key);
+      return;
+    }
+    var clearBtn = e.target.closest('[data-action="launcher-hotkey-clear"]');
+    if (clearBtn) {
+      postCallback('on_launcher_source_hotkey_clear', clearBtn.dataset.key);
+      return;
+    }
+  });
+
+  container.addEventListener('change', function(e) {
+    var input = e.target.closest('[data-action="launcher-prefix"]');
+    if (input) {
+      postCallback('on_launcher_prefix_change', input.dataset.key, input.value);
+    }
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* Launcher disable state                                              */
@@ -1461,19 +1575,19 @@ function renderPluginCard(p) {
     ? '<span class="plugin-badge badge-official">Official</span>'
     : '<span class="plugin-badge badge-unverified">Unverified</span>';
   var actions = '';
+  var toggleBtn = '<div class="' + (p.enabled ? 'toggle on' : 'toggle') + '" data-action="plugin-toggle" data-id="' + _esc(p.id) + '"></div>';
+  var uninstallBtn = '<button class="btn btn-danger" data-action="plugin-uninstall" data-id="' + _esc(p.id) + '">Uninstall</button>';
   if (p.status === 'incompatible') {
     actions = '<button class="btn btn-secondary" disabled title="Requires WenZi >= ' + _esc(p.min_wenzi_version) + '">Install</button>';
   } else if (p.status === 'not_installed') {
-    actions = '<button class="btn btn-primary" onclick="installPlugin(\\\'' + _esc(p.id) + '\\\')">Install</button>';
+    actions = '<button class="btn btn-primary" data-action="plugin-install" data-id="' + _esc(p.id) + '">Install</button>';
   } else if (p.status === 'update_available') {
-    actions = '<button class="btn btn-primary" onclick="updatePlugin(\\\'' + _esc(p.id) + '\\\')">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
-    actions += toggleHtml(p.id, p.enabled);
-    actions += '<button class="btn btn-danger" onclick="uninstallPlugin(\\\'' + _esc(p.id) + '\\\')">Uninstall</button>';
+    actions = '<button class="btn btn-primary" data-action="plugin-update" data-id="' + _esc(p.id) + '">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
+    actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'installed') {
-    actions += toggleHtml(p.id, p.enabled);
-    actions += '<button class="btn btn-danger" onclick="uninstallPlugin(\\\'' + _esc(p.id) + '\\\')">Uninstall</button>';
+    actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'manually_placed') {
-    actions += toggleHtml(p.id, p.enabled);
+    actions += toggleBtn;
   }
   return '<div class="plugin-card">'
     + '<div class="plugin-icon">&#x1F9E9;</div>'
@@ -1488,23 +1602,6 @@ function renderPluginCard(p) {
     + '</div>';
 }
 
-function toggleHtml(pluginId, enabled) {
-  var cls = enabled ? 'toggle on' : 'toggle';
-  return '<div class="' + cls + '" onclick="togglePlugin(this, \\\'' + _esc(pluginId) + '\\\')"><div class="toggle-knob"></div></div>';
-}
-
-function installPlugin(id) { postCallback('on_plugin_install_by_id', id); }
-function updatePlugin(id) { postCallback('on_plugin_update', id); }
-function uninstallPlugin(id) {
-  if (confirm('Uninstall this plugin? This will delete all plugin files.')) {
-    postCallback('on_plugin_uninstall', id);
-  }
-}
-function togglePlugin(el, id) {
-  el.classList.toggle('on');
-  var enabled = el.classList.contains('on');
-  postCallback('on_plugin_toggle', id, enabled);
-}
 function installFromUrl() {
   var input = document.getElementById('plugin-url-input');
   var url = input.value.trim();
@@ -1519,7 +1616,7 @@ function renderRegistries() {
   for (var i = 0; i < registries.length; i++) {
     var r = registries[i];
     var removeBtn = r.removable
-      ? ' <button class="btn btn-small btn-danger" onclick="removeRegistry(' + i + ')">Remove</button>'
+      ? ' <button class="btn btn-small btn-danger" data-action="registry-remove" data-index="' + i + '">Remove</button>'
       : '';
     html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
       + '<span style="flex:1;font-size:13px;">' + _esc(r.name) + '</span>'
@@ -1533,7 +1630,43 @@ function addRegistry() {
   var url = input.value.trim();
   if (url) { postCallback('on_registry_add', url); input.value = ''; }
 }
-function removeRegistry(index) { postCallback('on_registry_remove', index); }
+
+// Event delegation for plugin-list and registry-list
+(function() {
+  var pluginList = document.getElementById('plugin-list');
+  if (pluginList) {
+    pluginList.addEventListener('click', function(e) {
+      var el = e.target.closest('[data-action]');
+      if (!el) return;
+      var id = el.dataset.id;
+      switch (el.dataset.action) {
+        case 'plugin-install':
+          postCallback('on_plugin_install_by_id', id); break;
+        case 'plugin-update':
+          postCallback('on_plugin_update', id); break;
+        case 'plugin-uninstall':
+          if (confirm('Uninstall this plugin? This will delete all plugin files.')) {
+            postCallback('on_plugin_uninstall', id);
+          }
+          break;
+        case 'plugin-toggle':
+          el.classList.toggle('on');
+          postCallback('on_plugin_toggle', id, el.classList.contains('on'));
+          break;
+      }
+    });
+  }
+
+  var regList = document.getElementById('registry-list');
+  if (regList) {
+    regList.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action="registry-remove"]');
+      if (btn) {
+        postCallback('on_registry_remove', parseInt(btn.dataset.index, 10));
+      }
+    });
+  }
+})();
 
 function showPluginsLoading(show) {
   var el = document.getElementById('plugins-loading');
@@ -1600,17 +1733,15 @@ function _updateState(state) {
     var cd = document.getElementById('config-dir-display');
     if (cd) cd.textContent = state.config_dir;
   }
-  if (state.restart_key !== undefined) {
-    var rk = document.getElementById('ctl-restart-key');
-    if (rk) rk.value = state.restart_key;
-  }
-  if (state.cancel_key !== undefined) {
-    var ck = document.getElementById('ctl-cancel-key');
-    if (ck) ck.value = state.cancel_key;
-  }
+  // Update CONFIG before renderHotkeys() which reads these values
+  if (state.restart_key !== undefined) CONFIG.restart_key = state.restart_key;
+  if (state.cancel_key !== undefined) CONFIG.cancel_key = state.cancel_key;
 
   // Re-render dynamic sections if their data changed
-  if (state.hotkeys !== undefined) { CONFIG.hotkeys = state.hotkeys; renderHotkeys(); }
+  if (state.hotkeys !== undefined || state.restart_key !== undefined || state.cancel_key !== undefined) {
+    if (state.hotkeys !== undefined) CONFIG.hotkeys = state.hotkeys;
+    renderHotkeys();
+  }
   if (state.stt_presets !== undefined || state.stt_remote_models !== undefined ||
       state.current_preset_id !== undefined || state.current_remote_asr !== undefined) {
     if (state.stt_presets !== undefined) CONFIG.stt_presets = state.stt_presets;

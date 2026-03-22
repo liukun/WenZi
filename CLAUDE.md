@@ -44,6 +44,10 @@ self._restore_accessory()
 
 `send_notification()` (from `statusbar.py`) may fail with `Info.plist` / `CFBundleIdentifier` errors when running directly from the terminal (`uv run`) without app bundling. This is expected during development — the function catches exceptions internally and logs them. In a packaged app notifications work normally.
 
+## WKWebView Development Reference
+
+When developing or modifying WKWebView-based panels, read `dev/wkwebview-pitfalls.md` first. It documents critical pitfalls including event handling, page load races, and state management.
+
 ## Showing NSPanel / NSWindow from Menu Callbacks
 
 When showing an NSPanel from a menu callback (e.g. clicking "Settings..."), the window must be created and displayed **synchronously within the callback**. Do NOT use `AppHelper.callAfter()` to defer the `show()` call.
