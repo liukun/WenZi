@@ -153,6 +153,8 @@ def register(wz) -> None:
                 "session_id": session["session_id"],
                 "git_branch": session.get("git_branch", ""),
                 "version": session.get("version", ""),
+                "root_session_path": session["file_path"],
+                "is_subagent": False,
             }
 
         def _copy_text(text: str) -> None:
@@ -161,6 +163,12 @@ def register(wz) -> None:
             copy_to_clipboard(text)
 
         panel.on("copy_resume", lambda data: _copy_text(data.get("text", "")))
+
+        @panel.handle("check_subagent_exists")
+        def check_subagent_exists(data):
+            root_path = data.get("root_session_path", "")
+            agent_ids = data.get("agent_ids", [])
+            return _check_subagent_exists(root_path, agent_ids)
 
         panel.show()
 
