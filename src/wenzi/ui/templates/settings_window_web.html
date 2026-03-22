@@ -374,9 +374,15 @@ input[type="range"] {
 .plugin-badge { font-size:10px; padding:2px 6px; border-radius:4px; display:inline-block; margin-left:6px; }
 .badge-official { background:#e8f5e9; color:#2e7d32; }
 .badge-unverified { background:#fff3e0; color:#e65100; }
-.plugin-actions { display:flex; gap:6px; align-items:center; flex-shrink:0; }
+.badge-pinned { background:#e3f2fd; color:#1565c0; }
+.plugin-actions { display:flex; gap:6px; align-items:center; flex-shrink:0; position:relative; }
 .plugin-error { font-size:12px; color:#d32f2f; margin-top:4px; }
 .plugin-card-error { border-color:#e57373; }
+.version-popover { position:absolute; top:100%; right:0; margin-top:4px; padding:10px; background:white; border:1px solid #d2d2d7; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:100; display:none; min-width:220px; }
+.version-popover.show { display:block; }
+.version-popover label { font-size:12px; color:#86868b; display:block; margin-bottom:4px; }
+.version-popover input { width:100%; box-sizing:border-box; border:1px solid #d2d2d7; border-radius:6px; padding:5px 8px; font-size:13px; background:white; color:#1d1d1f; font-family:inherit; margin-bottom:8px; }
+.version-popover .popover-buttons { display:flex; gap:6px; justify-content:flex-end; }
 .reload-banner { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-top:12px; background:#f5f5f7; border:1px solid #d2d2d7; border-radius:8px; }
 .manual-install-row { display:flex; gap:8px; align-items:center; }
 
@@ -433,6 +439,10 @@ input[type="range"] {
   .plugin-desc { color: #98989d; }
   .badge-official { background:#1b5e20; color:#a5d6a7; }
   .badge-unverified { background:#bf360c; color:#ffcc80; }
+  .badge-pinned { background:#0d47a1; color:#90caf9; }
+  .version-popover { background:#2a2a2a; border-color:#3a3a3a; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+  .version-popover label { color:#98989d; }
+  .version-popover input { background:#3a3a3a; color:#f5f5f7; border-color:#4a4a4a; }
   .reload-banner { background: #2a2a2a; border-color: #3a3a3a; }
   .plugin-error { color: #ef9a9a; }
   .plugin-card-error { border-color: #c62828; }
@@ -1432,16 +1442,22 @@ function renderPluginCard(p) {
   var badge = p.is_official
     ? '<span class="plugin-badge badge-official">Official</span>'
     : '<span class="plugin-badge badge-unverified">Unverified</span>';
+  if (p.pinned_ref) {
+    badge += '<span class="plugin-badge badge-pinned">Pinned at ' + _esc(p.pinned_ref) + '</span>';
+  }
   var actions = '';
   if (p.status === 'incompatible') {
     actions = '<button class="btn btn-secondary" disabled title="Requires WenZi >= ' + _esc(p.min_wenzi_version) + '">Install</button>';
   } else if (p.status === 'not_installed') {
-    actions = '<button class="btn btn-primary" data-id="' + _esc(p.id) + '" onclick="installPlugin(this.dataset.id)">Install</button>';
+    actions = '<button class="btn btn-primary" data-id="' + _esc(p.id) + '" onclick="installPlugin(this.dataset.id, event)" title="Option+click to install a specific version">Install</button>';
   } else if (p.status === 'update_available') {
     actions = '<button class="btn btn-primary" data-id="' + _esc(p.id) + '" onclick="updatePlugin(this.dataset.id)">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
     actions += toggleHtml(p.id, p.enabled);
     actions += '<button class="btn btn-danger" data-id="' + _esc(p.id) + '" onclick="uninstallPlugin(this.dataset.id)">Uninstall</button>';
   } else if (p.status === 'installed') {
+    actions += toggleHtml(p.id, p.enabled);
+    actions += '<button class="btn btn-danger" data-id="' + _esc(p.id) + '" onclick="uninstallPlugin(this.dataset.id)">Uninstall</button>';
+  } else if (p.status === 'pinned') {
     actions += toggleHtml(p.id, p.enabled);
     actions += '<button class="btn btn-danger" data-id="' + _esc(p.id) + '" onclick="uninstallPlugin(this.dataset.id)">Uninstall</button>';
   } else if (p.status === 'manually_placed') {
@@ -1456,11 +1472,16 @@ function renderPluginCard(p) {
     }
     errorHtml += '</div>';
   }
+  var displayVer = p.installed_version || p.version;
+  var versionHtml = '<span class="plugin-version">v' + _esc(displayVer) + '</span>';
+  if (p.pinned_ref && p.version && p.installed_version && p.version !== p.installed_version) {
+    versionHtml += '<span class="plugin-version"> (Latest: v' + _esc(p.version) + ')</span>';
+  }
   return '<div class="plugin-card' + (p.load_error ? ' plugin-card-error' : '') + '">'
     + '<div class="plugin-icon">&#x1F9E9;</div>'
     + '<div class="plugin-info">'
     + '<div><span class="plugin-name">' + _esc(p.name) + '</span>'
-    + '<span class="plugin-version">v' + _esc(p.version) + '</span>'
+    + versionHtml
     + badge + '</div>'
     + '<div class="plugin-author">' + _esc(p.author) + ' \u00B7 ' + _esc(p.registry_name) + '</div>'
     + '<div class="plugin-desc">' + _esc(p.description) + '</div>'
@@ -1475,7 +1496,72 @@ function toggleHtml(pluginId, enabled) {
   return '<div class="' + cls + '" data-id="' + _esc(pluginId) + '" onclick="togglePlugin(this, this.dataset.id)"><div class="toggle-knob"></div></div>';
 }
 
-function installPlugin(id) { postCallback('on_plugin_install_by_id', id); }
+function installPlugin(id, event) {
+  if (event && event.altKey) {
+    showVersionPopover(id, event.target);
+    return;
+  }
+  postCallback('on_plugin_install_by_id', id);
+}
+
+function showVersionPopover(pluginId, btn) {
+  closeVersionPopover();
+  var actions = btn.closest('.plugin-actions');
+  if (!actions) return;
+  var pop = document.createElement('div');
+  pop.className = 'version-popover show';
+  pop.id = 'version-popover';
+  pop.innerHTML =
+    '<label>Version / ref:</label>' +
+    '<input type="text" id="version-popover-input" placeholder="e.g. 0.1.0, feat/branch">' +
+    '<div class="popover-buttons">' +
+    '<button class="btn btn-secondary" onclick="closeVersionPopover()">Cancel</button>' +
+    '<button class="btn btn-primary" onclick="confirmVersionInstall()">Install</button>' +
+    '</div>';
+  pop.dataset.pluginId = pluginId;
+  actions.appendChild(pop);
+  var input = document.getElementById('version-popover-input');
+  input.focus();
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { confirmVersionInstall(); }
+    else if (e.key === 'Escape') { closeVersionPopover(); }
+  });
+  setTimeout(function() {
+    document.addEventListener('click', _popoverOutsideClick);
+  }, 0);
+  var content = document.querySelector('.content');
+  if (content) { content.addEventListener('scroll', closeVersionPopover); }
+}
+
+function _popoverOutsideClick(e) {
+  var pop = document.getElementById('version-popover');
+  if (pop && !pop.contains(e.target)) {
+    closeVersionPopover();
+  }
+}
+
+function closeVersionPopover() {
+  var pop = document.getElementById('version-popover');
+  if (pop) { pop.remove(); }
+  document.removeEventListener('click', _popoverOutsideClick);
+  var content = document.querySelector('.content');
+  if (content) { content.removeEventListener('scroll', closeVersionPopover); }
+}
+
+function confirmVersionInstall() {
+  var pop = document.getElementById('version-popover');
+  if (!pop) return;
+  var input = document.getElementById('version-popover-input');
+  var ref = (input.value || '').trim();
+  var pluginId = pop.dataset.pluginId;
+  closeVersionPopover();
+  if (ref) {
+    postCallback('on_plugin_install_by_id', pluginId, ref);
+  } else {
+    postCallback('on_plugin_install_by_id', pluginId);
+  }
+}
+
 function updatePlugin(id) { postCallback('on_plugin_update', id); }
 function showModal(bodyHtml, buttons) {
   document.getElementById('modal-body').innerHTML = bodyHtml;
