@@ -33,6 +33,9 @@ def _empty_totals() -> Dict[str, int]:
         "history_edits": 0,
         "recording_seconds": 0.0,
         "system_settings_opened": 0,
+        "correction_pairs_recorded": 0,
+        "correction_asr_hotwords_injected": 0,
+        "correction_llm_vocab_injected": 0,
     }
 
 
@@ -253,6 +256,24 @@ class UsageStats:
         """Record output method: copy to clipboard or type text."""
         key = "output_copy_clipboard" if copy_to_clipboard else "output_type_text"
         self._record(lambda data: data["totals"].__setitem__(key, data["totals"][key] + 1))
+
+    def record_correction_pairs(self, count: int) -> None:
+        """Record correction pairs recorded."""
+        self._record(lambda data: data["totals"].__setitem__(
+            "correction_pairs_recorded", data["totals"]["correction_pairs_recorded"] + count
+        ))
+
+    def record_correction_asr_hotwords_injected(self, count: int) -> None:
+        """Record ASR hotwords injected for corrections."""
+        self._record(lambda data: data["totals"].__setitem__(
+            "correction_asr_hotwords_injected", data["totals"]["correction_asr_hotwords_injected"] + count
+        ))
+
+    def record_correction_llm_vocab_injected(self, count: int) -> None:
+        """Record LLM vocab injected for corrections."""
+        self._record(lambda data: data["totals"].__setitem__(
+            "correction_llm_vocab_injected", data["totals"]["correction_llm_vocab_injected"] + count
+        ))
 
     def get_stats(self) -> Dict[str, Any]:
         """Return cumulative statistics."""

@@ -491,6 +491,60 @@ class TestFilePermissions:
         assert mode == 0o600
 
 
+class TestRecordCorrectionPairs:
+    def test_record_correction_pairs(self, stats):
+        stats.record_correction_pairs(3)
+        s = stats.get_stats()
+        assert s["totals"]["correction_pairs_recorded"] == 3
+
+    def test_record_correction_pairs_accumulates(self, stats):
+        stats.record_correction_pairs(2)
+        stats.record_correction_pairs(5)
+        s = stats.get_stats()
+        assert s["totals"]["correction_pairs_recorded"] == 7
+
+    def test_record_correction_pairs_daily(self, stats):
+        stats.record_correction_pairs(3)
+        today = stats.get_today_stats()
+        assert today["totals"]["correction_pairs_recorded"] == 3
+
+
+class TestRecordCorrectionHotwords:
+    def test_record_correction_asr_hotwords_injected(self, stats):
+        stats.record_correction_asr_hotwords_injected(5)
+        s = stats.get_stats()
+        assert s["totals"]["correction_asr_hotwords_injected"] == 5
+
+    def test_record_correction_asr_hotwords_injected_accumulates(self, stats):
+        stats.record_correction_asr_hotwords_injected(2)
+        stats.record_correction_asr_hotwords_injected(3)
+        s = stats.get_stats()
+        assert s["totals"]["correction_asr_hotwords_injected"] == 5
+
+    def test_record_correction_asr_hotwords_injected_daily(self, stats):
+        stats.record_correction_asr_hotwords_injected(5)
+        today = stats.get_today_stats()
+        assert today["totals"]["correction_asr_hotwords_injected"] == 5
+
+
+class TestRecordCorrectionLlmVocab:
+    def test_record_correction_llm_vocab_injected(self, stats):
+        stats.record_correction_llm_vocab_injected(2)
+        s = stats.get_stats()
+        assert s["totals"]["correction_llm_vocab_injected"] == 2
+
+    def test_record_correction_llm_vocab_injected_accumulates(self, stats):
+        stats.record_correction_llm_vocab_injected(1)
+        stats.record_correction_llm_vocab_injected(4)
+        s = stats.get_stats()
+        assert s["totals"]["correction_llm_vocab_injected"] == 5
+
+    def test_record_correction_llm_vocab_injected_daily(self, stats):
+        stats.record_correction_llm_vocab_injected(2)
+        today = stats.get_today_stats()
+        assert today["totals"]["correction_llm_vocab_injected"] == 2
+
+
 class TestThreadSafety:
     def test_thread_safety(self, stats):
         n_threads = 10
