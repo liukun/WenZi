@@ -407,19 +407,20 @@ input[type="range"] {
 .text-input { border: 0.5px solid #d2d2d7; border-radius: 6px; padding: 5px 10px; font-size: 13px; background: white; color: #1d1d1f; font-family: inherit; }
 
 /* Plugin cards */
-.plugin-card { display:flex; align-items:flex-start; padding:12px; border:1px solid #d2d2d7; border-radius:8px; margin-bottom:8px; gap:12px; background:white; }
+.plugin-card { display:flex; flex-wrap:wrap; align-items:flex-start; padding:12px; border:1px solid #d2d2d7; border-radius:8px; margin-bottom:8px; gap:4px 12px; background:white; }
 .plugin-icon { width:40px; height:40px; border-radius:8px; background:#f5f5f7; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
 .plugin-info { flex:1; min-width:0; }
 .plugin-name { font-weight:600; font-size:14px; }
 .plugin-version { font-size:12px; color:#86868b; margin-left:6px; }
-.plugin-author { font-size:12px; color:#86868b; }
-.plugin-desc { font-size:13px; margin-top:4px; color:#86868b; }
+.plugin-author { font-size:12px; color:#86868b; display:flex; align-items:center; gap:4px; min-width:0; }
+.plugin-author-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:1; min-width:0; }
+.plugin-body { width:100%; font-size:13px; color:#86868b; }
 .plugin-badge { font-size:10px; padding:2px 6px; border-radius:4px; display:inline-block; margin-left:6px; }
 .badge-official { background:#e8f5e9; color:#2e7d32; }
 .badge-unverified { background:#fff3e0; color:#e65100; }
-.badge-pinned { background:#e3f2fd; color:#1565c0; }
+.badge-pinned { background:#e3f2fd; color:#1565c0; flex-shrink:0; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .plugin-actions { display:flex; gap:6px; align-items:center; flex-shrink:0; position:relative; }
-.plugin-progress { height:2px; background:#e0e0e0; border-radius:1px; margin-top:8px; overflow:hidden; display:none; }
+.plugin-progress { height:2px; background:#e0e0e0; border-radius:1px; margin-top:4px; overflow:hidden; display:none; width:100%; }
 .plugin-progress.active { display:block; }
 .plugin-progress-bar { height:100%; background:#007aff; border-radius:1px; width:0%; transition:width 0.3s ease; }
 .plugin-error { font-size:12px; color:#d32f2f; margin-top:4px; }
@@ -482,7 +483,7 @@ input[type="range"] {
   .plugin-icon { background: #3a3a3a; }
   .plugin-version { color: #98989d; }
   .plugin-author { color: #98989d; }
-  .plugin-desc { color: #98989d; }
+  .plugin-body { color: #98989d; }
   .badge-official { background:#1b5e20; color:#a5d6a7; }
   .badge-unverified { background:#bf360c; color:#ffcc80; }
   .badge-pinned { background:#0d47a1; color:#90caf9; }
@@ -1612,8 +1613,9 @@ function renderPluginCard(p) {
   var badge = p.is_official
     ? '<span class="plugin-badge badge-official">Official</span>'
     : '<span class="plugin-badge badge-unverified">Unverified</span>';
+  var pinnedBadge = '';
   if (p.pinned_ref) {
-    badge += '<span class="plugin-badge badge-pinned">Pinned at ' + _esc(p.pinned_ref) + '</span>';
+    pinnedBadge = ' <span class="plugin-badge badge-pinned">Pinned at ' + _esc(p.pinned_ref) + '</span>';
   }
   var actions = '';
   var toggleBtn = '<div class="' + (p.enabled ? 'toggle on' : 'toggle') + '" data-action="plugin-toggle" data-id="' + _esc(p.id) + '"></div>';
@@ -1625,9 +1627,7 @@ function renderPluginCard(p) {
   } else if (p.status === 'update_available') {
     actions = '<button class="btn btn-primary" data-action="plugin-update" data-id="' + _esc(p.id) + '">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
     actions += toggleBtn + uninstallBtn;
-  } else if (p.status === 'installed') {
-    actions += toggleBtn + uninstallBtn;
-  } else if (p.status === 'pinned') {
+  } else if (p.status === 'installed' || p.status === 'pinned') {
     actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'manually_placed') {
     actions += toggleBtn;
@@ -1637,7 +1637,7 @@ function renderPluginCard(p) {
     errorHtml = '<div class="plugin-error">\u26A0 ' + _esc(p.load_error);
     if (p.load_traceback) {
       _pluginTracebacks[p.id] = p.load_traceback;
-      errorHtml += ' <a href="#" data-id="' + _esc(p.id) + '" onclick="showErrorDetails(this.dataset.id); return false;">Details</a>';
+      errorHtml += ' <a href="#" data-action="plugin-error-details" data-id="' + _esc(p.id) + '">Details</a>';
     }
     errorHtml += '</div>';
   }
@@ -1646,18 +1646,19 @@ function renderPluginCard(p) {
   if (p.pinned_ref && p.version && p.installed_version && p.version !== p.installed_version) {
     versionHtml += '<span class="plugin-version"> (Latest: v' + _esc(p.version) + ')</span>';
   }
+  var bodyHtml = '<div class="plugin-body">' + _esc(p.description) + errorHtml
+    + '<div class="plugin-progress"><div class="plugin-progress-bar"></div></div>'
+    + '</div>';
   return '<div class="plugin-card' + (p.load_error ? ' plugin-card-error' : '') + '" data-plugin-id="' + _esc(p.id) + '">'
     + '<div class="plugin-icon">&#x1F9E9;</div>'
     + '<div class="plugin-info">'
     + '<div><span class="plugin-name">' + _esc(p.name) + '</span>'
     + versionHtml
     + badge + '</div>'
-    + '<div class="plugin-author">' + _esc(p.author) + ' \u00B7 ' + _esc(p.registry_name) + '</div>'
-    + '<div class="plugin-desc">' + _esc(p.description) + '</div>'
-    + errorHtml
-    + '<div class="plugin-progress"><div class="plugin-progress-bar"></div></div>'
+    + '<div class="plugin-author"><span class="plugin-author-text">' + _esc(p.author) + ' \u00B7 ' + _esc(p.registry_name) + '</span>' + pinnedBadge + '</div>'
     + '</div>'
     + '<div class="plugin-actions">' + actions + '</div>'
+    + bodyHtml
     + '</div>';
 }
 
@@ -1830,6 +1831,14 @@ function closeModal() {
         case 'plugin-toggle':
           el.classList.toggle('on');
           postCallback('on_plugin_toggle', id, el.classList.contains('on'));
+          break;
+        case 'plugin-error-details':
+          e.preventDefault();
+          var tb = _pluginTracebacks[id] || 'No traceback available.';
+          showModal(
+            '<div class="modal-traceback">' + _esc(tb) + '</div>',
+            [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]
+          );
           break;
       }
     });
