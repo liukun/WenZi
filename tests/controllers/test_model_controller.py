@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 from wenzi.controllers.model_controller import (
@@ -545,3 +545,149 @@ class TestValidateProviderName:
     def test_special_chars(self):
         err = validate_provider_name("provider@home")
         assert err is not None
+
+
+# ---------------------------------------------------------------------------
+# do_verify_and_save_provider
+# ---------------------------------------------------------------------------
+
+
+def _make_verify_controller():
+    """Create a ModelController with a mocked app for verify/save tests."""
+    app = MagicMock()
+    app._config = {"ai_enhance": {"providers": {}}}
+    app._config_path = "/tmp/test_config.yaml"
+    app._enhancer = MagicMock()
+    app._enhancer.provider_names = []
+    app._enhancer.provider_name = "openai"
+    app._enhancer.model_name = "gpt-4o"
+    app._menu_builder = MagicMock()
+    ctrl = ModelController.__new__(ModelController)
+    ctrl._app = app
+    return ctrl, app
+
+
+class TestDoVerifyAndSaveProvider:
+    """Tests for do_verify_and_save_provider()."""
+
+    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    def test_add_success(self, mock_save):
+        ctrl, app = _make_verify_controller()
+        app._enhancer.verify_provider = AsyncMock(return_value=None)
+        app._enhancer.add_provider.return_value = True
+
+        result = ctrl.do_verify_and_save_provider(
+            name="test-provider",
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+            models=["model-a"],
+            extra_body={},
+            mode="add",
+        )
+
+        assert result["ok"] is True
+        app._enhancer.add_provider.assert_called_once()
+        mock_save.assert_called_once()
+
+    def test_add_duplicate_name(self):
+        ctrl, app = _make_verify_controller()
+        app._enhancer.provider_names = ["existing"]
+
+        result = ctrl.do_verify_and_save_provider(
+            name="existing",
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+            models=["model-a"],
+            extra_body={},
+            mode="add",
+        )
+
+        assert result["ok"] is False
+        assert "already exists" in result["error"]
+
+    def test_invalid_name_format(self):
+        ctrl, app = _make_verify_controller()
+
+        result = ctrl.do_verify_and_save_provider(
+            name="bad name!",
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+            models=["model-a"],
+            extra_body={},
+            mode="add",
+        )
+
+        assert result["ok"] is False
+
+    def test_verify_failure(self):
+        ctrl, app = _make_verify_controller()
+        app._enhancer.verify_provider = AsyncMock(return_value="Connection refused")
+
+        result = ctrl.do_verify_and_save_provider(
+            name="test-provider",
+            base_url="https://api.bad.com/v1",
+            api_key="sk-test",
+            models=["model-a"],
+            extra_body={},
+            mode="add",
+        )
+
+        assert result["ok"] is False
+        assert "Connection refused" in result["error"]
+
+    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    def test_edit_preserves_key_when_empty(self, mock_save):
+        ctrl, app = _make_verify_controller()
+        app._enhancer.provider_names = ["my-provider"]
+        app._config["ai_enhance"]["providers"] = {
+            "my-provider": {
+                "base_url": "https://old.com/v1",
+                "api_key": "sk-original",
+                "models": ["old-model"],
+            }
+        }
+        app._enhancer.verify_provider = AsyncMock(return_value=None)
+        app._enhancer.remove_provider.return_value = True
+        app._enhancer.add_provider.return_value = True
+
+        result = ctrl.do_verify_and_save_provider(
+            name="my-provider",
+            base_url="https://new.com/v1",
+            api_key="",  # empty = keep existing
+            models=["new-model"],
+            extra_body={},
+            mode="edit",
+        )
+
+        assert result["ok"] is True
+        # verify_provider should be called with old key
+        call_args = app._enhancer.verify_provider.call_args
+        assert call_args[0][1] == "sk-original"  # positional arg for api_key
+
+    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    def test_edit_updates_key_when_provided(self, mock_save):
+        ctrl, app = _make_verify_controller()
+        app._enhancer.provider_names = ["my-provider"]
+        app._config["ai_enhance"]["providers"] = {
+            "my-provider": {
+                "base_url": "https://old.com/v1",
+                "api_key": "sk-original",
+                "models": ["old-model"],
+            }
+        }
+        app._enhancer.verify_provider = AsyncMock(return_value=None)
+        app._enhancer.remove_provider.return_value = True
+        app._enhancer.add_provider.return_value = True
+
+        result = ctrl.do_verify_and_save_provider(
+            name="my-provider",
+            base_url="https://new.com/v1",
+            api_key="sk-new-key",
+            models=["new-model"],
+            extra_body={},
+            mode="edit",
+        )
+
+        assert result["ok"] is True
+        call_args = app._enhancer.verify_provider.call_args
+        assert call_args[0][1] == "sk-new-key"

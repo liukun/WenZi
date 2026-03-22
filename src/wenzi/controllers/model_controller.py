@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
-from wenzi.config import save_config
+from wenzi.config import save_config, save_config_with_secrets
 from wenzi.i18n import t
 from wenzi.transcription.model_registry import (
     PRESET_BY_ID,
@@ -316,6 +316,106 @@ models:
             pass
         except Exception as e:
             logger.debug("Could not remove provider draft: %s", e)
+
+    def do_verify_and_save_provider(
+        self,
+        name: str,
+        base_url: str,
+        api_key: str,
+        models: list,
+        extra_body: dict,
+        mode: str,
+    ) -> dict:
+        """Verify and save a provider. Returns {ok: True} or {ok: False, error: str}.
+
+        This is a synchronous method that runs the async verify internally.
+        Called from a background thread by settings_controller.
+        """
+        import asyncio
+
+        app = self._app
+
+        if not app._enhancer:
+            return {"ok": False, "error": "LLM enhancer not initialized"}
+
+        # Validate name format
+        name_err = validate_provider_name(name)
+        if name_err:
+            return {"ok": False, "error": name_err}
+
+        # Check duplicate in add mode
+        if mode == "add" and name in app._enhancer.provider_names:
+            return {"ok": False, "error": f"Provider '{name}' already exists"}
+
+        # In edit mode, resolve API key
+        actual_api_key = api_key
+        if mode == "edit" and not api_key:
+            existing = (
+                app._config.get("ai_enhance", {}).get("providers", {}).get(name, {})
+            )
+            actual_api_key = existing.get("api_key", "")
+            if not actual_api_key:
+                from wenzi.keychain import keychain_get
+
+                actual_api_key = (
+                    keychain_get(f"ai_enhance.providers.{name}.api_key") or ""
+                )
+            if not actual_api_key:
+                return {
+                    "ok": False,
+                    "error": "No existing API key found and none provided",
+                }
+
+        # Verify connection
+        loop = asyncio.new_event_loop()
+        try:
+            err = loop.run_until_complete(
+                app._enhancer.verify_provider(
+                    base_url,
+                    actual_api_key,
+                    models[0],
+                    extra_body=extra_body or None,
+                )
+            )
+        finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+
+        if err:
+            return {"ok": False, "error": err}
+
+        # In edit mode, remove old provider first
+        if mode == "edit":
+            app._enhancer.remove_provider(name)
+
+        # Add provider
+        success = app._enhancer.add_provider(
+            name,
+            base_url,
+            actual_api_key,
+            models,
+            extra_body=extra_body or None,
+        )
+        if not success:
+            return {"ok": False, "error": "Failed to initialize provider client"}
+
+        # Save config
+        app._config.setdefault("ai_enhance", {})
+        providers_cfg = app._config["ai_enhance"].setdefault("providers", {})
+        pcfg_save: Dict[str, Any] = {
+            "base_url": base_url,
+            "api_key": actual_api_key,
+            "models": models,
+        }
+        if extra_body:
+            pcfg_save["extra_body"] = extra_body
+        providers_cfg[name] = pcfg_save
+        save_config_with_secrets(app._config, app._config_path)
+
+        # Update menus
+        app._menu_builder.build_llm_model_menu()
+
+        return {"ok": True}
 
     # ── Local model selection ─────────────────────────────────────────
 
