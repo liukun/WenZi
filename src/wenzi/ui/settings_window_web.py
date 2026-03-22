@@ -253,6 +253,7 @@ class SettingsWebPanel:
         if msg_type == "callback":
             name = body.get("name", "")
             args = body.get("args", [])
+            logger.debug("JS callback: %s args=%s", name, args)
             if self._callbacks and name in self._callbacks:
                 cb = self._callbacks[name]
                 try:

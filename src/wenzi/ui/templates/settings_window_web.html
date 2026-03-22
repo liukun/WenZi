@@ -93,6 +93,47 @@ body {
 
 .group-title:first-of-type { margin-top: 0; }
 
+.group-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.content-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.content-title-row .content-title {
+  margin-bottom: 0;
+}
+
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.2px solid #86868b;
+  color: #86868b;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+  -webkit-user-select: none;
+  user-select: none;
+  line-height: 1;
+}
+
+.help-icon:hover {
+  color: #007aff;
+  border-color: #007aff;
+}
+
 .setting-group {
   background: white;
   border-radius: 10px;
@@ -248,6 +289,7 @@ input[type="range"] {
 }
 
 .provider-name { font-size: 12px; font-weight: 600; color: #1d1d1f; }
+.provider-header .help-icon { margin-left: 4px; margin-right: auto; }
 
 .provider-badge {
   font-size: 10px;
@@ -444,12 +486,8 @@ input[type="range"] {
   .version-popover label { color:#98989d; }
   .version-popover input { background:#3a3a3a; color:#f5f5f7; border-color:#4a4a4a; }
   .reload-banner { background: #2a2a2a; border-color: #3a3a3a; }
-  .plugin-error { color: #ef9a9a; }
-  .plugin-card-error { border-color: #c62828; }
-  .modal-overlay { background: rgba(0,0,0,0.5); }
-  .modal-box { background: #2a2a2a; border-color: #3a3a3a; }
-  .modal-message { color: #f5f5f7; }
-  .modal-traceback { background: #1a1a1a; color: #e0e0e0; }
+  .help-icon { border-color: #98989d; color: #98989d; }
+  .help-icon:hover { color: #6ca0f6; border-color: #6ca0f6; }
 }
 
 /* Confirmation modal */
@@ -513,12 +551,12 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="group-title" data-i18n="general_tab.hotkeys_section">Hotkeys</div>
+      <div class="group-title group-title-row"><span data-i18n="general_tab.hotkeys_section">Hotkeys</span><span class="help-icon" data-doc="user-guide.html#your-first-transcription">?</span></div>
       <div class="setting-group" id="hotkeys-group">
         <!-- Dynamically populated by renderHotkeys() -->
       </div>
 
-      <div class="group-title" data-i18n="general_tab.feedback_section">Feedback</div>
+      <div class="group-title group-title-row"><span data-i18n="general_tab.feedback_section">Feedback</span><span class="help-icon" data-doc="user-guide.html#recording-feedback">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-left">
@@ -549,7 +587,7 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="group-title" data-i18n="general_tab.output_section">Output</div>
+      <div class="group-title group-title-row"><span data-i18n="general_tab.output_section">Output</span><span class="help-icon" data-doc="user-guide.html#preview-mode-vs-direct-mode">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-left">
@@ -562,7 +600,7 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="group-title" data-i18n="general_tab.scripting_section">Advanced</div>
+      <div class="group-title group-title-row"><span data-i18n="general_tab.scripting_section">Advanced</span><span class="help-icon" data-doc="scripting.html#quick-start">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-left">
@@ -575,7 +613,7 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="group-title" data-i18n="general_tab.config_dir_section">Config Directory</div>
+      <div class="group-title group-title-row"><span data-i18n="general_tab.config_dir_section">Config Directory</span><span class="help-icon" data-doc="configuration.html#config-directory-resolution">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-left">
@@ -606,7 +644,7 @@ input[type="range"] {
 
     <!-- LLM Tab -->
     <div id="tab-llm" class="tab-content">
-      <div class="content-title" data-i18n="llm_tab.title">LLM</div>
+      <div class="content-title-row"><div class="content-title" data-i18n="llm_tab.title">LLM</div><span class="help-icon" data-doc="provider-model-guide.html#ai-llm-provider-configuration">?</span></div>
       <div class="setting-group" id="llm-model-list">
         <!-- Dynamically populated by renderLlmTab() -->
       </div>
@@ -630,12 +668,12 @@ input[type="range"] {
     <div id="tab-ai" class="tab-content">
       <div class="content-title" data-i18n="ai_tab.title">AI Enhancement</div>
 
-      <div class="group-title" data-i18n="ai_tab.enhance_mode">Mode</div>
+      <div class="group-title group-title-row"><span data-i18n="ai_tab.enhance_mode">Mode</span><span class="help-icon" data-doc="enhance-modes.html#how-it-works">?</span></div>
       <div class="setting-group" id="ai-modes-group">
         <!-- Dynamically populated by renderAiModes() -->
       </div>
 
-      <div class="group-title" data-i18n="ai_tab.options_section">Options</div>
+      <div class="group-title group-title-row"><span data-i18n="ai_tab.options_section">Options</span><span class="help-icon" data-doc="configuration.html#ai-enhancement">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-left">
@@ -751,7 +789,7 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="group-title" data-i18n="launcher_tab.hotkey_section">Hotkey</div>
+      <div class="group-title group-title-row"><span data-i18n="launcher_tab.hotkey_section">Hotkey</span><span class="help-icon" data-doc="scripting.html#activation">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-left">
@@ -776,7 +814,7 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="group-title" data-i18n="launcher_tab.data_sources_section">Data Sources</div>
+      <div class="group-title group-title-row"><span data-i18n="launcher_tab.data_sources_section">Data Sources</span><span class="help-icon" data-doc="scripting.html#built-in-data-sources">?</span></div>
       <div class="setting-group" id="launcher-sources-group">
         <!-- Dynamically populated by renderLauncherSources() -->
       </div>
@@ -888,6 +926,14 @@ function postCallback(name) {
   window._postMessage({type: 'callback', name: name, args: args});
 }
 
+document.addEventListener('click', function(e) {
+  var icon = e.target.closest('.help-icon');
+  if (icon && icon.dataset.doc) {
+    e.stopPropagation();
+    postCallback('on_open_doc', icon.dataset.doc);
+  }
+});
+
 function toggleClick(el, callbackName) {
   el.classList.toggle('on');
   var isOn = el.classList.contains('on');
@@ -898,6 +944,12 @@ function setToggle(id, value) {
   var el = document.getElementById(id);
   if (!el) return;
   if (value) { el.classList.add('on'); } else { el.classList.remove('on'); }
+}
+
+function selectModelRow(row) {
+  var card = row.closest('.setting-group');
+  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
+  row.classList.add('selected');
 }
 
 function switchTab(tabId) {
@@ -941,37 +993,35 @@ function renderHotkeys() {
     html += '    <div class="setting-label">' + _esc(label) + '</div>';
     html += '  </div>';
     html += '  <div class="setting-right">';
-    // Mode dropdown: Default AI Mode, then available enhance modes
-    html += '    <select onchange="hotkeyModeChanged(\\x27' + _esc(key) + '\\x27, this.value)">';
+    // Mode dropdown
+    html += '    <select data-action="hotkey-mode" data-key="' + _esc(key) + '">';
     html += '      <option value="_default"' + (!mode || mode === '_default' ? ' selected' : '') + '>' + _esc(_t('general_tab.default_ai_mode', 'Default AI Mode')) + '</option>';
     html += '      <option value="off"' + (mode === 'off' ? ' selected' : '') + '>' + _esc(_t('general_tab.off', 'Off')) + '</option>';
     var modes = CONFIG.enhance_modes || [];
     for (var j = 0; j < modes.length; j++) {
       html += '      <option value="' + _esc(modes[j].id) + '"' + (mode === modes[j].id ? ' selected' : '') + '>' + _esc(modes[j].name) + '</option>';
     }
-    // Delete option for non-fn keys
     if (key.toLowerCase() !== 'fn') {
       html += '      <option value="_delete">' + _esc(_t('general_tab.delete_hotkey', 'Delete Hotkey')) + '</option>';
     }
     html += '    </select>';
-    html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-hotkey="' + _esc(key) + '"';
-    html += '         onclick="this.classList.toggle(\\x27on\\x27); postCallback(\\x27on_hotkey_toggle\\x27, \\x27' + _esc(key) + '\\x27, this.classList.contains(\\x27on\\x27))"></div>';
+    html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-action="hotkey-toggle" data-key="' + _esc(key) + '"></div>';
     html += '  </div>';
     html += '</div>';
   }
   // Record hotkey button
   html += '<div class="setting-row" style="justify-content:center; padding:8px;">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_record_hotkey\\x27)">' + _esc(_t('general_tab.record_hotkey', 'Record Hotkey...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="record-hotkey">' + _esc(_t('general_tab.record_hotkey', 'Record Hotkey...')) + '</button>';
   html += '</div>';
   // Restart key select
   var restartKey = CONFIG.restart_key || 'cmd';
   html += '<div class="setting-row">';
   html += '  <div class="setting-left"><div class="setting-label">' + _esc(_t('general_tab.restart_key', 'Restart Key')) + '</div></div>';
   html += '  <div class="setting-right">';
-  html += '    <select id="ctl-restart-key" onchange="postCallback(\\x27on_restart_key_select\\x27, this.value)">';
-  html += '      <option value="cmd"' + (restartKey === 'cmd' ? ' selected' : '') + '>\\u2318 Command</option>';
-  html += '      <option value="alt"' + (restartKey === 'alt' ? ' selected' : '') + '>\\u2325 Option</option>';
-  html += '      <option value="ctrl"' + (restartKey === 'ctrl' ? ' selected' : '') + '>\\u2303 Control</option>';
+  html += '    <select id="ctl-restart-key" data-action="restart-key">';
+  html += '      <option value="cmd"' + (restartKey === 'cmd' ? ' selected' : '') + '>\u2318 Command</option>';
+  html += '      <option value="alt"' + (restartKey === 'alt' ? ' selected' : '') + '>\u2325 Option</option>';
+  html += '      <option value="ctrl"' + (restartKey === 'ctrl' ? ' selected' : '') + '>\u2303 Control</option>';
   html += '    </select>';
   html += '  </div>';
   html += '</div>';
@@ -980,7 +1030,7 @@ function renderHotkeys() {
   html += '<div class="setting-row">';
   html += '  <div class="setting-left"><div class="setting-label">' + _esc(_t('general_tab.cancel_key', 'Cancel Key')) + '</div></div>';
   html += '  <div class="setting-right">';
-  html += '    <select id="ctl-cancel-key" onchange="postCallback(\\x27on_cancel_key_select\\x27, this.value)">';
+  html += '    <select id="ctl-cancel-key" data-action="cancel-key">';
   html += '      <option value="space"' + (cancelKey === 'space' ? ' selected' : '') + '>Space</option>';
   html += '      <option value="esc"' + (cancelKey === 'esc' ? ' selected' : '') + '>Esc</option>';
   html += '    </select>';
@@ -990,6 +1040,38 @@ function renderHotkeys() {
   html += '<div class="setting-row"><div class="setting-left"><div class="setting-desc">' + _esc(_t('general_tab.restart_cancel_hint', 'Hold hotkey + press key to restart or cancel recording')) + '</div></div></div>';
   container.innerHTML = html;
 }
+
+// Event delegation for hotkeys-group (avoids innerHTML inline handler issue)
+(function() {
+  var container = document.getElementById('hotkeys-group');
+  if (!container) return;
+
+  container.addEventListener('click', function(e) {
+    var toggle = e.target.closest('[data-action="hotkey-toggle"]');
+    if (toggle) {
+      toggle.classList.toggle('on');
+      postCallback('on_hotkey_toggle', toggle.dataset.key, toggle.classList.contains('on'));
+      return;
+    }
+    if (e.target.closest('[data-action="record-hotkey"]')) {
+      postCallback('on_record_hotkey');
+      return;
+    }
+  });
+
+  container.addEventListener('change', function(e) {
+    var sel = e.target;
+    if (!sel.matches('select')) return;
+    var action = sel.dataset.action;
+    if (action === 'hotkey-mode') {
+      hotkeyModeChanged(sel.dataset.key, sel.value);
+    } else if (action === 'restart-key') {
+      postCallback('on_restart_key_select', sel.value);
+    } else if (action === 'cancel-key') {
+      postCallback('on_cancel_key_select', sel.value);
+    }
+  });
+})();
 
 function hotkeyModeChanged(keyName, value) {
   if (value === '_delete') {
@@ -1018,12 +1100,13 @@ function renderSttTab() {
   if (presets.length > 0) {
     html += '<div class="provider-header">';
     html += '  <span class="provider-name">' + _esc(_t('stt_tab.local_section', 'Local')) + '</span>';
+    html += '  <span class="help-icon" data-doc="provider-model-guide.html#asr-model-selection">?</span>';
     html += '  <span class="provider-badge local">On-device</span>';
     html += '</div>';
     for (var i = 0; i < presets.length; i++) {
       var p = presets[i];
       var sel = (!currentRemote && p.id === currentPreset) ? ' selected' : '';
-      html += '<div class="model-row' + sel + '" onclick="selectStt(\\x27preset\\x27, \\x27' + _esc(p.id) + '\\x27, null, this)">';
+      html += '<div class="model-row' + sel + '" data-action="stt-select" data-type="preset" data-id="' + _esc(p.id) + '">';
       html += '  <div class="model-radio"></div>';
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(p.name) + '</div>';
@@ -1041,19 +1124,19 @@ function renderSttTab() {
   if (remotes.length > 0) {
     html += '<div class="provider-header">';
     html += '  <span class="provider-name">' + _esc(_t('stt_tab.remote_section', 'Remote')) + '</span>';
+    html += '  <span class="help-icon" data-doc="provider-model-guide.html#remote-asr-providers">?</span>';
     html += '  <span class="provider-badge remote">Cloud</span>';
     html += '</div>';
     for (var j = 0; j < remotes.length; j++) {
       var r = remotes[j];
-      // currentRemote is a [provider, model] pair or null
       var rsel = (currentRemote && currentRemote[0] === r.provider && currentRemote[1] === r.model) ? ' selected' : '';
-      html += '<div class="model-row' + rsel + '" onclick="selectStt(\\x27remote\\x27, \\x27' + _esc(r.provider) + '\\x27, \\x27' + _esc(r.model) + '\\x27, this)">';
+      html += '<div class="model-row' + rsel + '" data-action="stt-select" data-type="remote" data-id="' + _esc(r.provider) + '" data-model="' + _esc(r.model) + '">';
       html += '  <div class="model-radio"></div>';
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(r.display) + '</div>';
       html += '  </div>';
       html += '  <div class="model-actions">';
-      html += '    <button class="btn-small danger" onclick="event.stopPropagation(); postCallback(\\x27on_stt_remove_provider\\x27, \\x27' + _esc(r.provider) + '\\x27)">' + _esc(_t('stt_tab.remove_provider', 'Remove...')) + '</button>';
+      html += '    <button class="btn-small danger" data-action="stt-remove" data-provider="' + _esc(r.provider) + '">' + _esc(_t('stt_tab.remove_provider', 'Remove...')) + '</button>';
       html += '  </div>';
       html += '</div>';
     }
@@ -1061,22 +1144,38 @@ function renderSttTab() {
 
   // Add provider button
   html += '<div class="add-row">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_stt_add_provider\\x27)">' + _esc(_t('stt_tab.add_provider', 'Add Provider...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="stt-add">' + _esc(_t('stt_tab.add_provider', 'Add Provider...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
 }
 
-function selectStt(type, id, model, row) {
-  var card = row.closest('.setting-group');
-  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
-  row.classList.add('selected');
-  if (type === 'preset') {
-    postCallback('on_stt_select', id);
-  } else {
-    postCallback('on_stt_remote_select', id, model);
-  }
-}
+// Event delegation for stt-model-list
+(function() {
+  var container = document.getElementById('stt-model-list');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var removeBtn = e.target.closest('[data-action="stt-remove"]');
+    if (removeBtn) {
+      e.stopPropagation();
+      postCallback('on_stt_remove_provider', removeBtn.dataset.provider);
+      return;
+    }
+    if (e.target.closest('[data-action="stt-add"]')) {
+      postCallback('on_stt_add_provider');
+      return;
+    }
+    var row = e.target.closest('[data-action="stt-select"]');
+    if (row) {
+      selectModelRow(row);
+      if (row.dataset.type === 'preset') {
+        postCallback('on_stt_select', row.dataset.id);
+      } else {
+        postCallback('on_stt_remote_select', row.dataset.id, row.dataset.model);
+      }
+    }
+  });
+})();
 
 function _updateSttSelection(data) {
   // Update CONFIG and re-render speech tab
@@ -1113,12 +1212,12 @@ function renderLlmTab() {
     var items = groups[provider];
     html += '<div class="provider-header">';
     html += '  <span class="provider-name">' + _esc(provider) + '</span>';
-    html += '  <button class="btn-small danger" style="margin-left:auto;" onclick="event.stopPropagation(); postCallback(\\x27on_llm_remove_provider\\x27, \\x27' + _esc(provider) + '\\x27)">' + _esc(_t('llm_tab.remove', 'Remove...')) + '</button>';
+    html += '  <button class="btn-small danger" style="margin-left:auto;" data-action="llm-remove" data-provider="' + _esc(provider) + '">' + _esc(_t('llm_tab.remove', 'Remove...')) + '</button>';
     html += '</div>';
     for (var k = 0; k < items.length; k++) {
       var item = items[k];
       var sel = (current.provider === item.provider && current.model === item.model) ? ' selected' : '';
-      html += '<div class="model-row' + sel + '" onclick="selectLlm(\\x27' + _esc(item.provider) + '\\x27, \\x27' + _esc(item.model) + '\\x27, this)">';
+      html += '<div class="model-row' + sel + '" data-action="llm-select" data-provider="' + _esc(item.provider) + '" data-model="' + _esc(item.model) + '">';
       html += '  <div class="model-radio"></div>';
       html += '  <div class="model-info">';
       html += '    <div class="model-name">' + _esc(item.display) + '</div>';
@@ -1130,20 +1229,36 @@ function renderLlmTab() {
     }
   }
 
-  // Add provider + remove
+  // Add provider
   html += '<div class="add-row">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_llm_add_provider\\x27)">' + _esc(_t('llm_tab.add_provider', 'Add Provider...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="llm-add">' + _esc(_t('llm_tab.add_provider', 'Add Provider...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
 }
 
-function selectLlm(provider, model, row) {
-  var card = row.closest('.setting-group');
-  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
-  row.classList.add('selected');
-  postCallback('on_llm_select', provider, model);
-}
+// Event delegation for llm-model-list
+(function() {
+  var container = document.getElementById('llm-model-list');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var removeBtn = e.target.closest('[data-action="llm-remove"]');
+    if (removeBtn) {
+      e.stopPropagation();
+      postCallback('on_llm_remove_provider', removeBtn.dataset.provider);
+      return;
+    }
+    if (e.target.closest('[data-action="llm-add"]')) {
+      postCallback('on_llm_add_provider');
+      return;
+    }
+    var row = e.target.closest('[data-action="llm-select"]');
+    if (row) {
+      selectModelRow(row);
+      postCallback('on_llm_select', row.dataset.provider, row.dataset.model);
+    }
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* AI tab: Enhance modes                                               */
@@ -1158,7 +1273,7 @@ function renderAiModes() {
 
   // "Off" option — always first
   var offSel = (current === 'off') ? ' selected' : '';
-  html += '<div class="model-row' + offSel + '" onclick="selectEnhanceMode(\\x27off\\x27, this)">';
+  html += '<div class="model-row' + offSel + '" data-action="enhance-select" data-mode="off">';
   html += '  <div class="model-radio"></div>';
   html += '  <div class="model-info">';
   html += '    <div class="model-name">' + _esc(_t('ai_tab.off', 'Off')) + '</div>';
@@ -1168,30 +1283,46 @@ function renderAiModes() {
   for (var i = 0; i < modes.length; i++) {
     var m = modes[i];
     var sel = (m.id === current) ? ' selected' : '';
-    html += '<div class="model-row' + sel + '" onclick="selectEnhanceMode(\\x27' + _esc(m.id) + '\\x27, this)">';
+    html += '<div class="model-row' + sel + '" data-action="enhance-select" data-mode="' + _esc(m.id) + '">';
     html += '  <div class="model-radio"></div>';
     html += '  <div class="model-info">';
     html += '    <div class="model-name">' + _esc(m.name) + '</div>';
     html += '  </div>';
     html += '  <div class="model-actions">';
-    html += '    <button class="btn-small" onclick="event.stopPropagation(); postCallback(\\x27on_enhance_mode_edit\\x27, \\x27' + _esc(m.id) + '\\x27)">' + _esc(_t('ai_tab.edit', 'Edit')) + '</button>';
+    html += '    <button class="btn-small" data-action="enhance-edit" data-mode="' + _esc(m.id) + '">' + _esc(_t('ai_tab.edit', 'Edit')) + '</button>';
     html += '  </div>';
     html += '</div>';
   }
 
   html += '<div class="add-row">';
-  html += '  <button class="toolbar-btn" style="font-size:13px;" onclick="postCallback(\\x27on_enhance_add_mode\\x27)">' + _esc(_t('ai_tab.add_mode', 'Add Mode...')) + '</button>';
+  html += '  <button class="toolbar-btn" style="font-size:13px;" data-action="enhance-add">' + _esc(_t('ai_tab.add_mode', 'Add Mode...')) + '</button>';
   html += '</div>';
 
   container.innerHTML = html;
 }
 
-function selectEnhanceMode(modeId, row) {
-  var card = row.closest('.setting-group');
-  card.querySelectorAll('.model-row').forEach(function(r) { r.classList.remove('selected'); });
-  row.classList.add('selected');
-  postCallback('on_enhance_mode_select', modeId);
-}
+// Event delegation for ai-modes-group
+(function() {
+  var container = document.getElementById('ai-modes-group');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var editBtn = e.target.closest('[data-action="enhance-edit"]');
+    if (editBtn) {
+      e.stopPropagation();
+      postCallback('on_enhance_mode_edit', editBtn.dataset.mode);
+      return;
+    }
+    if (e.target.closest('[data-action="enhance-add"]')) {
+      postCallback('on_enhance_add_mode');
+      return;
+    }
+    var row = e.target.closest('[data-action="enhance-select"]');
+    if (row) {
+      selectModelRow(row);
+      postCallback('on_enhance_mode_select', row.dataset.mode);
+    }
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* Launcher tab: Sources                                               */
@@ -1221,17 +1352,16 @@ function renderLauncherSources() {
     html += '  <div class="setting-left">';
     html += '    <div class="setting-label">' + _esc(label) + '</div>';
     if (src.prefix) {
-      html += '    <div class="setting-desc">' + _esc(_t('launcher_tab.prefix', 'Prefix:')) + ' <input type="text" value="' + _esc(src.prefix) + '" style="width:40px;font-size:11px;padding:1px 4px;" onchange="postCallback(\\x27on_launcher_prefix_change\\x27, \\x27' + _esc(src.prefix_key) + '\\x27, this.value)"></div>';
+      html += '    <div class="setting-desc">' + _esc(_t('launcher_tab.prefix', 'Prefix:')) + ' <input type="text" value="' + _esc(src.prefix) + '" style="width:40px;font-size:11px;padding:1px 4px;" data-action="launcher-prefix" data-key="' + _esc(src.prefix_key) + '"></div>';
     }
     html += '  </div>';
     html += '  <div class="setting-right">';
     if (src.prefix_key) {
       html += '    <span class="hotkey-badge" data-source-hotkey="' + _esc(src.prefix_key) + '">' + _esc(src.hotkey || _t('launcher_tab.none', 'None')) + '</span>';
-      html += '    <button class="btn-small" onclick="postCallback(\\x27on_launcher_source_hotkey_record\\x27, \\x27' + _esc(src.prefix_key) + '\\x27)">' + _esc(_t('launcher_tab.record', 'Record')) + '</button>';
-      html += '    <button class="btn-small danger" onclick="postCallback(\\x27on_launcher_source_hotkey_clear\\x27, \\x27' + _esc(src.prefix_key) + '\\x27)">' + _esc(_t('launcher_tab.clear', 'Clear')) + '</button>';
+      html += '    <button class="btn-small" data-action="launcher-hotkey-record" data-key="' + _esc(src.prefix_key) + '">' + _esc(_t('launcher_tab.record', 'Record')) + '</button>';
+      html += '    <button class="btn-small danger" data-action="launcher-hotkey-clear" data-key="' + _esc(src.prefix_key) + '">' + _esc(_t('launcher_tab.clear', 'Clear')) + '</button>';
     }
-    html += '    <div class="toggle' + (enabled ? ' on' : '') + '"';
-    html += '         onclick="this.classList.toggle(\\x27on\\x27); postCallback(\\x27on_launcher_source_toggle\\x27, \\x27' + _esc(src.config_key) + '\\x27, this.classList.contains(\\x27on\\x27))"></div>';
+    html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-action="launcher-source-toggle" data-key="' + _esc(src.config_key) + '"></div>';
     html += '  </div>';
     html += '</div>';
     // Clipboard warning
@@ -1269,6 +1399,38 @@ function renderLauncherSources() {
 
   container.innerHTML = html;
 }
+
+// Event delegation for launcher-sources-group
+(function() {
+  var container = document.getElementById('launcher-sources-group');
+  if (!container) return;
+
+  container.addEventListener('click', function(e) {
+    var toggle = e.target.closest('[data-action="launcher-source-toggle"]');
+    if (toggle) {
+      toggle.classList.toggle('on');
+      postCallback('on_launcher_source_toggle', toggle.dataset.key, toggle.classList.contains('on'));
+      return;
+    }
+    var recordBtn = e.target.closest('[data-action="launcher-hotkey-record"]');
+    if (recordBtn) {
+      postCallback('on_launcher_source_hotkey_record', recordBtn.dataset.key);
+      return;
+    }
+    var clearBtn = e.target.closest('[data-action="launcher-hotkey-clear"]');
+    if (clearBtn) {
+      postCallback('on_launcher_source_hotkey_clear', clearBtn.dataset.key);
+      return;
+    }
+  });
+
+  container.addEventListener('change', function(e) {
+    var input = e.target.closest('[data-action="launcher-prefix"]');
+    if (input) {
+      postCallback('on_launcher_prefix_change', input.dataset.key, input.value);
+    }
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* Launcher disable state                                              */
@@ -1446,22 +1608,21 @@ function renderPluginCard(p) {
     badge += '<span class="plugin-badge badge-pinned">Pinned at ' + _esc(p.pinned_ref) + '</span>';
   }
   var actions = '';
+  var toggleBtn = '<div class="' + (p.enabled ? 'toggle on' : 'toggle') + '" data-action="plugin-toggle" data-id="' + _esc(p.id) + '"></div>';
+  var uninstallBtn = '<button class="btn btn-danger" data-action="plugin-uninstall" data-id="' + _esc(p.id) + '">Uninstall</button>';
   if (p.status === 'incompatible') {
     actions = '<button class="btn btn-secondary" disabled title="Requires WenZi >= ' + _esc(p.min_wenzi_version) + '">Install</button>';
   } else if (p.status === 'not_installed') {
-    actions = '<button class="btn btn-primary install-btn" data-id="' + _esc(p.id) + '" onclick="installPlugin(this.dataset.id, event)">Install</button>';
+    actions = '<button class="btn btn-primary" data-action="plugin-install" data-id="' + _esc(p.id) + '">Install</button>';
   } else if (p.status === 'update_available') {
-    actions = '<button class="btn btn-primary" data-id="' + _esc(p.id) + '" onclick="updatePlugin(this.dataset.id)">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
-    actions += toggleHtml(p.id, p.enabled);
-    actions += uninstallBtn(p.id);
+    actions = '<button class="btn btn-primary" data-action="plugin-update" data-id="' + _esc(p.id) + '">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
+    actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'installed') {
-    actions += toggleHtml(p.id, p.enabled);
-    actions += uninstallBtn(p.id);
+    actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'pinned') {
-    actions += toggleHtml(p.id, p.enabled);
-    actions += uninstallBtn(p.id);
+    actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'manually_placed') {
-    actions += toggleHtml(p.id, p.enabled);
+    actions += toggleBtn;
   }
   var errorHtml = '';
   if (p.load_error) {
@@ -1491,24 +1652,45 @@ function renderPluginCard(p) {
     + '</div>';
 }
 
-function toggleHtml(pluginId, enabled) {
-  var cls = enabled ? 'toggle on' : 'toggle';
-  return '<div class="' + cls + '" data-id="' + _esc(pluginId) + '" onclick="togglePlugin(this, this.dataset.id)"><div class="toggle-knob"></div></div>';
+function installFromUrl() {
+  var input = document.getElementById('plugin-url-input');
+  var url = input.value.trim();
+  if (url) { postCallback('on_plugin_install_url', url); input.value = ''; }
 }
 
-function uninstallBtn(id) {
-  return '<button class="btn btn-danger uninstall-btn" data-id="' + _esc(id) + '" onclick="uninstallPlugin(this.dataset.id, event)">Uninstall</button>';
+function renderRegistries() {
+  var registries = CONFIG.registries || [];
+  var list = document.getElementById('registry-list');
+  if (!list) return;
+  var html = '';
+  for (var i = 0; i < registries.length; i++) {
+    var r = registries[i];
+    var removeBtn = r.removable
+      ? ' <button class="btn btn-small btn-danger" data-action="registry-remove" data-index="' + i + '">Remove</button>'
+      : '';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
+      + '<span style="flex:1;font-size:13px;">' + _esc(r.name) + '</span>'
+      + removeBtn + '</div>';
+  }
+  list.innerHTML = html;
 }
 
+function addRegistry() {
+  var input = document.getElementById('registry-url-input');
+  var url = input.value.trim();
+  if (url) { postCallback('on_registry_add', url); input.value = ''; }
+}
+
+// Alt-key state for version-specific install
 var _altKeyHeld = false;
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Alt' && !_altKeyHeld) {
     _altKeyHeld = true;
-    document.querySelectorAll('.install-btn').forEach(function(btn) {
+    document.querySelectorAll('[data-action="plugin-install"]').forEach(function(btn) {
       btn.textContent = 'Install\u2026';
     });
-    document.querySelectorAll('.uninstall-btn').forEach(function(btn) {
+    document.querySelectorAll('[data-action="plugin-uninstall"]').forEach(function(btn) {
       btn.textContent = 'Install\u2026';
       btn.classList.remove('btn-danger');
       btn.classList.add('btn-primary');
@@ -1519,24 +1701,16 @@ document.addEventListener('keydown', function(e) {
 document.addEventListener('keyup', function(e) {
   if (e.key === 'Alt') {
     _altKeyHeld = false;
-    document.querySelectorAll('.install-btn').forEach(function(btn) {
+    document.querySelectorAll('[data-action="plugin-install"]').forEach(function(btn) {
       btn.textContent = 'Install';
     });
-    document.querySelectorAll('.uninstall-btn').forEach(function(btn) {
+    document.querySelectorAll('[data-action="plugin-uninstall"]').forEach(function(btn) {
       btn.textContent = 'Uninstall';
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-danger');
     });
   }
 });
-
-function installPlugin(id, event) {
-  if (_altKeyHeld) {
-    showVersionPopover(id, event.target);
-    return;
-  }
-  postCallback('on_plugin_install_by_id', id);
-}
 
 function showVersionPopover(pluginId, btn) {
   closeVersionPopover();
@@ -1596,78 +1770,45 @@ function confirmVersionInstall() {
   }
 }
 
-function updatePlugin(id) { postCallback('on_plugin_update', id); }
-function showModal(bodyHtml, buttons) {
-  document.getElementById('modal-body').innerHTML = bodyHtml;
-  var actionsEl = document.getElementById('modal-actions');
-  actionsEl.innerHTML = '';
-  for (var i = 0; i < buttons.length; i++) {
-    var b = buttons[i];
-    var btn = document.createElement('button');
-    btn.className = 'btn ' + (b.cls || 'btn-secondary');
-    btn.textContent = b.label;
-    btn.onclick = b.action;
-    actionsEl.appendChild(btn);
+// Event delegation for plugin-list and registry-list
+(function() {
+  var pluginList = document.getElementById('plugin-list');
+  if (pluginList) {
+    pluginList.addEventListener('click', function(e) {
+      var el = e.target.closest('[data-action]');
+      if (!el) return;
+      var id = el.dataset.id;
+      switch (el.dataset.action) {
+        case 'plugin-install':
+          if (_altKeyHeld) { showVersionPopover(id, el); }
+          else { postCallback('on_plugin_install_by_id', id); }
+          break;
+        case 'plugin-update':
+          postCallback('on_plugin_update', id); break;
+        case 'plugin-uninstall':
+          if (_altKeyHeld) { showVersionPopover(id, el); }
+          else if (confirm('Uninstall this plugin? This will delete all plugin files.')) {
+            postCallback('on_plugin_uninstall', id);
+          }
+          break;
+        case 'plugin-toggle':
+          el.classList.toggle('on');
+          postCallback('on_plugin_toggle', id, el.classList.contains('on'));
+          break;
+      }
+    });
   }
-  document.getElementById('app-modal').classList.add('visible');
-}
-function closeModal() {
-  document.getElementById('app-modal').classList.remove('visible');
-}
-function uninstallPlugin(id, event) {
-  if (_altKeyHeld) {
-    showVersionPopover(id, event.target);
-    return;
-  }
-  showModal(
-    '<div class="modal-message">Uninstall this plugin? This will delete all plugin files.</div>',
-    [
-      { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-      { label: 'Uninstall', cls: 'btn-danger', action: function() { closeModal(); postCallback('on_plugin_uninstall', id); } }
-    ]
-  );
-}
-function showErrorDetails(pluginId) {
-  var tb = _pluginTracebacks[pluginId] || 'No traceback available.';
-  showModal(
-    '<div class="modal-traceback">' + _esc(tb) + '</div>',
-    [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]
-  );
-}
-function togglePlugin(el, id) {
-  el.classList.toggle('on');
-  var enabled = el.classList.contains('on');
-  postCallback('on_plugin_toggle', id, enabled);
-}
-function installFromUrl() {
-  var input = document.getElementById('plugin-url-input');
-  var url = input.value.trim();
-  if (url) { postCallback('on_plugin_install_url', url); input.value = ''; }
-}
 
-function renderRegistries() {
-  var registries = CONFIG.registries || [];
-  var list = document.getElementById('registry-list');
-  if (!list) return;
-  var html = '';
-  for (var i = 0; i < registries.length; i++) {
-    var r = registries[i];
-    var removeBtn = r.removable
-      ? ' <button class="btn btn-small btn-danger" onclick="removeRegistry(' + i + ')">Remove</button>'
-      : '';
-    html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
-      + '<span style="flex:1;font-size:13px;">' + _esc(r.name) + '</span>'
-      + removeBtn + '</div>';
+  var regList = document.getElementById('registry-list');
+  if (regList) {
+    regList.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action="registry-remove"]');
+      if (btn) {
+        postCallback('on_registry_remove', parseInt(btn.dataset.index, 10));
+      }
+    });
   }
-  list.innerHTML = html;
-}
-
-function addRegistry() {
-  var input = document.getElementById('registry-url-input');
-  var url = input.value.trim();
-  if (url) { postCallback('on_registry_add', url); input.value = ''; }
-}
-function removeRegistry(index) { postCallback('on_registry_remove', index); }
+})();
 
 function showPluginsLoading(show) {
   var el = document.getElementById('plugins-loading');
@@ -1734,17 +1875,15 @@ function _updateState(state) {
     var cd = document.getElementById('config-dir-display');
     if (cd) cd.textContent = state.config_dir;
   }
-  if (state.restart_key !== undefined) {
-    var rk = document.getElementById('ctl-restart-key');
-    if (rk) rk.value = state.restart_key;
-  }
-  if (state.cancel_key !== undefined) {
-    var ck = document.getElementById('ctl-cancel-key');
-    if (ck) ck.value = state.cancel_key;
-  }
+  // Update CONFIG before renderHotkeys() which reads these values
+  if (state.restart_key !== undefined) CONFIG.restart_key = state.restart_key;
+  if (state.cancel_key !== undefined) CONFIG.cancel_key = state.cancel_key;
 
   // Re-render dynamic sections if their data changed
-  if (state.hotkeys !== undefined) { CONFIG.hotkeys = state.hotkeys; renderHotkeys(); }
+  if (state.hotkeys !== undefined || state.restart_key !== undefined || state.cancel_key !== undefined) {
+    if (state.hotkeys !== undefined) CONFIG.hotkeys = state.hotkeys;
+    renderHotkeys();
+  }
   if (state.stt_presets !== undefined || state.stt_remote_models !== undefined ||
       state.current_preset_id !== undefined || state.current_remote_asr !== undefined) {
     if (state.stt_presets !== undefined) CONFIG.stt_presets = state.stt_presets;
