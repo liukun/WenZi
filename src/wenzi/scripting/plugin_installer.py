@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import tempfile
 import tomllib
 from datetime import datetime, timezone
 
@@ -36,19 +37,14 @@ class PluginInstaller:
 
         version = str(section.get("version", ""))
         files = self._parse_files(section)
-
         install_dir = self._resolve_install_dir(plugin_id)
         base_url = source_url.rsplit("/", 1)[0]
 
-        os.makedirs(install_dir, exist_ok=True)
+        tempdir = self._download_to_temp(base_url, files, raw, source_url, version)
         try:
-            self._download_files(base_url, files, install_dir)
-            with open(os.path.join(install_dir, "plugin.toml"), "wb") as f:
-                f.write(raw)
-            self._write_install_toml(install_dir, source_url, version)
-        except Exception:
-            if os.path.isdir(install_dir):
-                shutil.rmtree(install_dir)
+            self._atomic_replace(tempdir, install_dir)
+        except BaseException:
+            shutil.rmtree(tempdir, ignore_errors=True)
             raise
         return install_dir
 
@@ -83,6 +79,43 @@ class PluginInstaller:
         shutil.rmtree(plugin_dir)
 
     # -- private helpers --
+
+    def _download_to_temp(
+        self, base_url: str, files: list[str], raw_toml: bytes,
+        source_url: str, version: str,
+    ) -> str:
+        """Download plugin files to a temp directory inside plugins_dir.
+
+        Returns the temp directory path. Cleans up on failure.
+        """
+        os.makedirs(self._plugins_dir, exist_ok=True)
+        tempdir = tempfile.mkdtemp(dir=self._plugins_dir, prefix="_tmp_")
+        try:
+            self._download_files(base_url, files, tempdir)
+            with open(os.path.join(tempdir, "plugin.toml"), "wb") as f:
+                f.write(raw_toml)
+            self._write_install_toml(tempdir, source_url, version)
+        except BaseException:
+            shutil.rmtree(tempdir, ignore_errors=True)
+            raise
+        return tempdir
+
+    @staticmethod
+    def _atomic_replace(tempdir: str, target: str) -> None:
+        """Atomically replace *target* with *tempdir*, backing up if needed."""
+        backup = target + ".bak"
+        if os.path.isdir(target):
+            if os.path.isdir(backup):
+                shutil.rmtree(backup)
+            os.rename(target, backup)
+            try:
+                os.rename(tempdir, target)
+            except BaseException:
+                os.rename(backup, target)
+                raise
+            shutil.rmtree(backup, ignore_errors=True)
+        else:
+            os.rename(tempdir, target)
 
     @staticmethod
     def _fetch_plugin_toml(source_url: str) -> tuple[bytes, dict]:

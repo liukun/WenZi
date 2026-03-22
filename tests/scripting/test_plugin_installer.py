@@ -130,6 +130,44 @@ class TestInstall:
             for d in os.listdir(plugins_dir)
         )
 
+    def test_install_failure_preserves_existing_plugin(self, plugins_dir, serve_dir, http_server):
+        """Re-installing a plugin with a broken source preserves the original."""
+        # First, install a working plugin
+        (serve_dir / "alpha").mkdir()
+        (serve_dir / "alpha" / "__init__.py").write_bytes(b"# v1 working")
+        (serve_dir / "alpha" / "plugin.toml").write_text(
+            '[plugin]\n'
+            'id = "com.example.alpha"\n'
+            'name = "Alpha"\n'
+            'version = "1.0.0"\n'
+            'files = ["__init__.py"]\n'
+        )
+        installer = PluginInstaller(plugins_dir)
+        install_dir = installer.install(f"{http_server}/alpha/plugin.toml")
+        assert os.path.isfile(os.path.join(install_dir, "__init__.py"))
+
+        # Now update the source to reference a missing file
+        (serve_dir / "alpha" / "plugin.toml").write_text(
+            '[plugin]\n'
+            'id = "com.example.alpha"\n'
+            'name = "Alpha"\n'
+            'version = "2.0.0"\n'
+            'files = ["__init__.py", "missing.py"]\n'
+        )
+
+        # Re-install should fail
+        with pytest.raises(Exception):
+            installer.install(f"{http_server}/alpha/plugin.toml")
+
+        # Original plugin files must still be intact
+        assert os.path.isfile(os.path.join(install_dir, "__init__.py"))
+        content = open(os.path.join(install_dir, "__init__.py"), "rb").read()
+        assert content == b"# v1 working"
+        # No leftover temp directories
+        assert not any(
+            e.startswith("_tmp_") for e in os.listdir(plugins_dir)
+        )
+
     def test_install_dir_uses_full_bundle_id(self, plugins_dir, serve_dir, http_server):
         """Install directory name is derived from the full bundle ID."""
         (serve_dir / "myplugin").mkdir()
