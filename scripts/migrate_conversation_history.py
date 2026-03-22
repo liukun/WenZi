@@ -26,7 +26,8 @@ from glob import glob
 
 
 def _default_data_dir() -> str:
-    return os.path.expanduser("~/.config/WenZi")
+    from wenzi.config import DEFAULT_DATA_DIR
+    return os.path.expanduser(DEFAULT_DATA_DIR)
 
 
 def _backup_file(path: str, backup_dir: str) -> str:
