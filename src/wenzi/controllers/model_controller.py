@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
-from wenzi.config import save_config, save_config_with_secrets
+from wenzi.config import is_keychain_enabled, save_config
 from wenzi.i18n import t
 from wenzi.transcription.model_registry import (
     PRESET_BY_ID,
@@ -301,7 +301,7 @@ models:
         if mode == "edit" and not api_key:
             existing = providers.get(name, {})
             actual_api_key = existing.get("api_key", "")
-            if not actual_api_key:
+            if not actual_api_key and is_keychain_enabled(app._config):
                 from wenzi.keychain import keychain_get
 
                 actual_api_key = (
@@ -331,7 +331,7 @@ models:
             "api_key": actual_api_key,
             "models": models,
         }
-        save_config_with_secrets(app._config, app._config_path)
+        save_config(app._config, app._config_path)
 
         # Update menus
         app._menu_builder.build_model_menu()
@@ -375,7 +375,7 @@ models:
                 app._config.get("ai_enhance", {}).get("providers", {}).get(name, {})
             )
             actual_api_key = existing.get("api_key", "")
-            if not actual_api_key:
+            if not actual_api_key and is_keychain_enabled(app._config):
                 from wenzi.keychain import keychain_get
 
                 actual_api_key = (
@@ -431,7 +431,7 @@ models:
         if extra_body:
             pcfg_save["extra_body"] = extra_body
         providers_cfg[name] = pcfg_save
-        save_config_with_secrets(app._config, app._config_path)
+        save_config(app._config, app._config_path)
 
         # Update menus
         app._menu_builder.build_llm_model_menu()
@@ -944,13 +944,12 @@ models:
 
             app._config.setdefault("asr", {})
             providers_cfg = app._config["asr"].setdefault("providers", {})
-            from wenzi.config import save_config_with_secrets
             providers_cfg[name] = {
                 "base_url": base_url,
                 "api_key": api_key,
                 "models": models,
             }
-            save_config_with_secrets(app._config, app._config_path)
+            save_config(app._config, app._config_path)
             self._remove_asr_provider_draft()
 
             app._menu_builder.build_model_menu()
@@ -1001,9 +1000,9 @@ models:
             providers_cfg.pop(pname, None)
 
             # Clean up Keychain entries for this provider
-            from wenzi.keychain import keychain_delete, keychain_list
-            for account in keychain_list(f"asr.providers.{pname}."):
-                keychain_delete(account)
+            if is_keychain_enabled(app._config):
+                from wenzi.keychain import keychain_clear_prefix
+                keychain_clear_prefix(f"asr.providers.{pname}.")
 
             save_config(app._config, app._config_path)
 

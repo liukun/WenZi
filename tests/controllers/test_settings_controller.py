@@ -547,10 +547,9 @@ class TestLlmVerifySave:
 class TestLlmDeleteProvider:
     """Tests for llm_delete_provider() via WebView."""
 
-    @patch("wenzi.controllers.settings_controller.keychain_list", return_value=[])
-    @patch("wenzi.controllers.settings_controller.keychain_delete")
+    @patch("wenzi.controllers.settings_controller.keychain_clear_prefix")
     @patch("wenzi.controllers.settings_controller.save_config")
-    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_kc_del, mock_kc_list, ctrl, mock_app):
+    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_kc_clear, ctrl, mock_app):
         mock_app._enhancer.remove_provider.return_value = True
         mock_app._enhancer.provider_name = "openai"
         mock_app._enhancer.model_name = "gpt-4o"
@@ -604,10 +603,9 @@ class TestSttVerifySave:
 class TestSttDeleteProvider:
     """Tests for stt_delete_provider() via WebView."""
 
-    @patch("wenzi.controllers.settings_controller.keychain_list", return_value=[])
-    @patch("wenzi.controllers.settings_controller.keychain_delete")
+    @patch("wenzi.controllers.settings_controller.keychain_clear_prefix")
     @patch("wenzi.controllers.settings_controller.save_config")
-    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_kc_del, mock_kc_list, ctrl, mock_app):
+    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_kc_clear, ctrl, mock_app):
         mock_app._config["asr"] = {
             "providers": {"groq": {"base_url": "u", "api_key": "k", "models": ["m"]}},
             "default_provider": "groq",
@@ -621,10 +619,9 @@ class TestSttDeleteProvider:
         mock_save.assert_called_once()
         mock_app._menu_builder.build_model_menu.assert_called_once()
 
-    @patch("wenzi.controllers.settings_controller.keychain_list", return_value=[])
-    @patch("wenzi.controllers.settings_controller.keychain_delete")
+    @patch("wenzi.controllers.settings_controller.keychain_clear_prefix")
     @patch("wenzi.controllers.settings_controller.save_config")
-    def test_delete_active_provider_clears_remote(self, mock_save, mock_kc_del, mock_kc_list, ctrl, mock_app):
+    def test_delete_active_provider_clears_remote(self, mock_save, mock_kc_clear, ctrl, mock_app):
         """Deleting the active STT provider should clear current_remote_asr."""
         mock_app._config["asr"] = {
             "providers": {"groq": {"base_url": "u", "api_key": "k", "models": ["m"]}},

@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
 from wenzi import get_version
-from wenzi.config import BUILTIN_REGISTRY_URL, save_config
-from wenzi.keychain import keychain_delete, keychain_list
+from wenzi.config import BUILTIN_REGISTRY_URL, is_keychain_enabled, save_config
+from wenzi.keychain import keychain_clear_prefix
 from wenzi.enhance.enhancer import MODE_OFF
 from wenzi.i18n import build_doc_url, t
 from wenzi.transcription.model_registry import (
@@ -777,8 +777,8 @@ class SettingsController:
                 app._config["asr"]["default_provider"] = None
                 app._config["asr"]["default_model"] = None
 
-            for account in keychain_list(f"asr.providers.{provider}."):
-                keychain_delete(account)
+            if is_keychain_enabled(app._config):
+                keychain_clear_prefix(f"asr.providers.{provider}.")
 
             app._menu_builder.build_model_menu()
             app._menu_builder.update_model_checkmarks()
@@ -882,8 +882,8 @@ class SettingsController:
             providers_cfg = app._config["ai_enhance"].get("providers", {})
             providers_cfg.pop(provider, None)
 
-            for account in keychain_list(f"ai_enhance.providers.{provider}."):
-                keychain_delete(account)
+            if is_keychain_enabled(app._config):
+                keychain_clear_prefix(f"ai_enhance.providers.{provider}.")
 
             app._config["ai_enhance"]["default_provider"] = app._enhancer.provider_name
             app._config["ai_enhance"]["default_model"] = app._enhancer.model_name

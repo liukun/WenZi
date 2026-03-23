@@ -12,6 +12,7 @@ from wenzi.config import (
     DEFAULT_CONFIG,
     ConfigError,
     KEYCHAIN_SENTINEL,
+    is_keychain_enabled,
     load_config,
     resolve_config_dir,
     save_config,
@@ -229,6 +230,34 @@ class TestLoadConfig:
         assert config == dict(DEFAULT_CONFIG)
         # Restore permissions for cleanup
         config_file.chmod(0o644)
+
+
+class TestLoadConfigKeychainGating:
+    """Tests that load_config only syncs secrets when keychain is enabled."""
+
+    @patch("wenzi.config.sync_secrets_to_keychain", return_value=False)
+    def test_keychain_disabled_skips_sync(self, mock_sync, tmp_path):
+        """When keychain.enabled is false, sync_secrets_to_keychain is not called."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps({"keychain": {"enabled": False}}))
+        load_config(str(config_file))
+        mock_sync.assert_not_called()
+
+    @patch("wenzi.config.sync_secrets_to_keychain", return_value=False)
+    def test_keychain_default_skips_sync(self, mock_sync, tmp_path):
+        """Default config (no keychain key) skips sync."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text("{}")
+        load_config(str(config_file))
+        mock_sync.assert_not_called()
+
+    @patch("wenzi.config.sync_secrets_to_keychain", return_value=False)
+    def test_keychain_enabled_calls_sync(self, mock_sync, tmp_path):
+        """When keychain.enabled is true, sync_secrets_to_keychain is called."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps({"keychain": {"enabled": True}}))
+        load_config(str(config_file))
+        mock_sync.assert_called_once()
 
 
 class TestSaveConfig:
@@ -769,6 +798,22 @@ class TestSyncSecretsToKeychain:
         assert config["ai_enhance"]["providers"]["openai"]["extra_body"] == {"temperature": 0.5}
 
 
+class TestIsKeychainEnabled:
+    """Tests for is_keychain_enabled helper."""
+
+    def test_enabled(self):
+        assert is_keychain_enabled({"keychain": {"enabled": True}}) is True
+
+    def test_disabled(self):
+        assert is_keychain_enabled({"keychain": {"enabled": False}}) is False
+
+    def test_missing_keychain_section(self):
+        assert is_keychain_enabled({}) is False
+
+    def test_missing_enabled_key(self):
+        assert is_keychain_enabled({"keychain": {}}) is False
+
+
 class TestSaveConfigWithSecrets:
     """Tests for save_config_with_secrets."""
 
@@ -786,6 +831,7 @@ class TestSaveConfigWithSecrets:
                 }
             },
             "asr": {"providers": {}},
+            "keychain": {"enabled": True},
         }
         save_config_with_secrets(config, str(tmp_path / "config.json"))
         # In-memory must still have real values
@@ -806,6 +852,7 @@ class TestSaveConfigWithSecrets:
                 }
             },
             "asr": {"providers": {}},
+            "keychain": {"enabled": True},
         }
         path = str(tmp_path / "config.json")
         save_config_with_secrets(config, path)
@@ -824,6 +871,7 @@ class TestSaveConfigWithSecrets:
                 }
             },
             "asr": {"providers": {}},
+            "keychain": {"enabled": True},
         }
         path = str(tmp_path / "config.json")
         save_config_with_secrets(config, path)
@@ -844,9 +892,50 @@ class TestSaveConfigWithSecrets:
                 }
             },
             "asr": {"providers": {}},
+            "keychain": {"enabled": True},
         }
         path = str(tmp_path / "config.json")
         save_config_with_secrets(config, path)
         saved = json.loads(open(path).read())
         assert saved["ai_enhance"]["providers"]["openai"]["models"] == ["gpt-4o"]
         assert saved["ai_enhance"]["providers"]["openai"]["extra_body"] == {"temperature": 0.5}
+
+    def test_keychain_disabled_saves_plaintext(self, tmp_path):
+        """When keychain is disabled, save_config_with_secrets saves plaintext without touching Keychain."""
+        config = {
+            "ai_enhance": {
+                "providers": {
+                    "openai": {
+                        "api_key": "sk-real-key",
+                        "base_url": "https://api.openai.com/v1",
+                        "models": ["gpt-4o"],
+                    }
+                }
+            },
+            "asr": {"providers": {}},
+            "keychain": {"enabled": False},
+        }
+        path = str(tmp_path / "config.json")
+        with patch("wenzi.config.keychain_set") as mock_set:
+            save_config_with_secrets(config, path)
+            mock_set.assert_not_called()
+        saved = json.loads(open(path).read())
+        assert saved["ai_enhance"]["providers"]["openai"]["api_key"] == "sk-real-key"
+        assert saved["ai_enhance"]["providers"]["openai"]["base_url"] == "https://api.openai.com/v1"
+
+    def test_keychain_missing_from_config_saves_plaintext(self, tmp_path):
+        """When keychain key is absent, defaults to disabled — saves plaintext."""
+        config = {
+            "ai_enhance": {
+                "providers": {
+                    "openai": {"api_key": "sk-real-key"}
+                }
+            },
+            "asr": {"providers": {}},
+        }
+        path = str(tmp_path / "config.json")
+        with patch("wenzi.config.keychain_set") as mock_set:
+            save_config_with_secrets(config, path)
+            mock_set.assert_not_called()
+        saved = json.loads(open(path).read())
+        assert saved["ai_enhance"]["providers"]["openai"]["api_key"] == "sk-real-key"

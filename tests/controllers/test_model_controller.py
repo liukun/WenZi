@@ -517,7 +517,7 @@ def _make_verify_controller():
 class TestDoVerifyAndSaveProvider:
     """Tests for do_verify_and_save_provider()."""
 
-    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    @patch("wenzi.controllers.model_controller.save_config")
     def test_add_success(self, mock_save):
         ctrl, app = _make_verify_controller()
         app._enhancer.verify_provider = AsyncMock(return_value=None)
@@ -582,7 +582,7 @@ class TestDoVerifyAndSaveProvider:
         assert result["ok"] is False
         assert "Connection refused" in result["error"]
 
-    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    @patch("wenzi.controllers.model_controller.save_config")
     def test_edit_preserves_key_when_empty(self, mock_save):
         ctrl, app = _make_verify_controller()
         app._enhancer.provider_names = ["my-provider"]
@@ -611,7 +611,7 @@ class TestDoVerifyAndSaveProvider:
         call_args = app._enhancer.verify_provider.call_args
         assert call_args[0][1] == "sk-original"  # positional arg for api_key
 
-    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    @patch("wenzi.controllers.model_controller.save_config")
     def test_edit_updates_key_when_provided(self, mock_save):
         ctrl, app = _make_verify_controller()
         app._enhancer.provider_names = ["my-provider"]
@@ -660,7 +660,7 @@ def _make_stt_verify_controller():
 class TestDoVerifyAndSaveSttProvider:
     """Tests for do_verify_and_save_stt_provider()."""
 
-    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    @patch("wenzi.controllers.model_controller.save_config")
     @patch("wenzi.transcription.whisper_api.WhisperAPITranscriber")
     def test_add_success(self, mock_whisper_cls, mock_save):
         ctrl, app = _make_stt_verify_controller()
@@ -727,7 +727,7 @@ class TestDoVerifyAndSaveSttProvider:
         assert result["ok"] is False
         assert "Connection refused" in result["error"]
 
-    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    @patch("wenzi.controllers.model_controller.save_config")
     @patch("wenzi.transcription.whisper_api.WhisperAPITranscriber")
     def test_edit_preserves_key_when_empty(self, mock_whisper_cls, mock_save):
         ctrl, app = _make_stt_verify_controller()
@@ -753,7 +753,7 @@ class TestDoVerifyAndSaveSttProvider:
             "https://new.com/v1", "gsk-original", "new-model"
         )
 
-    @patch("wenzi.controllers.model_controller.save_config_with_secrets")
+    @patch("wenzi.controllers.model_controller.save_config")
     @patch("wenzi.transcription.whisper_api.WhisperAPITranscriber")
     def test_edit_updates_key_when_provided(self, mock_whisper_cls, mock_save):
         ctrl, app = _make_stt_verify_controller()

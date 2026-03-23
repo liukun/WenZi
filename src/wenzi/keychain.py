@@ -224,3 +224,9 @@ def keychain_list(prefix: str = "") -> List[str]:
         logger.exception("keychain_list failed")
         return []
     return [a for a in all_accounts if a.startswith(prefix)]
+
+
+def keychain_clear_prefix(prefix: str) -> None:
+    """Delete all Keychain accounts whose names start with *prefix*."""
+    for account in keychain_list(prefix):
+        keychain_delete(account)

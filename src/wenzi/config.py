@@ -388,6 +388,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "plugins": {
         "extra_registries": [],
     },
+    "keychain": {
+        "enabled": False,
+    },
 }
 
 # FunASR model config (aligned with vocotype-cli)
@@ -503,6 +506,10 @@ def save_config(config: Dict[str, Any], path: Optional[str] = None) -> None:
 
     If no path is given, uses ~/.config/WenZi/config.json.
     Writes are suppressed when the readonly flag is set.
+
+    When Keychain integration is enabled, secret fields (api_key, base_url)
+    are written to the macOS Keychain and replaced with sentinel values on
+    disk.  The in-memory *config* dict is never modified.
     """
     if _config_readonly:
         logger.warning("Config save skipped: config is in readonly mode (parse error at startup)")
@@ -511,12 +518,14 @@ def save_config(config: Dict[str, Any], path: Optional[str] = None) -> None:
     if not path:
         path = DEFAULT_CONFIG_PATH
 
+    save_cfg = _scrub_secrets_for_disk(config)
+
     expanded = os.path.expanduser(path)
     config_dir = os.path.dirname(expanded)
     os.makedirs(config_dir, exist_ok=True)
 
     with open(expanded, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+        json.dump(save_cfg, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.chmod(expanded, 0o600)
 
@@ -624,6 +633,10 @@ SECRET_SECTIONS = ["ai_enhance", "asr"]
 SECRET_FIELDS = {"api_key", "base_url"}
 
 
+def is_keychain_enabled(config: Dict[str, Any]) -> bool:
+    """Check if Keychain integration is enabled in config."""
+    return config.get("keychain", {}).get("enabled", False)
+
 
 def sync_secrets_to_keychain(config: Dict[str, Any]) -> bool:
     """Sync sensitive provider fields with macOS Keychain.
@@ -633,7 +646,7 @@ def sync_secrets_to_keychain(config: Dict[str, Any]) -> bool:
 
     The in-memory config always holds real values, never sentinels.
     Returns True if any plaintext was written to Keychain (caller should
-    re-save to disk via ``save_config_with_secrets``).
+    re-save to disk so the sentinels are persisted).
     """
     dirty = False
     for section in SECRET_SECTIONS:
@@ -662,16 +675,21 @@ def sync_secrets_to_keychain(config: Dict[str, Any]) -> bool:
     return dirty
 
 
-def save_config_with_secrets(config: Dict[str, Any], path: Optional[str] = None) -> None:
-    """Save config to disk, writing secret fields to Keychain and replacing with sentinel.
+def _scrub_secrets_for_disk(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a config copy with secret fields replaced by Keychain sentinels.
 
-    The in-memory config dict is NOT modified — only the on-disk copy gets sentinels.
+    When Keychain is disabled, returns the original dict unchanged (no copy).
+    When enabled, deep-copies the config, writes each secret to Keychain, and
+    replaces the value with ``KEYCHAIN_SENTINEL`` on success.
     """
+    if not is_keychain_enabled(config):
+        return config
+
     import copy
 
-    save_cfg = copy.deepcopy(config)
+    scrubbed = copy.deepcopy(config)
     for section in SECRET_SECTIONS:
-        providers = save_cfg.get(section, {}).get("providers", {})
+        providers = scrubbed.get(section, {}).get("providers", {})
         for name, pcfg in providers.items():
             for field in SECRET_FIELDS:
                 if field not in pcfg or pcfg[field] == KEYCHAIN_SENTINEL:
@@ -679,7 +697,11 @@ def save_config_with_secrets(config: Dict[str, Any], path: Optional[str] = None)
                 account = f"{section}.providers.{name}.{field}"
                 if keychain_set(account, pcfg[field]):
                     pcfg[field] = KEYCHAIN_SENTINEL
-    save_config(save_cfg, path)
+    return scrubbed
+
+
+# Backward-compatible alias — save_config now handles secrets internally.
+save_config_with_secrets = save_config
 
 
 class ConfigError:
@@ -753,8 +775,9 @@ def load_config(path: Optional[str] = None) -> tuple[Dict[str, Any], Optional[Co
 
     validate_config(config)
 
-    # Sync secrets with macOS Keychain
-    if sync_secrets_to_keychain(config):
-        save_config_with_secrets(config, path)
+    # Sync secrets with macOS Keychain (only when enabled via config file)
+    if is_keychain_enabled(config):
+        if sync_secrets_to_keychain(config):
+            save_config(config, path)
 
     return config, None

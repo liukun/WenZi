@@ -203,3 +203,33 @@ class TestKeychainList:
             kc.keychain_list("any.prefix")
 
         mock_list.assert_called_once_with(_SERVICE)
+
+
+# ---------------------------------------------------------------------------
+# keychain_clear_prefix
+# ---------------------------------------------------------------------------
+
+
+class TestKeychainClearPrefix:
+    def test_deletes_matching_accounts(self):
+        """keychain_clear_prefix deletes all accounts matching the prefix."""
+        with (
+            patch.object(kc, "keychain_list", return_value=["p.a", "p.b"]) as mock_list,
+            patch.object(kc, "keychain_delete") as mock_delete,
+        ):
+            kc.keychain_clear_prefix("p.")
+
+        mock_list.assert_called_once_with("p.")
+        assert mock_delete.call_count == 2
+        mock_delete.assert_any_call("p.a")
+        mock_delete.assert_any_call("p.b")
+
+    def test_no_matches_no_deletes(self):
+        """keychain_clear_prefix does nothing when no accounts match."""
+        with (
+            patch.object(kc, "keychain_list", return_value=[]),
+            patch.object(kc, "keychain_delete") as mock_delete,
+        ):
+            kc.keychain_clear_prefix("missing.")
+
+        mock_delete.assert_not_called()
