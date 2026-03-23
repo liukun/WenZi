@@ -96,7 +96,7 @@ class TestClipboardSource:
         result = source.search("")
         assert len(result) == 2
 
-    def test_substring_filter(self):
+    def test_fuzzy_filter(self):
         now = time.time()
         monitor = self._make_monitor_with_entries([
             {"text": "hello world", "timestamp": now - 60},
@@ -107,6 +107,59 @@ class TestClipboardSource:
         result = source.search("hello")
         assert len(result) == 2
         assert "hello" in result[0].title.lower()
+
+    def test_prefix_match_ranked_first(self):
+        """Prefix match (score 100) should rank above substring (score 60)."""
+        now = time.time()
+        monitor = self._make_monitor_with_entries([
+            {"text": "contains zkverify in middle", "timestamp": now - 10},
+            {"text": "zkverify starts here", "timestamp": now - 60},
+        ])
+        source = ClipboardSource(monitor)
+        result = source.search("zk")
+        assert len(result) == 2
+        # Prefix match should be first despite being older
+        assert result[0].title.startswith("zkverify")
+
+    def test_same_score_preserves_recency(self):
+        """Items with equal match score should keep recency order."""
+        now = time.time()
+        monitor = self._make_monitor_with_entries([
+            {"text": "zkfoo", "timestamp": now - 10},
+            {"text": "zkbar", "timestamp": now - 60},
+        ])
+        source = ClipboardSource(monitor)
+        result = source.search("zk")
+        assert len(result) == 2
+        # Both are prefix matches (score 100), newer should be first
+        assert result[0].title == "zkfoo"
+        assert result[1].title == "zkbar"
+
+    def test_scattered_char_match(self):
+        """Scattered character match (e.g. 'zk' in 'pizza knot')."""
+        now = time.time()
+        monitor = self._make_monitor_with_entries([
+            {"text": "pizza knot", "timestamp": now - 10},
+            {"text": "no match here", "timestamp": now - 60},
+        ])
+        source = ClipboardSource(monitor)
+        result = source.search("zk")
+        assert len(result) == 1
+        assert "pizza" in result[0].title
+
+    def test_empty_query_no_sorting(self):
+        """Empty query should return results in original recency order."""
+        now = time.time()
+        monitor = self._make_monitor_with_entries([
+            {"text": "zkfirst", "timestamp": now - 10},
+            {"text": "alpha", "timestamp": now - 60},
+        ])
+        monitor.version = 1
+        source = ClipboardSource(monitor)
+        result = source.search("")
+        assert len(result) == 2
+        assert result[0].title == "zkfirst"
+        assert result[1].title == "alpha"
 
     def test_case_insensitive(self):
         now = time.time()
