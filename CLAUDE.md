@@ -187,8 +187,9 @@ git push origin --delete <branch>   # skip if GitHub auto-deleted it
    - **`datas`**: ensure non-Python resource files referenced via `os.path.dirname(__file__)` are included (e.g. `src/wenzi/audio/sounds` → `wenzi/audio/sounds`). PyInstaller does NOT auto-bundle data files from source directories
    - **`collect_all`**: use for third-party packages with native extensions or bundled data (e.g. `mlx`, `sherpa_onnx`, `librosa`). Without this, native `.so/.dylib` or data files will be missing at runtime
    - **Removed modules**: delete entries for modules that no longer exist in the codebase
-3. Update version in `pyproject.toml` (single source of truth — all other files read from it dynamically)
-4. Run `uv lock` to sync `uv.lock` with the new version — this is **required** because `uv.lock` records the package version and won't update until `uv lock` is explicitly run
-5. Commit the version bump together with `uv.lock`: `git add pyproject.toml uv.lock && git commit -m "chore: bump version to X.Y.Z"`
-6. Tag: `git tag vX.Y.Z`
-7. Push: `git push && git push --tags`
+3. Sync plugins: verify each `plugin.toml` `files` list matches disk (`ls plugins/*/`), then `make sync-registry`
+4. Update version in `pyproject.toml` (single source of truth — all other files read from it dynamically)
+5. Run `uv lock` to sync `uv.lock` with the new version — this is **required** because `uv.lock` records the package version and won't update until `uv lock` is explicitly run
+6. Commit the version bump together with `uv.lock`: `git add pyproject.toml uv.lock && git commit -m "chore: bump version to X.Y.Z"`
+7. Tag: `git tag vX.Y.Z`
+8. Push: `git push && git push --tags`

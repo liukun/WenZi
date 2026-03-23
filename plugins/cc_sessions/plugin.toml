@@ -6,7 +6,7 @@ version = "0.1.1"
 author = "WenZi"
 url = "https://github.com/Airead/WenZi"
 icon = "claude_icon.png"
-min_wenzi_version = "0.1.7"
+min_wenzi_version = "0.1.8"
 files = [
     "__init__.py",
     "init_plugin.py",
