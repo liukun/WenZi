@@ -25,6 +25,7 @@ def _make_mock_monitor(entries, version=None):
             image_width=e.get("image_width", 0),
             image_height=e.get("image_height", 0),
             image_size=e.get("image_size", 0),
+            ocr_text=e.get("ocr_text", ""),
         )
         for e in entries
     ]
@@ -478,6 +479,70 @@ class TestImageEntries:
             result = source.search("")
         result[0].delete_action()
         monitor.delete_image.assert_called_once_with("test.png")
+
+
+class TestImageOCRSearch:
+    """Tests for OCR text search in image entries."""
+
+    def test_image_search_by_ocr_text(self):
+        """Searching for OCR text should match image entries."""
+        now = time.time()
+        monitor = _make_mock_monitor([
+            {
+                "image_path": "screenshot.png",
+                "image_width": 800,
+                "image_height": 600,
+                "image_size": 50000,
+                "timestamp": now,
+                "ocr_text": "Hello World from screenshot",
+            },
+            {"text": "unrelated text", "timestamp": now - 10},
+        ])
+        source = ClipboardSource(monitor)
+        with patch("os.path.isfile", return_value=False):
+            result = source.search("hello")
+        assert len(result) == 1
+        assert "Image:" in result[0].title
+
+    def test_image_search_ocr_empty_no_effect(self):
+        """Empty ocr_text should not affect search behavior."""
+        now = time.time()
+        monitor = _make_mock_monitor([
+            {
+                "image_path": "test.png",
+                "image_width": 100,
+                "image_height": 100,
+                "image_size": 1000,
+                "timestamp": now,
+                "ocr_text": "",
+            },
+        ])
+        source = ClipboardSource(monitor)
+        with patch("os.path.isfile", return_value=False):
+            result = source.search("hello")
+        assert len(result) == 0
+
+    def test_image_search_ocr_and_title_both_searchable(self):
+        """Both OCR text and image title should be searchable."""
+        now = time.time()
+        monitor = _make_mock_monitor([
+            {
+                "image_path": "test.png",
+                "image_width": 1920,
+                "image_height": 1080,
+                "image_size": 50000,
+                "timestamp": now,
+                "ocr_text": "Login Page",
+            },
+        ])
+        source = ClipboardSource(monitor)
+        with patch("os.path.isfile", return_value=False):
+            # Search by OCR text
+            result1 = source.search("login")
+            assert len(result1) == 1
+            # Search by dimensions
+            result2 = source.search("1920")
+            assert len(result2) == 1
 
 
 class TestAltModifier:

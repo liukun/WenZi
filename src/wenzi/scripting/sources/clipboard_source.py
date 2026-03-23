@@ -197,8 +197,11 @@ class ClipboardSource:
 
                 score = 0
                 if q:
+                    fields = [display, subtitle]
+                    if entry.ocr_text:
+                        fields.append(entry.ocr_text)
                     matched, score = fuzzy_match_fields(
-                        q, (display, subtitle),
+                        q, tuple(fields),
                     )
                     if not matched:
                         continue
