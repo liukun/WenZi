@@ -13,6 +13,16 @@ from wenzi.scripting.api._async_util import (
 )
 
 
+def _poll_caplog(caplog, pattern, timeout=2.0):
+    """Poll caplog until a record matching *pattern* appears."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if any(pattern in r.message for r in caplog.records):
+            return
+        time.sleep(0.005)
+    raise AssertionError(f"Expected log containing {pattern!r} not found within {timeout}s")
+
+
 class TestWrapAsync:
     """Tests for wrap_async()."""
 
@@ -94,9 +104,7 @@ class TestWrapAsync:
         cb = wrap_async(bad_async)
         cb()
         done.wait(timeout=5.0)
-        # Give time for the done callback to fire and log
-        time.sleep(0.1)
-        assert any("test error from async" in r.message for r in caplog.records)
+        _poll_caplog(caplog, "test error from async")
 
     def test_sync_exception_not_caught(self):
         """Sync callback exceptions should propagate normally."""
@@ -153,8 +161,7 @@ class TestSubmitAndLog:
 
         _submit_and_log(bad_coro())
         done.wait(timeout=5.0)
-        time.sleep(0.1)
-        assert any("bad type" in r.message for r in caplog.records)
+        _poll_caplog(caplog, "bad type")
 
 
 class TestScriptTaskTracker:
@@ -179,7 +186,7 @@ class TestScriptTaskTracker:
         asyncio.run_coroutine_threadsafe(long_running(), loop)
 
         # Give the task a moment to start
-        time.sleep(0.05)
+        time.sleep(0.01)
 
         # Find and track the task
         def _find_and_track():
@@ -190,7 +197,7 @@ class TestScriptTaskTracker:
                     return
 
         loop.call_soon_threadsafe(_find_and_track)
-        time.sleep(0.05)
+        time.sleep(0.01)
 
         tracker.cancel_all(grace_timeout=2.0)
         cancel_hit.wait(timeout=5.0)
@@ -214,7 +221,7 @@ class TestScriptTaskTracker:
 
         asyncio.run_coroutine_threadsafe(quick(), loop)
 
-        time.sleep(0.05)
+        time.sleep(0.01)
 
         def _find_and_track():
             for t in asyncio.all_tasks(loop):
@@ -223,7 +230,7 @@ class TestScriptTaskTracker:
                     tracker.track(t)
 
         loop.call_soon_threadsafe(_find_and_track)
-        time.sleep(0.1)
+        time.sleep(0.02)
 
         # Task completed, should be auto-removed
         assert len(tracker._tasks) == 0
