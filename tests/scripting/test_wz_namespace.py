@@ -85,7 +85,7 @@ class TestWZNamespace:
         reg = ScriptingRegistry()
         wz = _WZNamespace(reg)
         wz.notify("Test", "msg")
-        mock_send.assert_called_once_with("Test", "", "msg")
+        mock_send.assert_called_once_with("Test", "", "msg", sound="default")
 
     @patch("wenzi.scripting.api.execute._run")
     def test_execute_returns_dict(self, mock_run):

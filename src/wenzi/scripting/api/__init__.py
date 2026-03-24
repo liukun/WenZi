@@ -140,9 +140,16 @@ class _WZNamespace:
         """Show a brief floating alert message."""
         _alert_fn(text, duration)
 
-    def notify(self, title: str, message: str = "") -> None:
-        """Send a macOS notification."""
-        _notify_fn(title, message)
+    def notify(
+        self, title: str, message: str = "", sound: str | None = "default",
+    ) -> None:
+        """Send a macOS notification.
+
+        Args:
+            sound: ``"default"`` for system sound, ``None`` for silent,
+                or a macOS sound name (e.g. ``"Glass"``, ``"Ping"``).
+        """
+        _notify_fn(title, message, sound=sound)
 
     def keystroke(self, key: str, modifiers: list[str] | None = None) -> None:
         """Synthesize a keystroke."""
