@@ -7,6 +7,8 @@ import os
 import threading
 from typing import TYPE_CHECKING
 
+from wenzi import async_loop
+
 if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
@@ -284,9 +286,7 @@ Output only the processed text without any explanation."""
             enhance_info=enhance_info,
         )
 
-        def _build():
-            import asyncio as _asyncio
-
+        async def _build_async():
             from wenzi.enhance.vocabulary_builder import BuildCallbacks, VocabularyBuilder
 
             ai_cfg = app._config.get("ai_enhance", {})
@@ -312,14 +312,9 @@ Output only the processed text without any explanation."""
             old_status = app._current_status
             app._set_status("statusbar.status.vocab_building")
             try:
-                loop = _asyncio.new_event_loop()
-                summary = loop.run_until_complete(
-                    builder.build(cancel_event=cancel_event, callbacks=callbacks)
+                summary = await builder.build(
+                    cancel_event=cancel_event, callbacks=callbacks
                 )
-                # Shut down async generators before closing the loop to avoid
-                # "Task was destroyed but it is pending" warnings from streams
-                loop.run_until_complete(loop.shutdown_asyncgens())
-                loop.close()
 
                 # Reload vocabulary index if enhancer has one
                 if app._enhancer and app._enhancer.vocab_index is not None:
@@ -350,8 +345,7 @@ Output only the processed text without any explanation."""
                 app._set_status(old_status or "statusbar.status.ready")
                 progress_panel.close()
 
-        build_thread = threading.Thread(target=_build, daemon=True)
-        build_thread.start()
+        async_loop.submit(_build_async())
 
     def on_preview_toggle(self, sender) -> None:
         """Toggle preview window on/off."""

@@ -60,6 +60,9 @@ class LiveTranscriptionOverlay:
     # Alpha value for the inactive (waiting-for-recording) state
     _INACTIVE_ALPHA = 0.35
 
+    # Track all live instances for bulk cleanup
+    _instances: set[LiveTranscriptionOverlay] = set()
+
     def __init__(self) -> None:
         self._panel: object = None
         self._text_field: object = None
@@ -67,6 +70,7 @@ class LiveTranscriptionOverlay:
         self._screen_center_y: float = 0  # cached for repositioning
         self._appearance_timer: object = None
         self._active: bool = True
+        LiveTranscriptionOverlay._instances.add(self)
 
     _TEXT_COLOR = None
 
@@ -245,3 +249,10 @@ class LiveTranscriptionOverlay:
     def close(self) -> None:
         """Alias for hide() for consistency with other panels."""
         self.hide()
+        LiveTranscriptionOverlay._instances.discard(self)
+
+    @classmethod
+    def close_all(cls) -> None:
+        """Close every live overlay instance. Must be called on the main thread."""
+        for inst in list(cls._instances):
+            inst.close()

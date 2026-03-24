@@ -527,6 +527,7 @@ class RecordingController:
             self._reset_to_idle()
             return
         if not app._recorder.is_recording:
+            self._reset_to_idle()
             return
         logger.info("Hotkey released, stopping recording")
 
@@ -747,13 +748,13 @@ class RecordingController:
             logger.debug("Live overlay updated: %s", text[:50] if text else "(empty)")
 
     def _hide_live_overlay(self) -> None:
-        """Hide and close the live transcription overlay."""
+        """Hide and close all live transcription overlays."""
         from PyObjCTools import AppHelper
 
         def _close():
-            if self._live_overlay is not None:
-                self._live_overlay.close()
-                self._live_overlay = None
+            from wenzi.ui.live_transcription_overlay import LiveTranscriptionOverlay
+            LiveTranscriptionOverlay.close_all()
+            self._live_overlay = None
 
         AppHelper.callAfter(_close)
 
@@ -970,7 +971,6 @@ class RecordingController:
             try:
                 async for chunk, chunk_usage, is_thinking in gen:
                     if cancel_event.is_set():
-                        app._enhancer.cancel_stream()
                         return
                     if is_thinking == "retry" and chunk:
                         had_thinking = True
@@ -1059,7 +1059,6 @@ class RecordingController:
                         try:
                             async for chunk, chunk_usage, is_thinking in gen:
                                 if cancel_event.is_set():
-                                    app._enhancer.cancel_stream()
                                     return
                                 if is_thinking == "retry" and chunk:
                                     had_thinking = True

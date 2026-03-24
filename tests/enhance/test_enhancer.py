@@ -339,12 +339,14 @@ class TestTextEnhancerAddRemoveProvider:
         client.close = AsyncMock()
         return client
 
-    def test_remove_provider_success(self):
+    @patch("wenzi.enhance.enhancer.async_loop")
+    def test_remove_provider_success(self, mock_async_loop):
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_multi_provider_config())
+            client_openai = self._mock_client()
             enhancer._providers = {
                 "ollama": (self._mock_client(), ["qwen2.5:7b"], {}),
-                "openai": (self._mock_client(), ["gpt-4o"], {}),
+                "openai": (client_openai, ["gpt-4o"], {}),
             }
             enhancer._active_provider = "openai"
             enhancer._active_model = "gpt-4o"
@@ -355,6 +357,8 @@ class TestTextEnhancerAddRemoveProvider:
         # Should auto-switch to remaining provider
         assert enhancer.provider_name == "ollama"
         assert enhancer.model_name == "qwen2.5:7b"
+        # Should submit client.close() to the shared loop
+        mock_async_loop.submit.assert_called_once()
 
     def test_remove_nonexistent_provider(self):
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
@@ -365,7 +369,8 @@ class TestTextEnhancerAddRemoveProvider:
         result = enhancer.remove_provider("nonexistent")
         assert result is False
 
-    def test_remove_inactive_provider(self):
+    @patch("wenzi.enhance.enhancer.async_loop")
+    def test_remove_inactive_provider(self, _mock_async_loop):
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_multi_provider_config())
             enhancer._providers = {
@@ -381,7 +386,8 @@ class TestTextEnhancerAddRemoveProvider:
         assert enhancer.provider_name == "ollama"
         assert enhancer.model_name == "qwen2.5:7b"
 
-    def test_remove_last_provider(self):
+    @patch("wenzi.enhance.enhancer.async_loop")
+    def test_remove_last_provider(self, _mock_async_loop):
         with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
             enhancer = TextEnhancer(_make_config())
             enhancer._providers = {

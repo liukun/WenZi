@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import threading
 from typing import Any, Callable, Dict, Optional
 
+from wenzi import async_loop
 from wenzi.statusbar import send_notification
 
 logger = logging.getLogger(__name__)
@@ -94,11 +94,10 @@ class AutoVocabBuilder:
         return self._building
 
     def _run_silent_build(self) -> None:
-        """Start a background thread to build vocabulary silently."""
-        t = threading.Thread(target=self._build, daemon=True)
-        t.start()
+        """Submit vocabulary build to the shared asyncio loop."""
+        async_loop.submit(self._build_async())
 
-    def _build(self) -> None:
+    async def _build_async(self) -> None:
         """Execute incremental vocabulary build, reload index, and notify."""
         if self._on_status_update:
             self._on_status_update("VB ...")
@@ -167,10 +166,7 @@ class AutoVocabBuilder:
                 on_batch_retry=_on_batch_retry,
             )
 
-            loop = asyncio.new_event_loop()
-            summary = loop.run_until_complete(builder.build(callbacks=callbacks))
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.close()
+            summary = await builder.build(callbacks=callbacks)
 
             # Reload vocabulary index
             if self._enhancer and self._enhancer.vocab_index is not None:

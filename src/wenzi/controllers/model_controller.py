@@ -9,6 +9,8 @@ import re
 import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from wenzi import async_loop
+
 if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
@@ -352,8 +354,6 @@ models:
         This is a synchronous method that runs the async verify internally.
         Called from a background thread by settings_controller.
         """
-        import asyncio
-
         app = self._app
 
         if not app._enhancer:
@@ -388,19 +388,14 @@ models:
                 }
 
         # Verify connection
-        loop = asyncio.new_event_loop()
-        try:
-            err = loop.run_until_complete(
-                app._enhancer.verify_provider(
-                    base_url,
-                    actual_api_key,
-                    models[0],
-                    extra_body=extra_body or None,
-                )
+        err = async_loop.submit(
+            app._enhancer.verify_provider(
+                base_url,
+                actual_api_key,
+                models[0],
+                extra_body=extra_body or None,
             )
-        finally:
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.close()
+        ).result(timeout=15)
 
         if err:
             return {"ok": False, "error": err}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from unittest.mock import MagicMock, patch
@@ -138,7 +139,7 @@ class TestBuildExecution:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             return_value=mock_builder,
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         mock_enhancer.vocab_index.reload.assert_called_once()
         mock_notify.assert_called_once()
@@ -160,7 +161,7 @@ class TestBuildExecution:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             return_value=mock_builder,
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         mock_notify.assert_not_called()
         assert builder._building is False
@@ -174,7 +175,7 @@ class TestBuildExecution:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             side_effect=Exception("LLM unavailable"),
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         assert builder._building is False
 
@@ -205,7 +206,7 @@ class TestOnBuildDoneCallback:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             return_value=mock_builder,
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         callback.assert_called_once()
 
@@ -219,7 +220,7 @@ class TestOnBuildDoneCallback:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             side_effect=Exception("fail"),
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         callback.assert_not_called()
 
@@ -376,7 +377,7 @@ class TestStatusUpdate:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             return_value=mock_builder,
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         # "VB ..." (start), "VB 0/5" (init), "VB 1/5" (Python), "VB 2/5" (Java),
         # "VB 5/5" (batch_done snaps to records), "" (restore)
@@ -401,7 +402,7 @@ class TestStatusUpdate:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             side_effect=Exception("fail"),
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         # Should still restore status
         assert status_calls[-1] == ""
@@ -423,6 +424,6 @@ class TestStatusUpdate:
             "wenzi.enhance.vocabulary_builder.VocabularyBuilder",
             return_value=mock_builder,
         ):
-            builder._build()
+            asyncio.run(builder._build_async())
 
         assert builder._building is False

@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
+from wenzi import async_loop
+
 if TYPE_CHECKING:
     from wenzi.enhance.correction_tracker import CorrectionTracker
     from wenzi.input_context import InputContext
@@ -228,9 +230,6 @@ class TextEnhancer:
 
         # Last system prompt used in enhance()
         self._last_system_prompt: str = ""
-        # Active stream reference for cancellation
-        self._active_stream: Any = None
-        self._cancel_event = asyncio.Event()
 
         # Load enhancement modes from external files
         modes_dir = os.path.join(config_dir, "enhance_modes") if config_dir else None
@@ -588,18 +587,10 @@ class TextEnhancer:
             return False
         client, _, _ = self._providers.pop(name)
         try:
-            import asyncio
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(client.close())
-            except RuntimeError:
-                # No running event loop — close synchronously via a new loop
-                _loop = asyncio.new_event_loop()
-                try:
-                    _loop.run_until_complete(client.close())
-                finally:
-                    _loop.close()
+            async_loop.submit(client.close())
         except Exception:
+            # Loop may not be running during shutdown; connection cleanup
+            # is best-effort — the provider is already removed from use.
             pass
         self._providers_config.pop(name, None)
         # If removed the active provider, switch to another
@@ -1055,10 +1046,6 @@ class TextEnhancer:
             logger.error("AI enhancement failed: %s", e)
             return text, None
 
-    def cancel_stream(self) -> None:
-        """Signal the active stream to stop. Thread-safe."""
-        self._cancel_event.set()
-
     async def enhance_stream(
         self, text: str, input_context: "InputContext | None" = None,
     ) -> AsyncIterator[Tuple[str, Optional[Dict[str, int]], bool]]:
@@ -1129,10 +1116,6 @@ class TextEnhancer:
                         )
                         return
 
-            # Expose stream so callers can close it on cancellation
-            self._cancel_event.clear()
-            self._active_stream = stream
-
             collected = []
             usage = None
             think_parser = ThinkTagParser()
@@ -1142,9 +1125,6 @@ class TextEnhancer:
             aiter = stream.__aiter__()
             try:
                 while True:
-                    if self._cancel_event.is_set():
-                        logger.info("Stream cancelled via cancel_event")
-                        break
                     try:
                         chunk = await asyncio.wait_for(
                             aiter.__anext__(), timeout=self._timeout
@@ -1184,10 +1164,10 @@ class TextEnhancer:
                                         repetition_aborted = True
                                         break
             finally:
-                self._active_stream = None
                 if hasattr(stream, 'close'):
                     try:
                         await stream.close()
+                        logger.debug("LLM stream closed")
                     except Exception:
                         pass
 

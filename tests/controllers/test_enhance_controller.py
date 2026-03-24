@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import threading
-from unittest.mock import MagicMock
+import asyncio
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,6 +14,14 @@ from wenzi.lru_cache import LRUCache
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def event_loop():
+    """Provide a fresh event loop for each test."""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest.fixture
@@ -55,6 +63,17 @@ def controller(mock_enhancer, mock_panel, mock_stats):
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _make_async_gen(chunks):
+    """Create an async generator yielding (chunk, usage, is_thinking) tuples."""
+    for item in chunks:
+        yield item
+
+
+# ---------------------------------------------------------------------------
 # Tests: initialization
 # ---------------------------------------------------------------------------
 
@@ -80,6 +99,9 @@ class TestEnhanceControllerInit:
             usage_stats=mock_stats,
         )
         assert ctrl.enhancer is None
+
+    def test_no_current_task_initially(self, controller):
+        assert controller._current_task is None
 
 
 # ---------------------------------------------------------------------------
@@ -140,16 +162,32 @@ class TestCacheOperations:
 
 
 class TestCancel:
-    def test_cancel_no_event(self, controller):
+    def test_cancel_no_task(self, controller):
         """Cancel when no enhancement is running should not raise."""
         controller.cancel()  # Should not raise
 
-    def test_cancel_sets_event(self, controller):
-        event = threading.Event()
-        controller._cancel_event = event
-        assert not event.is_set()
+    def test_cancel_cancels_task(self, controller, event_loop):
+        """Cancel should cancel the running asyncio task."""
+        async def _long_running():
+            await asyncio.sleep(100)
+
+        task = event_loop.create_task(_long_running())
+        controller._current_task = task
         controller.cancel()
-        assert event.is_set()
+        # task.cancel() marks the task as cancelling; drive the loop
+        # so that CancelledError is raised and the task finishes.
+        with pytest.raises(asyncio.CancelledError):
+            event_loop.run_until_complete(task)
+
+    def test_cancel_ignores_done_task(self, controller, event_loop):
+        """Cancel should not raise for an already-done task."""
+        async def _instant():
+            return 42
+
+        task = event_loop.create_task(_instant())
+        event_loop.run_until_complete(task)
+        controller._current_task = task
+        controller.cancel()  # Should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -164,24 +202,292 @@ class TestRun:
             enhancer=None, preview_panel=mock_panel, usage_stats=mock_stats,
         )
         ctrl.run("text", 1)
-        # Should not crash or start any thread
+        # Should not crash or start any task
 
-    def test_run_cancels_previous(self, controller):
-        """Running a new enhance should cancel the previous one."""
-        old_event = threading.Event()
-        controller._cancel_event = old_event
-        assert not old_event.is_set()
+    @patch("wenzi.controllers.enhance_controller.async_loop")
+    def test_run_submits_coroutine(self, mock_async_loop, controller):
+        """Run should submit a coroutine to the shared event loop."""
+        mock_future = MagicMock()
+        # submit() receives a coroutine; close it to avoid RuntimeWarning
+        def _capture_and_close(coro):
+            coro.close()
+            return mock_future
+        mock_async_loop.submit.side_effect = _capture_and_close
 
-        # Start a new run (will create a thread that we don't wait for)
+        # Mock async methods to prevent creating real coroutines
+        controller._run_single_async = MagicMock()
+        controller._run_wrapper = MagicMock(return_value=asyncio.sleep(0))
+
+        controller.run("hello", 1)
+        mock_async_loop.submit.assert_called_once()
+
+    @patch("wenzi.controllers.enhance_controller.async_loop")
+    def test_run_cancels_previous_task(self, mock_async_loop, controller, event_loop):
+        """Running a new enhance should cancel the previous task."""
+        # submit() receives a coroutine; close it to avoid RuntimeWarning
+        def _capture_and_close(coro):
+            coro.close()
+            return MagicMock()
+        mock_async_loop.submit.side_effect = _capture_and_close
+
+        # Mock async methods to prevent creating real coroutines
+        controller._run_single_async = MagicMock()
+        controller._run_wrapper = MagicMock(return_value=asyncio.sleep(0))
+
+        async def _long_running():
+            await asyncio.sleep(100)
+
+        old_task = event_loop.create_task(_long_running())
+        controller._current_task = old_task
+
         controller.run("text", 1)
+        # Drive the loop so the cancellation takes effect
+        with pytest.raises(asyncio.CancelledError):
+            event_loop.run_until_complete(old_task)
 
-        # Old event should be cancelled
-        assert old_event.is_set()
-        # New event should be created
-        assert controller._cancel_event is not old_event
 
-    def test_run_creates_cancel_event(self, controller):
-        assert controller._cancel_event is None
-        controller.run("text", 1)
-        assert controller._cancel_event is not None
-        assert isinstance(controller._cancel_event, threading.Event)
+# ---------------------------------------------------------------------------
+# Tests: _run_single_async
+# ---------------------------------------------------------------------------
+
+
+class TestRunSingleAsync:
+    def test_single_stream_collects_text(self, controller, mock_enhancer,
+                                         mock_panel, event_loop):
+        """Single-step streaming should collect chunks and cache result."""
+        chunks = [
+            ("Hello", None, False),
+            (" world", {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}, False),
+        ]
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_make_async_gen(chunks)
+        )
+
+        result_holder = {}
+        event_loop.run_until_complete(
+            controller._run_single_async("test", 1, result_holder)
+        )
+
+        assert result_holder["enhanced_text"] == "Hello world"
+        assert result_holder["system_prompt"] == "system prompt"
+        controller._usage_stats.record_token_usage.assert_called_once()
+        mock_panel.set_enhance_complete.assert_called_once()
+        # Should be cached
+        assert controller.get_cached() is not None
+        assert controller.get_cached().final_text == "Hello world"
+
+    def test_single_stream_empty_result(self, controller, mock_enhancer,
+                                         mock_panel, event_loop):
+        """Empty stream result should show 'Connection failed'."""
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_make_async_gen([])
+        )
+
+        event_loop.run_until_complete(
+            controller._run_single_async("test", 1, None)
+        )
+
+        mock_panel.set_enhance_label.assert_called_with(
+            "Connection failed", request_id=1,
+        )
+
+    def test_single_stream_thinking_text(self, controller, mock_enhancer,
+                                          mock_panel, event_loop):
+        """Thinking chunks should be sent to thinking panel."""
+        chunks = [
+            ("thinking...", None, True),
+            ("result", {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}, False),
+        ]
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_make_async_gen(chunks)
+        )
+
+        event_loop.run_until_complete(
+            controller._run_single_async("test", 1, None)
+        )
+
+        mock_panel.append_thinking_text.assert_called()
+        mock_panel.clear_enhance_text.assert_called()
+
+    def test_single_stream_retry_label(self, controller, mock_enhancer,
+                                        mock_panel, event_loop):
+        """Retry chunks should update the enhance label."""
+        chunks = [
+            ("(retrying...)", None, "retry"),
+            ("result", {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}, False),
+        ]
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_make_async_gen(chunks)
+        )
+
+        event_loop.run_until_complete(
+            controller._run_single_async("test", 1, None)
+        )
+
+        mock_panel.set_enhance_label.assert_called()
+
+    def test_single_stream_cancellation(self, controller, mock_enhancer,
+                                         event_loop):
+        """CancelledError should propagate from async generator."""
+        async def _cancelling_gen(*args, **kwargs):
+            yield ("chunk1", None, False)
+            raise asyncio.CancelledError()
+
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_cancelling_gen()
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            event_loop.run_until_complete(
+                controller._run_single_async("test", 1, None)
+            )
+
+
+# ---------------------------------------------------------------------------
+# Tests: _run_chain_async
+# ---------------------------------------------------------------------------
+
+
+class TestRunChainAsync:
+    def test_chain_two_steps(self, controller, mock_enhancer,
+                              mock_panel, mock_stats, event_loop):
+        """Chain enhancement should run multiple steps sequentially."""
+        call_count = 0
+
+        def _make_step_gen(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return _make_async_gen([
+                    ("step1 out", {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}, False),
+                ])
+            else:
+                return _make_async_gen([
+                    ("step2 out", {"prompt_tokens": 6, "completion_tokens": 4, "total_tokens": 10}, False),
+                ])
+
+        mock_enhancer.enhance_stream = MagicMock(side_effect=_make_step_gen)
+
+        step1_def = MagicMock()
+        step1_def.label = "Step 1"
+        step2_def = MagicMock()
+        step2_def.label = "Step 2"
+
+        def _get_mode_def(mode_id):
+            return {"step1": step1_def, "step2": step2_def}.get(mode_id)
+
+        mock_enhancer.get_mode_definition = MagicMock(side_effect=_get_mode_def)
+
+        result_holder = {}
+        event_loop.run_until_complete(
+            controller._run_chain_async(
+                "input", 1, result_holder,
+                ["step1", "step2"], "chain_mode",
+            )
+        )
+
+        assert result_holder["enhanced_text"] == "step2 out"
+        assert result_holder["is_chain"] is True
+        assert result_holder["token_usage"]["total_tokens"] == 18
+        mock_panel.set_enhance_complete.assert_called_once()
+        assert mock_enhancer.mode == "chain_mode"
+
+    def test_chain_restores_mode_on_cancel(self, controller, mock_enhancer,
+                                            event_loop):
+        """Chain should restore enhancer mode even if cancelled."""
+        async def _cancelling_gen(*args, **kwargs):
+            raise asyncio.CancelledError()
+            yield  # make it a generator  # noqa: E501
+
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_cancelling_gen()
+        )
+
+        step_def = MagicMock()
+        step_def.label = "Step"
+        mock_enhancer.get_mode_definition = MagicMock(return_value=step_def)
+
+        with pytest.raises(asyncio.CancelledError):
+            event_loop.run_until_complete(
+                controller._run_chain_async(
+                    "input", 1, None, ["step1"], "original_mode",
+                )
+            )
+
+        # Mode must be restored even after cancel
+        assert mock_enhancer.mode == "original_mode"
+
+    def test_chain_step_separator(self, controller, mock_enhancer,
+                                   mock_panel, event_loop):
+        """Non-first steps should have a separator prepended."""
+        call_count = 0
+
+        def _make_step_gen(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return _make_async_gen([
+                ("out", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}, False),
+            ])
+
+        mock_enhancer.enhance_stream = MagicMock(side_effect=_make_step_gen)
+
+        step_def = MagicMock()
+        step_def.label = "StepX"
+        mock_enhancer.get_mode_definition = MagicMock(return_value=step_def)
+
+        event_loop.run_until_complete(
+            controller._run_chain_async(
+                "input", 1, None, ["s1", "s2"], "chain",
+            )
+        )
+
+        # Check separator was appended for step 2
+        separator_calls = [
+            c for c in mock_panel.append_enhance_text.call_args_list
+            if "---" in str(c)
+        ]
+        assert len(separator_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: _run_wrapper
+# ---------------------------------------------------------------------------
+
+
+class TestRunWrapper:
+    def test_wrapper_captures_task(self, controller, event_loop):
+        """_run_wrapper should set _current_task to the running task."""
+        captured_task = None
+
+        async def _capture():
+            nonlocal captured_task
+            captured_task = controller._current_task
+
+        event_loop.run_until_complete(
+            controller._run_wrapper(_capture(), request_id=1)
+        )
+
+        assert captured_task is not None
+
+    def test_wrapper_handles_exception(self, controller, mock_panel, event_loop):
+        """_run_wrapper should catch exceptions and report error."""
+        async def _failing():
+            raise ValueError("boom")
+
+        event_loop.run_until_complete(
+            controller._run_wrapper(_failing(), request_id=42)
+        )
+
+        mock_panel.set_enhance_result.assert_called_once()
+        call_args = mock_panel.set_enhance_result.call_args
+        assert "boom" in call_args[0][0]
+
+    def test_wrapper_handles_cancellation(self, controller, event_loop):
+        """_run_wrapper should catch CancelledError silently."""
+        async def _cancelled():
+            raise asyncio.CancelledError()
+
+        # Should not raise
+        event_loop.run_until_complete(
+            controller._run_wrapper(_cancelled(), request_id=1)
+        )

@@ -7,6 +7,7 @@ from .menu_builder import MenuBuilder
 from .model_controller import ModelController, migrate_asr_config
 from .preview_controller import PreviewController
 from .recording_controller import RecordingController
+from .recording_flow import Action, RecordingFlow
 from .settings_controller import SettingsController
 from .update_controller import UpdateController
 
@@ -18,7 +19,9 @@ __all__ = [
     "MenuBuilder",
     "ModelController",
     "PreviewController",
+    "Action",
     "RecordingController",
+    "RecordingFlow",
     "SettingsController",
     "UpdateController",
     "migrate_asr_config",

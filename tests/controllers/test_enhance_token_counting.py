@@ -7,7 +7,7 @@ character counts for all models including MiniMax (inline <think> tags).
 
 from __future__ import annotations
 
-import threading
+import asyncio
 from unittest.mock import MagicMock
 
 from wenzi.controllers.enhance_controller import EnhanceController
@@ -50,8 +50,14 @@ def _make_controller(stream_chunks):
 
 
 def _run_single(ctrl, text="hello", request_id=1):
-    """Synchronously run _run_single (which normally runs in a thread)."""
-    ctrl._run_single(text, request_id, result_holder={}, cancel_event=threading.Event())
+    """Run _run_single_async synchronously via a temporary event loop."""
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            ctrl._run_single_async(text, request_id, result_holder={})
+        )
+    finally:
+        loop.close()
 
 
 # ---------------------------------------------------------------------------

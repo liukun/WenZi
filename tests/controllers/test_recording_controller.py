@@ -495,11 +495,10 @@ class TestDirectModeEscCancel:
 
     @patch("wenzi.controllers.recording_controller.type_text")
     @patch("PyObjCTools.AppHelper")
-    def test_enhance_cancel_calls_cancel_stream(
+    def test_enhance_cancel_stops_output(
         self, mock_apphelper, mock_type_text, ctrl, mock_app
     ):
-        """When ESC cancels enhancement, enhancer.cancel_stream() should be
-        called to stop remote token consumption."""
+        """When ESC cancels enhancement, no text should be typed."""
         mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
         mock_app._enhancer.get_mode_definition.return_value = MagicMock(steps=None)
 
@@ -524,8 +523,6 @@ class TestDirectModeEscCancel:
             "hello", use_enhance=True, overlay_already_shown=True
         )
 
-        # Should have called cancel_stream to close the HTTP connection
-        mock_app._enhancer.cancel_stream.assert_called()
         # Should NOT type enhanced text (cancelled)
         mock_type_text.assert_not_called()
 

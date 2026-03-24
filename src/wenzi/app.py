@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 from ApplicationServices import AXIsProcessTrusted, AXIsProcessTrustedWithOptions
 from CoreFoundation import kCFBooleanTrue
 
+from wenzi import async_loop
 from .enhance.auto_vocab_builder import AutoVocabBuilder
 from .config import (
     DEFAULT_LOG_DIR,
@@ -53,7 +54,7 @@ from .ui.streaming_overlay import StreamingOverlayPanel
 from .controllers.menu_builder import MenuBuilder
 from .controllers.model_controller import ModelController, migrate_asr_config
 from .controllers.preview_controller import PreviewController
-from .controllers.recording_controller import RecordingController
+from .controllers.recording_flow import RecordingFlow
 from .controllers.settings_controller import SettingsController
 from .controllers.config_controller import ConfigController
 from .controllers.enhance_mode_controller import EnhanceModeController
@@ -320,7 +321,7 @@ class WenZiApp(StatusBarApp):
         self._menu_builder = MenuBuilder(self)
         self._model_controller = ModelController(self)
         self._settings_controller = SettingsController(self)
-        self._recording_controller = RecordingController(self)
+        self._recording_controller = RecordingFlow(self)
         self._preview_controller = PreviewController(self)
         self._config_controller = ConfigController(self)
         self._enhance_mode_controller = EnhanceModeController(self)
@@ -977,9 +978,6 @@ class WenZiApp(StatusBarApp):
                     logger.exception("Failed to apply recorded hotkey %s", recorded_key)
             AppHelper.callAfter(_apply)
 
-    def _do_transcribe_direct(self, asr_text: str, use_enhance: bool) -> None:
-        self._recording_controller.do_transcribe_direct(asr_text, use_enhance)
-
     def _current_stt_model(self) -> str:
         """Return display name of the current STT model."""
         try:
@@ -1105,14 +1103,13 @@ class WenZiApp(StatusBarApp):
             self._clipboard_hotkey_listener.stop()
         if self._settings_panel.is_visible:
             self._settings_panel.close()
-        # Close AI provider clients to release connection pools
+        # Close AI provider clients and shut down the shared asyncio loop
         if self._enhancer:
-            import asyncio
-            loop = asyncio.new_event_loop()
             try:
-                loop.run_until_complete(self._enhancer.close())
-            finally:
-                loop.close()
+                async_loop.submit(self._enhancer.close()).result(timeout=5)
+            except Exception:
+                logger.debug("Enhancer close timed out or failed", exc_info=True)
+        async_loop.shutdown_sync(timeout=5)
         quit_application()
 
     @staticmethod
