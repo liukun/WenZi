@@ -88,4 +88,18 @@ echo "    $FOUND resource(s) verified."
 APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)
 echo ""
 echo "==> Build complete: $APP_PATH ($APP_SIZE)"
-echo "    Run with: open $APP_PATH"
+
+if [ "${1:-}" = "--fast" ]; then
+    # Kill the running instance (if any) and relaunch
+    BUNDLE_ID="io.github.airead.wenzi"
+    OLD_PID=$(lsappinfo info -only pid -app "$BUNDLE_ID" 2>/dev/null | grep -o '[0-9]*' || true)
+    if [ -n "$OLD_PID" ]; then
+        echo "==> Stopping old instance (pid=$OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        while kill -0 "$OLD_PID" 2>/dev/null; do sleep 0.2; done
+    fi
+    echo "==> Launching $APP_PATH..."
+    open "$APP_PATH"
+else
+    echo "    Run with: open $APP_PATH"
+fi
