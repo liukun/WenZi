@@ -296,17 +296,16 @@ class StreamingOverlayPanel:
                     logger.info("Streaming cancelled via ESC key")
                     return None  # swallow
 
-                if keycode == _RETURN_KEY_CODE:
-                    if self._on_confirm_asr is not None:
-                        try:
-                            self._on_confirm_asr()
-                        except Exception:
-                            logger.error(
-                                "on_confirm_asr callback failed",
-                                exc_info=True,
-                            )
-                        logger.info("ASR confirmed via Enter key")
-                    return None  # swallow (no-op when callback is None)
+                if keycode == _RETURN_KEY_CODE and self._on_confirm_asr is not None:
+                    try:
+                        self._on_confirm_asr()
+                    except Exception:
+                        logger.error(
+                            "on_confirm_asr callback failed",
+                            exc_info=True,
+                        )
+                    logger.info("ASR confirmed via Enter key")
+                    return None  # swallow
 
             except Exception:
                 logger.warning("Key tap callback error", exc_info=True)
@@ -325,7 +324,11 @@ class StreamingOverlayPanel:
             logger.warning("Failed to create key event tap (no permission?)")
             return
 
-        source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+        try:
+            source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+        except Exception:
+            logger.warning("Failed to create run loop source", exc_info=True)
+            return
         loop = Quartz.CFRunLoopGetMain()
         Quartz.CFRunLoopAddSource(loop, source, Quartz.kCFRunLoopDefaultMode)
         Quartz.CGEventTapEnable(tap, True)

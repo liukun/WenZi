@@ -639,7 +639,7 @@ class RecordingFlow:
                     text = asr_text
                 finally:
                     cancel_watcher.cancel()
-                    if cancel_event.is_set():
+                    if cancel_event.is_set() or confirm_asr_event.is_set():
                         AppHelper.callAfter(app._streaming_overlay.close)
                     else:
                         AppHelper.callAfter(
@@ -818,6 +818,8 @@ class RecordingFlow:
                 )
                 if cancel_fut in done:
                     next_fut.cancel()
+                    # Suppress "Task exception was never retrieved" warning
+                    next_fut.add_done_callback(lambda f: None)
                     return
                 try:
                     yield next_fut.result()

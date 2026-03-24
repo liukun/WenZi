@@ -202,13 +202,13 @@ class TestStreamingOverlayPanel:
         _mock_quartz.simulate_key(36)
         assert panel._panel is not None
 
-    def test_enter_swallowed_without_callback(self, _mock_appkit, _mock_quartz):
-        """Enter without on_confirm_asr should still be swallowed."""
+    def test_enter_passes_through_without_callback(self, _mock_appkit, _mock_quartz):
+        """Enter without on_confirm_asr should pass through."""
         panel = _make_panel()
         panel.show(asr_text="test")
 
         result = _mock_quartz.simulate_key(36)
-        assert result is None  # swallowed even without callback
+        assert result is not None  # not swallowed when no callback
 
     def test_other_keys_not_swallowed(self, _mock_appkit, _mock_quartz):
         """Non-ESC/Enter keys should pass through."""
