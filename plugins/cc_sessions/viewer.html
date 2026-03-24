@@ -472,6 +472,15 @@
   }
   .thinking-content.visible { display: block; }
 
+  /* ── Live Glow (thinking / pending tool) ── */
+  @keyframes liveGlow {
+    0%, 100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+    50% { filter: brightness(1.4) drop-shadow(0 0 8px currentColor); }
+  }
+  .live-glow {
+    animation: liveGlow 1.5s ease-in-out infinite;
+  }
+
   /* ── Border colors for tool types ── */
   .tool-read    { --tool-border-color: #f59e0b; }
   .tool-bash    { --tool-border-color: #10b981; }
@@ -996,6 +1005,65 @@ function renderConversation(messages) {
 
   setupOutlineObserver();
   setupCollapsibles(conv);
+  markLiveElements(conv, turns, globalResultMap);
+}
+
+// ── Live glow for in-progress elements ──
+function markLiveElements(conv, turns, globalResultMap) {
+  if (turns.length === 0) return;
+
+  const lastMsg = turns[turns.length - 1];
+
+  // Last message is user → AI is processing
+  if (lastMsg.type === "user") {
+    const text = extractUserText(lastMsg.message?.content || lastMsg.content || "");
+    if (text.includes("[Request interrupted by user]")) return;
+
+    if (_isToolResultOnly(lastMsg)) {
+      // Tool result returned — glow the existing Claude badge (same turn)
+      const lastTurnEl = conv.lastElementChild;
+      const badge = lastTurnEl && lastTurnEl.querySelector(".badge-assistant");
+      if (badge) badge.classList.add("live-glow");
+    } else {
+      // Real user message — Claude hasn't started, show placeholder
+      const placeholder = document.createElement("div");
+      placeholder.className = "turn";
+      placeholder.innerHTML = `
+        <div class="turn-header">
+          <span class="badge badge-assistant live-glow">Claude</span>
+        </div>
+      `;
+      conv.appendChild(placeholder);
+    }
+    return;
+  }
+
+  if (lastMsg.type !== "assistant") return;
+
+  const lastTurnEl = conv.lastElementChild;
+  if (!lastTurnEl) return;
+
+  const content = lastMsg.message?.content;
+  if (!Array.isArray(content)) return;
+
+  // Glow tool icons for pending tool_use (no result yet)
+  let hasPending = false;
+  for (const part of content) {
+    if (part.type === "tool_use" && part.id && !globalResultMap[part.id]) {
+      hasPending = true;
+      const block = lastTurnEl.querySelector(`.tool-block[data-tool-use-id="${part.id}"]`);
+      const icon = block && block.querySelector(".tool-icon");
+      if (icon) icon.classList.add("live-glow");
+    }
+  }
+
+  // Glow Claude badge when thinking or has pending tools
+  const lastPart = content[content.length - 1];
+  const hasThinking = lastPart && lastPart.type === "thinking";
+  if (hasThinking || hasPending) {
+    const badge = lastTurnEl.querySelector(".badge-assistant");
+    if (badge) badge.classList.add("live-glow");
+  }
 }
 
 // ── Collapsible long content ──
@@ -1181,6 +1249,7 @@ function createToolSingle(call, result) {
 
   const block = document.createElement("div");
   block.className = `tool-block ${meta.css}`;
+  if (call.id) block.dataset.toolUseId = call.id;
 
   const headerEl = document.createElement("div");
   headerEl.className = "tool-header";
