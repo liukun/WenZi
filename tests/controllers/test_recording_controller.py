@@ -771,6 +771,61 @@ class TestPreferMode:
         assert ctrl._saved_mode[0] == "proofread"
 
 
+class TestNoPreviewMode:
+    """Tests for per-hotkey no_preview mode (skip preview + disable AI)."""
+
+    @patch("PyObjCTools.AppHelper")
+    def test_no_preview_sets_override_and_mode_off(self, mock_apphelper, ctrl, mock_app):
+        """mode 'no_preview' should set _no_preview_override and apply mode off."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._config["hotkeys"] = {"fn": {"mode": "no_preview"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._no_preview_override is True
+        assert ctrl._prefer_mode == "off"
+        assert mock_app._enhance_mode == "off"
+        assert mock_app._enhancer._enabled is False
+
+    @patch("PyObjCTools.AppHelper")
+    def test_no_preview_cleared_on_next_press(self, mock_apphelper, ctrl, mock_app):
+        """Next hotkey press should clear _no_preview_override."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._config["hotkeys"] = {
+            "fn": {"mode": "no_preview"},
+            "ctrl": True,
+        }
+        mock_app._sound_manager.enabled = False
+
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._no_preview_override is True
+
+        mock_app._busy = False
+        ctrl.on_hotkey_press("ctrl")
+        assert ctrl._no_preview_override is False
+        assert mock_app._enhance_mode == "proofread"  # restored
+
+    def test_normal_mode_does_not_set_no_preview(self, ctrl, mock_app):
+        """A regular mode override should not set _no_preview_override."""
+        mock_app._config["hotkeys"] = {"fn": {"mode": "translate_en"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        assert ctrl._no_preview_override is False
+        assert ctrl._prefer_mode == "translate_en"
+
+    @patch("PyObjCTools.AppHelper")
+    def test_no_preview_blocks_mode_nav(self, mock_apphelper, ctrl, mock_app):
+        """Mode navigation should be disabled when no_preview is active."""
+        mock_apphelper.callAfter = lambda fn, *a, **kw: fn(*a, **kw)
+        mock_app._config["hotkeys"] = {"fn": {"mode": "no_preview"}}
+        mock_app._sound_manager.enabled = False
+        ctrl.on_hotkey_press("fn")
+        # Mode is "off" due to no_preview
+        assert mock_app._enhance_mode == "off"
+        ctrl.on_mode_next()
+        # Should remain "off" — nav is blocked
+        assert mock_app._enhance_mode == "off"
+
+
 class TestRecordingWatchdog:
     """Tests for the recording watchdog timer that auto-stops on timeout."""
 
