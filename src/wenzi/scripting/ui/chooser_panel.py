@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, NamedTuple, Optional
 
 from wenzi.i18n import t
 from wenzi.scripting.sources import ChooserItem, ChooserSource
@@ -142,6 +142,40 @@ def _get_panel_delegate_class():
 
 
 # ---------------------------------------------------------------------------
+# Debounce timer helper (lazy-created)
+# ---------------------------------------------------------------------------
+_DebounceTimerHelper = None
+
+
+def _get_debounce_timer_helper_class():
+    """Return an NSObject subclass for NSTimer callbacks."""
+    global _DebounceTimerHelper
+    if _DebounceTimerHelper is not None:
+        return _DebounceTimerHelper
+
+    from Foundation import NSObject
+
+    class ChooserDebounceTimerHelper(NSObject):
+        _callback = None
+
+        def fire_(self, _timer):
+            if self._callback is not None:
+                self._callback()
+
+    _DebounceTimerHelper = ChooserDebounceTimerHelper
+    return _DebounceTimerHelper
+
+
+class _DebounceEntry(NamedTuple):
+    """Per-source debounce state: timer, helper ref, and search args."""
+    timer: object  # NSTimer
+    helper: object  # NSObject helper (prevents GC)
+    source: ChooserSource
+    query: str
+    generation: int
+
+
+# ---------------------------------------------------------------------------
 # Panel
 # ---------------------------------------------------------------------------
 
@@ -157,6 +191,8 @@ class ChooserPanel:
     _INITIAL_HEIGHT = 80  # bootstrap; JS updates after page load
     _MAX_TOTAL_RESULTS = 50
     _DEFERRED_ACTION_DELAY = 0.15  # seconds to let previous app regain focus
+    _DEFAULT_ASYNC_DEBOUNCE = 0.15  # seconds
+    _DEFAULT_ASYNC_TIMEOUT = 5.0  # seconds
 
     def __init__(self, usage_tracker=None) -> None:
         self._panel = None
@@ -195,6 +231,7 @@ class ChooserPanel:
         self._search_generation: int = 0
         self._pending_async_count: int = 0
         self._loading_visible: bool = False
+        self._debounce_state: Dict[str, _DebounceEntry] = {}  # source_name -> pending debounce
 
     # ------------------------------------------------------------------
     # Panel resize (driven by JS)
@@ -470,6 +507,9 @@ class ChooserPanel:
             return
         self._closing = True
 
+        # Cancel all pending debounce timers
+        self._cancel_all_debounce_timers()
+
         if self._snippet_expander is not None:
             self._snippet_expander.resume()
         self._calc_sticky = False
@@ -643,12 +683,31 @@ class ChooserPanel:
         # Push sync results immediately
         self._push_items_to_js(source=source)
 
-        # Phase 2: Launch async sources
-        self._pending_async_count = len(async_sources)
+        # Phase 2: Launch async sources (with debounce support)
+        self._cancel_all_debounce_timers()
         if async_sources:
-            self._set_loading(True)
+            immediate = []
+            debounced = []
             for asrc in async_sources:
-                self._launch_async_search(asrc, query, generation)
+                delay = self._get_debounce_delay(asrc)
+                if delay > 0:
+                    debounced.append((asrc, delay))
+                else:
+                    immediate.append(asrc)
+
+            # Launch immediate sources right away
+            self._pending_async_count = len(immediate)
+            if immediate:
+                self._set_loading(True)
+                for asrc in immediate:
+                    self._launch_async_search(asrc, query, generation)
+
+            # Schedule debounced sources (each with its own timer)
+            if debounced:
+                self._pending_async_count += len(debounced)
+                self._set_loading(True)
+                for asrc, delay in debounced:
+                    self._schedule_debounced_search(asrc, query, generation, delay)
         else:
             self._set_loading(False)
 
@@ -752,6 +811,18 @@ class ChooserPanel:
         self._loading_visible = visible
         self._eval_js(f"setLoading({'true' if visible else 'false'})")
 
+    def _get_timeout(self, source: ChooserSource) -> float:
+        """Get the actual timeout for an async source."""
+        if source.search_timeout is not None:
+            return source.search_timeout
+        return self._DEFAULT_ASYNC_TIMEOUT
+
+    def _get_debounce_delay(self, source: ChooserSource) -> float:
+        """Get the actual debounce delay for an async source."""
+        if source.debounce_delay is not None:
+            return source.debounce_delay
+        return self._DEFAULT_ASYNC_DEBOUNCE
+
     def _launch_async_search(
         self,
         source: ChooserSource,
@@ -761,17 +832,19 @@ class ChooserPanel:
         """Submit an async source search to the shared event loop."""
         import wenzi.async_loop as _aloop
 
+        timeout = self._get_timeout(source)
+
         async def _run():
             try:
                 return await asyncio.wait_for(
                     source.search(query),
-                    timeout=source.search_timeout,
+                    timeout=timeout,
                 )
             except asyncio.TimeoutError:
                 logger.warning(
                     "Async source %s timed out after %.1fs",
                     source.name,
-                    source.search_timeout,
+                    timeout,
                 )
                 return []
             except asyncio.CancelledError:
@@ -836,6 +909,67 @@ class ChooserPanel:
                     source=self._active_source,
                     preserve_selection=True,
                 )
+
+    # ------------------------------------------------------------------
+    # Debounced async search
+    # ------------------------------------------------------------------
+
+    def _cancel_all_debounce_timers(self) -> None:
+        """Invalidate and remove all pending debounce timers."""
+        for entry in self._debounce_state.values():
+            entry.timer.invalidate()
+        self._debounce_state.clear()
+
+    def _schedule_debounced_search(
+        self,
+        source: ChooserSource,
+        query: str,
+        generation: int,
+        delay: float,
+    ) -> None:
+        """Schedule a debounced async search for a single source using NSTimer."""
+        name = source.name
+
+        # Cancel previous timer for this source
+        old = self._debounce_state.pop(name, None)
+        if old is not None:
+            old.timer.invalidate()
+
+        # Create helper (NSObject target for NSTimer)
+        HelperClass = _get_debounce_timer_helper_class()
+        helper = HelperClass.alloc().init()
+        helper._callback = lambda n=name: self._execute_debounced_search(n)
+
+        from Foundation import NSTimer
+
+        timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            delay,
+            helper,
+            b"fire:",
+            None,
+            False,
+        )
+
+        self._debounce_state[name] = _DebounceEntry(
+            timer=timer,
+            helper=helper,
+            source=source,
+            query=query,
+            generation=generation,
+        )
+
+    def _execute_debounced_search(self, source_name: str) -> None:
+        """Execute debounced search for a single source (called by NSTimer)."""
+        entry = self._debounce_state.pop(source_name, None)
+        if entry is None:
+            return
+
+        # Discard if stale. The count was already reset by the new _do_search
+        # call that incremented the generation.
+        if entry.generation != self._search_generation:
+            return
+
+        self._launch_async_search(entry.source, entry.query, entry.generation)
 
     # ------------------------------------------------------------------
     # JS message handler

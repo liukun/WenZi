@@ -26,10 +26,12 @@ def paste_text(text: str) -> None:
         time.sleep(0.05)
         subprocess.run(
             [
-                "osascript", "-e",
+                "osascript",
+                "-e",
                 'tell application "System Events" to keystroke "v" using command down',
             ],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
     except Exception:
         _logger.exception("Failed to paste text")
@@ -67,7 +69,8 @@ class ChooserItem:
     secondary_action: Optional[Callable] = field(default=None, repr=False)  # Cmd+Enter
     reveal_path: Optional[str] = None  # For Cmd+Enter (reveal in Finder)
     modifiers: Optional[Dict[str, ModifierAction]] = field(
-        default=None, repr=False,
+        default=None,
+        repr=False,
     )  # key: "cmd", "alt", "ctrl", "shift"
     delete_action: Optional[Callable] = field(default=None, repr=False)
     confirm_delete: bool = False  # Two-step delete confirmation
@@ -95,13 +98,16 @@ class ChooserSource:
     description: str = ""  # Human-readable description shown in help
     show_preview: bool = False  # Show the preview panel when this source is active
     complete: Optional[Callable[[str, "ChooserItem"], Optional[str]]] = field(
-        default=None, repr=False,
+        default=None,
+        repr=False,
     )  # Tab completion: (query, selected_item) -> completed query (without prefix) or None
     create_action: Optional[Callable[[str], None]] = field(
-        default=None, repr=False,
+        default=None,
+        repr=False,
     )  # Optional "create new" action; receives stripped query
     is_async: bool = False
-    search_timeout: float = 5.0  # Async sources only; sync sources ignore this
+    search_timeout: Optional[float] = None  # Async sources only; None = use global default
+    debounce_delay: Optional[float] = None  # Async sources only; None = use global default, 0 = no debounce
 
 
 # ---------------------------------------------------------------------------

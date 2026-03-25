@@ -119,12 +119,14 @@ class ChooserAPI:
                     m2, _ = fuzzy_match(args.strip(), src.prefix)
                     if not m1 and not m2:
                         continue
-                items.append({
-                    "title": desc,
-                    "subtitle": f"{src.prefix} <query>",
-                    "item_id": f"help:{src.name}",
-                    "action": lambda p=src.prefix: self.show_source(p),
-                })
+                items.append(
+                    {
+                        "title": desc,
+                        "subtitle": f"{src.prefix} <query>",
+                        "item_id": f"help:{src.name}",
+                        "action": lambda p=src.prefix: self.show_source(p),
+                    }
+                )
             if items:
                 self.pick(
                     items,
@@ -132,13 +134,15 @@ class ChooserAPI:
                     placeholder="Available prefixes...",
                 )
 
-        self._command_source.register(CommandEntry(
-            name="help",
-            title="Help",
-            subtitle="Show available prefixes",
-            action=_help_action,
-            promoted=True,
-        ))
+        self._command_source.register(
+            CommandEntry(
+                name="help",
+                title="Help",
+                subtitle="Show available prefixes",
+                action=_help_action,
+                promoted=True,
+            )
+        )
 
     def _register_quit_all_command(self) -> None:
         """Register the built-in quit-all command."""
@@ -158,13 +162,15 @@ class ChooserAPI:
                     continue
                 app.terminate()
 
-        self._command_source.register(CommandEntry(
-            name="quit-all",
-            title="Quit All Applications",
-            subtitle="Quit all running applications",
-            action=_quit_all_action,
-            promoted=True,
-        ))
+        self._command_source.register(
+            CommandEntry(
+                name="quit-all",
+                title="Quit All Applications",
+                subtitle="Quit all running applications",
+                action=_quit_all_action,
+                promoted=True,
+            )
+        )
 
     def _register_reload_command(self) -> None:
         """Register the built-in reload command."""
@@ -176,13 +182,15 @@ class ChooserAPI:
             if _wz is not None:
                 _wz.reload()
 
-        self._command_source.register(CommandEntry(
-            name="reload",
-            title="Reload Scripts",
-            subtitle="Reload all scripts and plugins",
-            action=_reload_action,
-            promoted=True,
-        ))
+        self._command_source.register(
+            CommandEntry(
+                name="reload",
+                title="Reload Scripts",
+                subtitle="Reload all scripts and plugins",
+                action=_reload_action,
+                promoted=True,
+            )
+        )
 
     def register_source(self, source: ChooserSource) -> None:
         """Register a data source."""
@@ -202,7 +210,8 @@ class ChooserAPI:
             from PyObjCTools import AppHelper
 
             AppHelper.callAfter(
-                self._panel.show, initial_query=initial_query,
+                self._panel.show,
+                initial_query=initial_query,
             )
         except Exception:
             logger.exception("Failed to show chooser")
@@ -457,7 +466,8 @@ class ChooserAPI:
         action_hints: Optional[dict] = None,
         description: str = "",
         show_preview: bool = False,
-        search_timeout: float = 5.0,
+        search_timeout: Optional[float] = None,
+        debounce_delay: Optional[float] = None,
     ) -> Callable:
         """Decorator to register a search function as a chooser source.
 
@@ -482,20 +492,33 @@ class ChooserAPI:
                     data = await resp.json()
                 return [{"title": r["name"]} for r in data]
 
+        Debounced async sources (wait for user to stop typing)::
+
+            @wz.chooser.source("api", prefix="api", debounce_delay=0.3)
+            async def search_api(query):
+                ...
+
         Args:
             search_timeout: Per-source timeout in seconds for async sources.
+                None uses the global default (5.0s).
+            debounce_delay: Debounce delay in seconds for async sources.
+                None uses the global default (0.15s), 0 disables debouncing.
         """
 
         def decorator(func: Callable[[str], List[dict]]) -> Callable:
             _is_async = asyncio.iscoroutinefunction(func)
 
             if _is_async:
+
                 async def _async_search(query: str) -> List[ChooserItem]:
                     return _convert_items(await func(query))
+
                 search_fn = _async_search
             else:
+
                 def _search(query: str) -> List[ChooserItem]:
                     return _convert_items(func(query))
+
                 search_fn = _search
 
             src = ChooserSource(
@@ -508,11 +531,13 @@ class ChooserAPI:
                 show_preview=show_preview,
                 is_async=_is_async,
                 search_timeout=search_timeout,
+                debounce_delay=debounce_delay,
             )
             self._panel.register_source(src)
             logger.info(
                 "User script registered chooser source: %s (async=%s)",
-                name, _is_async,
+                name,
+                _is_async,
             )
             return func
 
