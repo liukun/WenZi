@@ -84,6 +84,7 @@ class RecordingFlow:
         # Mode override state (carried over from RecordingController)
         self._prefer_mode: str | None = None
         self._saved_mode: tuple | None = None
+        self._no_preview_override = False
         self._input_context = None
         # Sub-tasks managed within a session
         self._level_task: asyncio.Task | None = None
@@ -186,7 +187,12 @@ class RecordingFlow:
         hotkey_value = app._config.get("hotkeys", {}).get(key_name)
         if isinstance(hotkey_value, dict):
             prefer_mode = hotkey_value.get("mode")
-            if prefer_mode is not None:
+            if prefer_mode == "no_preview":
+                from wenzi.enhance.enhancer import MODE_OFF
+                self._no_preview_override = True
+                self._prefer_mode = MODE_OFF
+                self._apply_prefer_mode(MODE_OFF)
+            elif prefer_mode is not None:
                 self._prefer_mode = prefer_mode
                 self._apply_prefer_mode(prefer_mode)
 
@@ -329,7 +335,8 @@ class RecordingFlow:
             AppHelper.callAfter(self._stop_indicator, True)
 
             # ⑥ Transcribe (or defer to preview/direct for background STT)
-            if app._preview_enabled and not streaming:
+            effective_preview = app._preview_enabled and not self._no_preview_override
+            if effective_preview and not streaming:
                 # Non-streaming preview: open preview immediately and
                 # let it run STT in the background (asr_text=None).
                 await self._route_to_preview(
@@ -337,7 +344,7 @@ class RecordingFlow:
                 )
                 return
 
-            if not app._preview_enabled and not streaming:
+            if not effective_preview and not streaming:
                 # Non-streaming direct: show overlay immediately and
                 # run STT in the background.
                 logger.debug("Routing to direct flow with background STT")
@@ -372,7 +379,7 @@ class RecordingFlow:
             asr_text = text.strip()
 
             # ⑦ Route to preview or direct flow
-            if app._preview_enabled:
+            if effective_preview:
                 await self._route_to_preview(
                     asr_text, audio_duration, wav_data,
                 )
@@ -1149,6 +1156,7 @@ class RecordingFlow:
         )
 
     def _restore_mode(self) -> None:
+        self._no_preview_override = False
         if self._saved_mode is None:
             return
         from PyObjCTools import AppHelper
@@ -1195,6 +1203,8 @@ class RecordingFlow:
         return modes
 
     def _navigate_mode(self, delta: int) -> None:
+        if self._no_preview_override:
+            return
         from PyObjCTools import AppHelper
 
         modes = self._build_mode_list()
@@ -1226,6 +1236,8 @@ class RecordingFlow:
         )
 
     def _show_mode_on_indicator(self) -> None:
+        if self._no_preview_override:
+            return
         from PyObjCTools import AppHelper
 
         modes = self._build_mode_list()

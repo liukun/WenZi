@@ -1211,12 +1211,15 @@ function renderHotkeys() {
     // Mode dropdown
     html += '    <select data-action="hotkey-mode" data-key="' + _esc(key) + '">';
     html += '      <option value="_default"' + (!mode || mode === '_default' ? ' selected' : '') + '>' + _esc(_t('general_tab.default_ai_mode', 'Default AI Mode')) + '</option>';
+    html += '      <option value="no_preview"' + (mode === 'no_preview' ? ' selected' : '') + '>' + _esc(_t('general_tab.no_preview', 'No Preview Window')) + '</option>';
+    html += '      <option disabled>───────</option>';
     html += '      <option value="off"' + (mode === 'off' ? ' selected' : '') + '>' + _esc(_t('general_tab.off', 'Off')) + '</option>';
     var modes = CONFIG.enhance_modes || [];
     for (var j = 0; j < modes.length; j++) {
       html += '      <option value="' + _esc(modes[j].id) + '"' + (mode === modes[j].id ? ' selected' : '') + '>' + _esc(modes[j].name) + '</option>';
     }
     if (key.toLowerCase() !== 'fn') {
+      html += '      <option disabled>───────</option>';
       html += '      <option value="_delete">' + _esc(_t('general_tab.delete_hotkey', 'Delete Hotkey')) + '</option>';
     }
     html += '    </select>';

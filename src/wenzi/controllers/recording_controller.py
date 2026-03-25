@@ -45,6 +45,7 @@ class RecordingController:
         self._busy_token: int = 0
         self._input_context = None
         self._delayed_thread: threading.Thread | None = None
+        self._no_preview_override = False
 
     @property
     def input_context(self):
@@ -176,7 +177,12 @@ class RecordingController:
         hotkey_value = app._config.get("hotkeys", {}).get(key_name)
         if isinstance(hotkey_value, dict):
             prefer_mode = hotkey_value.get("mode")
-            if prefer_mode is not None:
+            if prefer_mode == "no_preview":
+                from wenzi.enhance.enhancer import MODE_OFF
+                self._no_preview_override = True
+                self._prefer_mode = MODE_OFF
+                self._apply_prefer_mode(MODE_OFF)
+            elif prefer_mode is not None:
                 self._prefer_mode = prefer_mode
                 self._apply_prefer_mode(prefer_mode)
 
@@ -244,6 +250,7 @@ class RecordingController:
 
     def _restore_mode(self) -> None:
         """Restore the original enhance mode after a per-hotkey override."""
+        self._no_preview_override = False
         if self._saved_mode is None:
             return
 
@@ -306,6 +313,8 @@ class RecordingController:
 
     def _show_mode_on_indicator(self) -> None:
         """Show the current mode label with nav hints on the indicator."""
+        if self._no_preview_override:
+            return
         modes = self._build_mode_list()
         if len(modes) <= 1:
             return
@@ -319,6 +328,8 @@ class RecordingController:
 
     def _navigate_mode(self, delta: int) -> None:
         """Move to the next (+1) or previous (-1) mode while recording."""
+        if self._no_preview_override:
+            return
         modes = self._build_mode_list()
         if len(modes) <= 1:
             return
@@ -549,11 +560,13 @@ class RecordingController:
 
         self._fire_scripting_event("recording_stop", audio_duration=audio_duration)
 
+        effective_preview = app._preview_enabled and not self._no_preview_override
+
         if streaming_active:
             # Streaming path: get final text from the streaming session
             use_enhance = bool(app._enhancer and app._enhancer.is_active)
             self.stop_recording_indicator(
-                animate=app._preview_enabled or use_enhance
+                animate=effective_preview or use_enhance
             )
 
             busy_token = self._claim_busy()
@@ -565,7 +578,7 @@ class RecordingController:
                     self._hide_live_overlay()
                     if text and text.strip():
                         asr_text = text.strip()
-                        if app._preview_enabled:
+                        if effective_preview:
                             self._fire_scripting_event("transcription_done", asr_text=asr_text)
                             app._do_transcribe_with_preview(
                                 asr_text=asr_text,
@@ -603,7 +616,7 @@ class RecordingController:
 
         busy_token = self._claim_busy()
 
-        if app._preview_enabled:
+        if effective_preview:
             app._set_status("statusbar.status.transcribing")
             # Show preview immediately, transcribe in background
             def _do_preview():
