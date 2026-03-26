@@ -35,10 +35,11 @@ class _WZNamespace:
         self.snippets = SnippetsAPI()
         self.timer = TimerAPI(registry)
         self.store = StoreAPI()
-        # HotkeyAPI, ChooserAPI, and UIAPI are created lazily to avoid circular imports
+        # HotkeyAPI, ChooserAPI, UIAPI, WindowAPI are created lazily
         self._hotkey_api = None
         self._chooser_api = None
         self._ui_api = None
+        self._window_api = None
         self._reload_callback: Optional[Callable] = None
 
     @property
@@ -67,6 +68,15 @@ class _WZNamespace:
 
             self._ui_api = UIAPI()
         return self._ui_api
+
+    @property
+    def window(self):
+        """Access the window management API (lazy init)."""
+        if self._window_api is None:
+            from .window import WindowAPI
+
+            self._window_api = WindowAPI()
+        return self._window_api
 
     def leader(
         self,
