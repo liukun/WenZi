@@ -1123,6 +1123,9 @@ class WenZiApp(StatusBarApp):
             except Exception:
                 logger.debug("Enhancer close timed out or failed", exc_info=True)
         async_loop.shutdown_sync(timeout=5)
+        from wenzi.statusbar import cleanup_callbacks
+
+        cleanup_callbacks()
         quit_application()
 
     @staticmethod

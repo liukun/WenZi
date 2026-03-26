@@ -541,6 +541,12 @@ class AppleSpeechTranscriber(BaseTranscriber):
         t = self._stream_runloop_thread
         if t is not None and t.is_alive():
             t.join(timeout=2.0)
+            if t.is_alive():
+                logger.warning(
+                    "RunLoop thread did not exit within timeout, cleaning up references"
+                )
+                self._stream_runloop_thread = None
+                self._stream_on_partial = None
 
     def _reset_streaming_state(self) -> None:
         """Clear all streaming state."""

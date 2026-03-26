@@ -906,6 +906,10 @@ class ResultPreviewPanel:
             self._panel = None
         if self._webview is not None:
             self._webview.setNavigationDelegate_(None)
+            try:
+                self._webview.configuration().userContentController().removeScriptMessageHandlerForName_("action")
+            except Exception:
+                pass
         self._webview = None
         self._message_handler = None
         self._navigation_delegate = None

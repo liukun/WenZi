@@ -59,6 +59,15 @@ def _get_callback_handler() -> _MenuCallbackTarget:
     return _callback_handler
 
 
+def cleanup_callbacks() -> None:
+    """Clear the global callback mapping.
+
+    Should be called on application quit to release references to
+    ``StatusMenuItem`` / callable pairs held for menu item routing.
+    """
+    _ns_to_callback.clear()
+
+
 # ---------------------------------------------------------------------------
 # SeparatorMenuItem
 # ---------------------------------------------------------------------------

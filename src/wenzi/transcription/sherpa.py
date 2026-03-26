@@ -254,6 +254,12 @@ class SherpaOnnxTranscriber(BaseTranscriber):
         self._stream_stop.set()
         if self._decode_thread is not None:
             self._decode_thread.join(timeout=5.0)
+            if self._decode_thread.is_alive():
+                logger.warning(
+                    "Decode thread did not exit within timeout, cleaning up references"
+                )
+                self._decode_thread = None
+                self._on_partial = None
 
         # Final decode pass
         while self._recognizer.is_ready(self._stream):
@@ -276,6 +282,10 @@ class SherpaOnnxTranscriber(BaseTranscriber):
         self._stream_stop.set()
         if self._decode_thread is not None:
             self._decode_thread.join(timeout=2.0)
+            if self._decode_thread.is_alive():
+                logger.warning(
+                    "Decode thread did not exit within timeout, cleaning up references"
+                )
         self._cleanup_stream()
         logger.info("Sherpa streaming cancelled")
 
@@ -300,6 +310,7 @@ class SherpaOnnxTranscriber(BaseTranscriber):
         self._decode_thread = None
         self._on_partial = None
         self._last_text = ""
+        self._stream_stop.set()  # ensure thread sees stop signal
 
     def cleanup(self) -> None:
         if self._stream is not None:

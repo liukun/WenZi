@@ -188,12 +188,16 @@ class PoolMonitor:
             return  # already running
 
         async def _loop() -> None:
-            while True:
-                await asyncio.sleep(interval)
-                try:
-                    self.log_stats("periodic")
-                except Exception:
-                    logger.debug("Periodic pool stats failed", exc_info=True)
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    try:
+                        self.log_stats("periodic")
+                    except Exception:
+                        logger.debug("Periodic pool stats failed", exc_info=True)
+            except asyncio.CancelledError:
+                logger.debug("Periodic pool monitor cancelled")
+                return
 
         try:
             from wenzi import async_loop

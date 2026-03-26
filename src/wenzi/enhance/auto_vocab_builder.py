@@ -95,7 +95,12 @@ class AutoVocabBuilder:
 
     def _run_silent_build(self) -> None:
         """Submit vocabulary build to the shared asyncio loop."""
-        async_loop.submit(self._build_async())
+        try:
+            async_loop.submit(self._build_async())
+        except Exception:
+            logger.error("Failed to submit vocab build", exc_info=True)
+            with self._lock:
+                self._building = False
 
     async def _build_async(self) -> None:
         """Execute incremental vocabulary build, reload index, and notify."""

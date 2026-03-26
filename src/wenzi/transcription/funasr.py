@@ -29,6 +29,7 @@ class FunASRTranscriber(BaseTranscriber):
         self._vad_model = None
         self._punc_restorer = None
         self._initialized = False
+        self._initializing_lock = threading.Lock()
         self._transcription_count = 0
 
     @property
@@ -44,6 +45,19 @@ class FunASRTranscriber(BaseTranscriber):
         if self._initialized:
             return
 
+        if not self._initializing_lock.acquire(blocking=False):
+            logger.info("FunASR initialization already in progress, skipping")
+            return
+
+        try:
+            if self._initialized:
+                return
+            self._initialize_models()
+        finally:
+            self._initializing_lock.release()
+
+    def _initialize_models(self) -> None:
+        """Internal: load models while holding the init lock."""
         logger.info("Initializing FunASR models...")
         start = time.time()
 

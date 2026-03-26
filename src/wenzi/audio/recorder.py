@@ -188,6 +188,10 @@ class Recorder:
             stream = self._stream
             self._stream = None
 
+        # Break circular references: the callback typically captures the
+        # caller's self, preventing GC until the next start().
+        self.clear_on_audio_chunk()
+
         # Fire-and-forget stream close.  The _close_done event lets a
         # subsequent start() know whether cleanup has finished.
         if stream is not None:
@@ -214,6 +218,7 @@ class Recorder:
 
         if not frames:
             logger.warning("No audio frames captured")
+            self._flush()  # ensure queue is fully drained
             return None
 
         audio = np.concatenate(frames)
@@ -227,6 +232,7 @@ class Recorder:
         if rms < self.silence_rms:
             logger.warning("Audio below silence threshold (RMS=%d < %d), discarding",
                            rms, self.silence_rms)
+            self._flush()  # release any frames that arrived during drain
             return None
 
         # Encode as WAV in memory
