@@ -8,64 +8,45 @@ from unittest.mock import patch
 from wenzi.scripting.sources.app_source import (
     AppSource,
     _APP_DIRS,
+    _CORE_SERVICES_APPS,
     _cache_key,
-    _is_internal_app,
     _scan_apps,
 )
 
 
 class TestAppDirs:
-    def test_core_services_in_app_dirs(self):
-        """CoreServices root should be scanned to find Finder.app etc."""
-        assert "/System/Library/CoreServices" in _APP_DIRS
+    def test_core_services_not_in_app_dirs(self):
+        """CoreServices directories should NOT be in scan dirs."""
+        for d in _APP_DIRS:
+            assert "CoreServices" not in d
 
-    def test_core_services_applications_in_app_dirs(self):
-        """CoreServices/Applications should still be scanned."""
-        assert "/System/Library/CoreServices/Applications" in _APP_DIRS
+    def test_core_services_allowlist_exists(self):
+        """Allowlist should contain user-facing CoreServices apps."""
+        names = {os.path.basename(p)[:-4] for p in _CORE_SERVICES_APPS}
+        assert "Finder" in names
+        assert "Keychain Access" in names
 
+    def test_core_services_allowlist_added_to_scan(self, tmp_path):
+        """Allowlisted CoreServices apps should appear in scan results."""
+        cs_dir = tmp_path / "CoreServices"
+        cs_dir.mkdir()
+        (cs_dir / "Finder.app").mkdir()
+        (cs_dir / "WiFiAgent.app").mkdir()
 
-class TestIsInternalApp:
-    """Verify internal system app filtering logic."""
-
-    def test_known_user_apps_not_filtered(self):
-        for name in ("Finder", "Siri", "Spotlight", "Screen Time", "Dock"):
-            assert not _is_internal_app(name), f"{name} should NOT be filtered"
-
-    def test_agent_suffix_filtered(self):
-        for name in ("AirPlayUIAgent", "CoreLocationAgent", "WiFiAgent"):
-            assert _is_internal_app(name), f"{name} should be filtered"
-
-    def test_server_suffix_filtered(self):
-        assert _is_internal_app("AccessibilityUIServer")
-        assert _is_internal_app("SystemUIServer")
-
-    def test_helper_suffix_filtered(self):
-        assert _is_internal_app("DiscHelper")
-        assert _is_internal_app("ProfileHelper")
-
-    def test_skip_names_filtered(self):
-        for name in ("loginwindow", "rcd", "liquiddetectiond", "screencaptureui"):
-            assert _is_internal_app(name), f"{name} should be filtered"
-
-    def test_scan_filters_core_services_internals(self, tmp_path):
-        """Internal apps should be filtered when scanning CoreServices dir."""
-        (tmp_path / "Finder.app").mkdir()
-        (tmp_path / "WiFiAgent.app").mkdir()
-        (tmp_path / "loginwindow.app").mkdir()
+        allowlist = [str(cs_dir / "Finder.app")]
 
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
-            [str(tmp_path)],
+            [],
         ), patch(
-            "wenzi.scripting.sources.app_source._CORE_SERVICES_DIR",
-            str(tmp_path),
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            allowlist,
         ):
             apps = _scan_apps()
 
         names = {a["name"] for a in apps}
         assert "Finder" in names
         assert "WiFiAgent" not in names
-        assert "loginwindow" not in names
 
 
 class TestScanApps:
@@ -81,6 +62,9 @@ class TestScanApps:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ):
             apps = _scan_apps()
 
@@ -101,6 +85,9 @@ class TestScanApps:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(dir1), str(dir2)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ):
             apps = _scan_apps()
 
@@ -111,6 +98,9 @@ class TestScanApps:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             ["/nonexistent/path"],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ):
             apps = _scan_apps()
         assert apps == []
@@ -139,6 +129,9 @@ class TestAppSource:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ):
             src = AppSource()
             src._ensure_scanned()
@@ -226,6 +219,9 @@ class TestAppSource:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ):
             src.rescan()
         with patch(
@@ -249,6 +245,9 @@ class TestAppSource:
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
         ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
+        ), patch(
             "wenzi.scripting.sources.app_source._get_running_app_names",
             return_value=set(),
         ):
@@ -267,6 +266,9 @@ class TestAppSource:
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
         ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
+        ), patch(
             "wenzi.scripting.sources.app_source._get_running_app_names",
             return_value=set(),
         ):
@@ -280,6 +282,9 @@ class TestAppSource:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ), patch(
             "wenzi.scripting.sources.app_source._get_display_name",
             side_effect=lambda path, fallback: "备忘录" if "Notes" in path else fallback,
@@ -308,6 +313,9 @@ class TestAppSource:
         with patch(
             "wenzi.scripting.sources.app_source._APP_DIRS",
             [str(tmp_path)],
+        ), patch(
+            "wenzi.scripting.sources.app_source._CORE_SERVICES_APPS",
+            [],
         ), patch(
             "wenzi.scripting.sources.app_source._get_display_name",
             side_effect=lambda path, fallback: "备忘录" if "Notes" in path else fallback,

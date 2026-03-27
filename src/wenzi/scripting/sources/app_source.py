@@ -1,8 +1,9 @@
 """App search data source for the Chooser.
 
-Scans /Applications, /System/Applications, and ~/Applications for .app
-bundles, checks running status via NSWorkspace, and provides substring
-matching with running apps ranked first.
+Scans /Applications, /System/Applications, ~/Applications for .app
+bundles, plus an allowlist of user-facing CoreServices apps.  Checks
+running status via NSWorkspace and provides fuzzy matching with running
+apps ranked first.
 """
 
 from __future__ import annotations
@@ -32,22 +33,26 @@ _APP_DIRS = [
     "/Applications",
     "/System/Applications",
     "/System/Applications/Utilities",
-    "/System/Library/CoreServices",
-    "/System/Library/CoreServices/Applications",
     os.path.expanduser("~/Applications"),
 ]
 
-# Internal system app filters (applied only to /System/Library/CoreServices)
-_CORE_SERVICES_DIR = "/System/Library/CoreServices"
-_CORE_SERVICES_SKIP_SUFFIXES = (
-    "Agent", "Server", "Service", "Helper", "Handler",
-    "Dispatcher", "Forwarder", "Stub", "Trampoline",
-    "Launcher", "Host", "Monitor", "Replayer",
-)
-_CORE_SERVICES_SKIP_NAMES = {
-    "loginwindow", "rcd", "liquiddetectiond",
-    "screencaptureui", "UIKitSystem",
-}
+# User-facing apps from CoreServices added directly (allowlist)
+_CORE_SERVICES_APPS = [
+    "/System/Library/CoreServices/Captive Network Assistant.app",
+    "/System/Library/CoreServices/Finder.app",
+    "/System/Library/CoreServices/Installer.app",
+    "/System/Library/CoreServices/Siri.app",
+    "/System/Library/CoreServices/Software Update.app",
+    "/System/Library/CoreServices/Spotlight.app",
+    "/System/Library/CoreServices/VoiceOver.app",
+    "/System/Library/CoreServices/Applications/About This Mac.app",
+    "/System/Library/CoreServices/Applications/Archive Utility.app",
+    "/System/Library/CoreServices/Applications/Directory Utility.app",
+    "/System/Library/CoreServices/Applications/Feedback Assistant.app",
+    "/System/Library/CoreServices/Applications/Keychain Access.app",
+    "/System/Library/CoreServices/Applications/Ticket Viewer.app",
+    "/System/Library/CoreServices/Applications/Wireless Diagnostics.app",
+]
 
 
 def _get_display_name(path: str, fallback: str) -> str:
@@ -110,13 +115,6 @@ def _cache_key(path: str) -> str:
     return hashlib.md5(path.encode()).hexdigest()
 
 
-def _is_internal_app(name: str) -> bool:
-    """Return True if *name* looks like an internal system component."""
-    if name in _CORE_SERVICES_SKIP_NAMES:
-        return True
-    return any(name.endswith(suffix) for suffix in _CORE_SERVICES_SKIP_SUFFIXES)
-
-
 def _scan_apps() -> list[dict]:
     """Scan application directories and return a list of app info dicts.
 
@@ -136,15 +134,12 @@ def _scan_apps() -> list[dict]:
         except OSError:
             continue
 
-        is_core_services = app_dir == _CORE_SERVICES_DIR
         for entry in entries:
             if not entry.endswith(".app"):
                 continue
             full_path = os.path.join(app_dir, entry)
             name = entry[:-4]  # Strip ".app"
             if name in seen:
-                continue
-            if is_core_services and _is_internal_app(name):
                 continue
             seen.add(name)
             display_name = _get_display_name(full_path, name)
@@ -153,6 +148,21 @@ def _scan_apps() -> list[dict]:
                 "display_name": display_name,
                 "path": full_path,
             })
+
+    # Add allowlisted CoreServices apps directly
+    for full_path in _CORE_SERVICES_APPS:
+        if not os.path.isdir(full_path):
+            continue
+        name = os.path.basename(full_path)[:-4]
+        if name in seen:
+            continue
+        seen.add(name)
+        display_name = _get_display_name(full_path, name)
+        apps.append({
+            "name": name,
+            "display_name": display_name,
+            "path": full_path,
+        })
 
     logger.info("Scanned %d apps from %s", len(apps), _APP_DIRS)
     return apps
