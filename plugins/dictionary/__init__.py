@@ -86,6 +86,7 @@ def setup(wz) -> None:
         action_hints={"enter": "Open"},
         search_timeout=5.0,
         debounce_delay=0.2,
+        universal_action=True,
     )
     async def search(query: str) -> list:
         if not query.strip():
