@@ -41,6 +41,7 @@ class _WZNamespace:
         self._ui_api = None
         self._window_api = None
         self._menubar_api = None
+        self._keychain_api = None
         self._reload_callback: Optional[Callable] = None
 
     @property
@@ -87,6 +88,15 @@ class _WZNamespace:
 
             self._menubar_api = MenuBarAPI()
         return self._menubar_api
+
+    @property
+    def keychain(self):
+        """Access the encrypted keychain API (lazy init)."""
+        if self._keychain_api is None:
+            from .keychain import KeychainAPI
+
+            self._keychain_api = KeychainAPI()
+        return self._keychain_api
 
     def leader(
         self,

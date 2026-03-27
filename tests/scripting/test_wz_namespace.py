@@ -156,3 +156,21 @@ class TestWZNamespace:
         reg = ScriptingRegistry()
         wz = _WZNamespace(reg)
         assert isinstance(wz.store, StoreAPI)
+
+    @patch("wenzi.scripting.api.keychain.keychain_get", return_value=None)
+    @patch("wenzi.scripting.api.keychain.keychain_set", return_value=False)
+    def test_keychain_property_exists(self, mock_set, mock_get):
+        reg = ScriptingRegistry()
+        wz = _WZNamespace(reg)
+        from wenzi.scripting.api.keychain import KeychainAPI
+
+        assert isinstance(wz.keychain, KeychainAPI)
+
+    @patch("wenzi.scripting.api.keychain.keychain_get", return_value=None)
+    @patch("wenzi.scripting.api.keychain.keychain_set", return_value=False)
+    def test_keychain_is_lazy_singleton(self, mock_set, mock_get):
+        reg = ScriptingRegistry()
+        wz = _WZNamespace(reg)
+        kc1 = wz.keychain
+        kc2 = wz.keychain
+        assert kc1 is kc2
