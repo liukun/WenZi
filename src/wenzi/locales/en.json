@@ -274,6 +274,9 @@
   "chooser.source.bookmarks": "Bookmarks",
   "chooser.source.commands": "Commands",
   "chooser.source.system_settings": "System Settings",
+  "chooser.ua.filter_placeholder": "Filter actions...",
+  "chooser.ua.context_label": "Selected Text",
+  "chooser.ua.enhance_subtitle": "AI Enhance",
 
   "apple_stt.dictation_disabled.title": "Dictation Disabled",
   "apple_stt.dictation_disabled.message": "Apple Speech requires Dictation to be enabled.\n\nPlease enable it in System Settings > Keyboard > Dictation.",
@@ -387,6 +390,8 @@
   "settings.launcher_tab.clear": "Clear",
   "settings.launcher_tab.record": "Record",
   "settings.launcher_tab.new_snippet_label": "New Snippet:",
+  "settings.launcher_tab.universal_action_label": "Universal Action",
+  "settings.launcher_tab.universal_action_desc": "Global hotkey to trigger Universal Action on selected text",
   "settings.launcher_tab.data_sources_section": "Data Sources",
   "settings.launcher_tab.data_sources_desc": "Enable/disable sources and customize their prefix triggers",
   "settings.launcher_tab.source.applications": "Applications",

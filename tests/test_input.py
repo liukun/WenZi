@@ -156,3 +156,48 @@ class TestAppleScriptSafety:
         assert '\\"world\\"' in script
         # Should NOT be passed as -e argument
         assert "-e" not in args[0]
+
+
+class TestGetSelectedText:
+    """Tests for the get_selected_text() fallback chain."""
+
+    @patch("wenzi.input._get_ax_selected_text", return_value="hello from AX")
+    def test_ax_success_returns_text(self, mock_ax):
+        from wenzi.input import get_selected_text
+
+        result = get_selected_text()
+        assert result == "hello from AX"
+
+    @patch("wenzi.input._get_ax_selected_text", return_value=None)
+    @patch("wenzi.input._get_text_via_cmd_c", return_value="hello from clipboard")
+    def test_ax_fails_falls_back_to_cmd_c(self, mock_cmd_c, mock_ax):
+        from wenzi.input import get_selected_text
+
+        result = get_selected_text()
+        assert result == "hello from clipboard"
+
+    @patch("wenzi.input._get_ax_selected_text", return_value=None)
+    @patch("wenzi.input._get_text_via_cmd_c", return_value=None)
+    @patch("wenzi.input.get_clipboard_text", return_value="existing clipboard")
+    def test_both_fail_falls_back_to_clipboard(self, mock_clip, mock_cmd_c, mock_ax):
+        from wenzi.input import get_selected_text
+
+        result = get_selected_text()
+        assert result == "existing clipboard"
+
+    @patch("wenzi.input._get_ax_selected_text", return_value=None)
+    @patch("wenzi.input._get_text_via_cmd_c", return_value=None)
+    @patch("wenzi.input.get_clipboard_text", return_value=None)
+    def test_all_fail_returns_none(self, mock_clip, mock_cmd_c, mock_ax):
+        from wenzi.input import get_selected_text
+
+        result = get_selected_text()
+        assert result is None
+
+    @patch("wenzi.input._get_ax_selected_text", return_value="")
+    @patch("wenzi.input._get_text_via_cmd_c", return_value="fallback")
+    def test_ax_empty_string_falls_back(self, mock_cmd_c, mock_ax):
+        from wenzi.input import get_selected_text
+
+        result = get_selected_text()
+        assert result == "fallback"

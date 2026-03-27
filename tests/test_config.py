@@ -925,3 +925,10 @@ class TestSaveConfigWithSecrets:
             mock_set.assert_not_called()
         saved = json.loads(open(path).read())
         assert saved["ai_enhance"]["providers"]["openai"]["api_key"] == "sk-real-key"
+
+
+def test_default_config_has_universal_action_hotkey():
+    from wenzi.config import DEFAULT_CONFIG
+    chooser_cfg = DEFAULT_CONFIG["scripting"]["chooser"]
+    assert "universal_action_hotkey" in chooser_cfg
+    assert chooser_cfg["universal_action_hotkey"] == ""

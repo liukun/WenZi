@@ -377,6 +377,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "new_snippet_hotkey": "",
             "clipboard_ocr": True,
             "switch_to_english": True,
+            "universal_action_hotkey": "",
         },
     },
     "plugins": {

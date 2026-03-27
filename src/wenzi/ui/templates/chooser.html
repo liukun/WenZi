@@ -120,6 +120,40 @@ body { display: flex; flex-direction: column; }
 }
 .search-input::placeholder { color: var(--secondary); }
 
+/* Context block (Universal Action mode) */
+.context-block {
+    display: none; flex-shrink: 0;
+    padding: 10px 14px;
+    background: var(--input-bg);
+    border-bottom: 1px solid var(--border);
+}
+.context-block.visible { display: block; }
+.context-label {
+    font-size: 11px; color: var(--secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+.context-text {
+    font-size: 13px; color: var(--text);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    cursor: pointer;
+    word-break: break-word;
+}
+.context-text.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    max-height: 120px;
+    overflow-y: auto;
+}
+.context-text.expanded::-webkit-scrollbar { width: 4px; }
+.context-text.expanded::-webkit-scrollbar-thumb {
+    background: var(--secondary); border-radius: 2px; opacity: 0.5;
+}
+
 /* Create button (shown for sources that support creation) */
 .create-group {
     display: none; flex-shrink: 0;
@@ -253,6 +287,11 @@ body { display: flex; flex-direction: column; }
 </head>
 <body>
 
+<div class="context-block" id="context-block">
+    <div class="context-label" id="context-label">Selected Text</div>
+    <div class="context-text" id="context-text"></div>
+</div>
+
 <div class="search-bar">
     <span class="search-icon">&#128269;</span>
     <input class="search-input" id="search-input"
@@ -323,6 +362,41 @@ function post(type, data) {
     window.webkit.messageHandlers.chooser.postMessage(
         Object.assign({ type: type }, data || {})
     );
+}
+
+// --- Context block (Universal Action mode) ---
+var contextBlock = document.getElementById('context-block');
+var contextTextEl = document.getElementById('context-text');
+var contextLabelEl = document.getElementById('context-label');
+
+var _exclusiveMode = false;  // UA mode: always expand panel even with empty input
+
+function setContextText(text, label) {
+    if (!text) {
+        contextBlock.classList.remove('visible');
+        _exclusiveMode = false;
+        return;
+    }
+    contextLabelEl.textContent = label || 'Selected Text';
+    contextTextEl.textContent = text;
+    contextTextEl.classList.remove('expanded');
+    contextBlock.classList.add('visible');
+    _exclusiveMode = true;
+    post('resize');
+}
+
+function clearContext() {
+    contextBlock.classList.remove('visible');
+    contextTextEl.textContent = '';
+    contextTextEl.classList.remove('expanded');
+    _exclusiveMode = false;
+}
+
+if (contextTextEl) {
+    contextTextEl.addEventListener('click', function() {
+        contextTextEl.classList.toggle('expanded');
+        post('resize');
+    });
 }
 
 // --- Placeholder mask: inject once into a <style> element ---
@@ -623,7 +697,7 @@ function _requestResize() {
 }
 
 function _checkPanelResize() {
-    var shouldExpand = searchInput.value.length > 0 && items.length > 0;
+    var shouldExpand = items.length > 0 && (searchInput.value.length > 0 || _exclusiveMode);
     if (shouldExpand !== _panelExpanded) {
         _panelExpanded = shouldExpand;
         _requestResize();

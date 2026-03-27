@@ -244,6 +244,40 @@ class ChooserAPI:
         """
         self.show(initial_query=prefix + " ")
 
+    def show_universal_action(
+        self,
+        context_text: str,
+        exclusive_source: Optional[str] = None,
+        on_close: Optional[Callable] = None,
+        initial_query: Optional[str] = None,
+        placeholder: Optional[str] = None,
+    ) -> None:
+        """Show the chooser in Universal Action mode.
+
+        Displays *context_text* as a read-only context block above the
+        search field.  The search field filters available actions.
+
+        Args:
+            context_text: Selected text to display as context.
+            exclusive_source: If set, only search this source (bypass prefix logic).
+            on_close: Callback invoked when the panel closes.
+            initial_query: Pre-fill the search input.
+            placeholder: Override the search input placeholder.
+        """
+        try:
+            from PyObjCTools import AppHelper
+
+            AppHelper.callAfter(
+                self._panel.show_universal_action,
+                context_text=context_text,
+                exclusive_source=exclusive_source,
+                on_close=on_close,
+                initial_query=initial_query,
+                placeholder=placeholder,
+            )
+        except Exception:
+            logger.exception("Failed to show Universal Action")
+
     def close(self) -> None:
         """Close the chooser panel."""
         try:
@@ -408,6 +442,7 @@ class ChooserAPI:
         icon: str = "",
         modifiers: Optional[Dict] = None,
         promoted: bool = False,
+        universal_action: bool = False,
     ) -> None:
         """Register a named command in the command palette (``>`` prefix).
 
@@ -429,6 +464,7 @@ class ChooserAPI:
             action=wrap_async(action),
             modifiers=_parse_modifiers(modifiers),
             promoted=promoted,
+            universal_action=universal_action,
         )
         self._command_source.register(entry)
 
@@ -444,6 +480,7 @@ class ChooserAPI:
         icon: str = "",
         modifiers: Optional[Dict] = None,
         promoted: bool = False,
+        universal_action: bool = False,
     ) -> Callable:
         """Decorator to register a function as a chooser command.
 
@@ -470,6 +507,7 @@ class ChooserAPI:
                 icon=icon,
                 modifiers=modifiers,
                 promoted=promoted,
+                universal_action=universal_action,
             )
             return func
 
@@ -489,6 +527,7 @@ class ChooserAPI:
         show_preview: bool = False,
         search_timeout: Optional[float] = None,
         debounce_delay: Optional[float] = None,
+        universal_action: bool = False,
     ) -> Callable:
         """Decorator to register a search function as a chooser source.
 
@@ -553,6 +592,7 @@ class ChooserAPI:
                 is_async=_is_async,
                 search_timeout=search_timeout,
                 debounce_delay=debounce_delay,
+                universal_action=universal_action,
             )
             self._panel.register_source(src)
             logger.info(

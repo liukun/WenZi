@@ -228,6 +228,8 @@ class ChooserPanel:
         self._switch_english: bool = True
         self._saved_input_source: Optional[str] = None
         self._active_source: Optional[ChooserSource] = None  # currently prefix-activated source
+        self._context_text: Optional[str] = None  # Universal Action context
+        self._exclusive_source: Optional[str] = None  # Source name to search exclusively (UA mode)
         self._search_generation: int = 0
         self._pending_async_count: int = 0
         self._loading_visible: bool = False
@@ -501,11 +503,36 @@ class ChooserPanel:
 
         self._fire_event("open")
 
+    def show_universal_action(
+        self,
+        context_text: str,
+        exclusive_source: Optional[str] = None,
+        on_close: Optional[Callable] = None,
+        initial_query: Optional[str] = None,
+        placeholder: Optional[str] = None,
+    ) -> None:
+        """Show the chooser in Universal Action mode with a context block.
+
+        Must run on the main thread.
+
+        Args:
+            context_text: The selected text to display as read-only context.
+            exclusive_source: If set, only search this source (bypass prefix logic).
+            on_close: Callback invoked when the panel closes.
+            initial_query: Pre-fill the search input (for filtering actions).
+            placeholder: Override the search input placeholder text.
+        """
+        self._context_text = context_text
+        self._exclusive_source = exclusive_source
+        self.show(on_close=on_close, initial_query=initial_query, placeholder=placeholder)
+
     def close(self) -> None:
         """Close the chooser panel."""
         if self._closing:
             return
         self._closing = True
+        self._context_text = None
+        self._exclusive_source = None
 
         # Cancel all pending debounce timers
         self._cancel_all_debounce_timers()
@@ -597,14 +624,19 @@ class ChooserPanel:
         generation = self._search_generation
         source = None
 
-        # Check for prefix activation (Alfred-style: "prefix query")
-        for src in self._sources.values():
-            if src.prefix:
-                trigger = src.prefix + " "
-                if query.startswith(trigger):
-                    source = src
-                    query = query[len(trigger) :]
-                    break
+        # Exclusive source mode (Universal Action): bypass prefix logic,
+        # always search only the designated source with the raw query.
+        if self._exclusive_source and self._exclusive_source in self._sources:
+            source = self._sources[self._exclusive_source]
+        else:
+            # Check for prefix activation (Alfred-style: "prefix query")
+            for src in self._sources.values():
+                if src.prefix:
+                    trigger = src.prefix + " "
+                    if query.startswith(trigger):
+                        source = src
+                        query = query[len(trigger) :]
+                        break
 
         # Track active source and toggle create button in JS
         prev_source = self._active_source
@@ -1350,6 +1382,11 @@ class ChooserPanel:
             self._pending_initial_query = None
             self._eval_js(f"setInputValue({json.dumps(query)})")
 
+        # Universal Action context block
+        if self._context_text is not None:
+            escaped = json.dumps(self._context_text)
+            label = json.dumps(t("chooser.ua.context_label"))
+            self._eval_js(f"setContextText({escaped}, {label})")
 
     @staticmethod
     def _ensure_edit_menu() -> None:

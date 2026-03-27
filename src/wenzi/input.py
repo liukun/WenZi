@@ -80,6 +80,105 @@ def _send_cmd_c() -> None:
     Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, event_up)
 
 
+def get_selected_text() -> str | None:
+    """Get the currently selected text from the frontmost application.
+
+    Fallback chain:
+      1. AXSelectedText via Accessibility API (fast, no clipboard pollution)
+      2. Simulate Cmd+C and read clipboard (broader compatibility)
+      3. Current clipboard content (last resort)
+
+    Returns the selected text, or None if no text could be obtained.
+    """
+    # 1. Try Accessibility API
+    text = _get_ax_selected_text()
+    if text:
+        return text
+
+    # 2. Try Cmd+C simulation
+    text = _get_text_via_cmd_c()
+    if text:
+        return text
+
+    # 3. Fall back to current clipboard
+    text = get_clipboard_text()
+    return text if text else None
+
+
+def _get_ax_selected_text() -> str | None:
+    """Read AXSelectedText from the focused UI element.
+
+    Returns the selected text string, or None on error/empty.
+    """
+    try:
+        from ApplicationServices import (
+            AXUIElementCreateSystemWide,
+            AXUIElementCopyAttributeValue,
+        )
+
+        system = AXUIElementCreateSystemWide()
+        err, focused_app = AXUIElementCopyAttributeValue(
+            system, "AXFocusedApplication", None
+        )
+        if err != 0 or focused_app is None:
+            return None
+
+        err, focused_elem = AXUIElementCopyAttributeValue(
+            focused_app, "AXFocusedUIElement", None
+        )
+        if err != 0 or focused_elem is None:
+            return None
+
+        err, selected_text = AXUIElementCopyAttributeValue(
+            focused_elem, "AXSelectedText", None
+        )
+        if err != 0 or selected_text is None:
+            return None
+
+        text = str(selected_text)
+        return text if text else None
+    except Exception as exc:
+        logger.debug("AX selected text read failed: %s", exc)
+        return None
+
+
+def _get_text_via_cmd_c() -> str | None:
+    """Simulate Cmd+C to capture the selection, then read clipboard.
+
+    Bypasses the AX pre-check in ``copy_selection_to_clipboard()`` because
+    this function is only called when AX already failed — the guard would
+    reject the same apps we're trying to support via Cmd+C.
+
+    Saves and restores the original clipboard content.
+    Returns the captured text, or None if nothing was copied.
+    """
+    old_clip = get_clipboard_text()
+
+    time.sleep(0.05)
+    try:
+        _send_cmd_c()
+    except Exception as exc:
+        logger.debug("Cmd+C simulation failed: %s", exc)
+        return None
+
+    time.sleep(0.15)
+    new_clip = get_clipboard_text()
+    if new_clip == old_clip:
+        return None  # Cmd+C didn't change clipboard — no selection
+
+    # Restore original clipboard in background
+    if old_clip is not None:
+        def _restore():
+            time.sleep(0.5)
+            try:
+                _set_pasteboard_concealed(old_clip)
+            except Exception:
+                pass
+        threading.Thread(target=_restore, daemon=True).start()
+
+    return new_clip
+
+
 def _has_text_selection() -> bool:
     """Check if the frontmost application has a non-empty text selection.
 

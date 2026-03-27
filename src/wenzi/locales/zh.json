@@ -274,6 +274,9 @@
   "chooser.source.bookmarks": "书签",
   "chooser.source.commands": "命令",
   "chooser.source.system_settings": "系统设置",
+  "chooser.ua.filter_placeholder": "筛选操作...",
+  "chooser.ua.context_label": "选中文本",
+  "chooser.ua.enhance_subtitle": "AI 增强",
 
   "apple_stt.dictation_disabled.title": "听写已禁用",
   "apple_stt.dictation_disabled.message": "Apple 语音识别需要启用听写功能。\n\n请在系统设置 > 键盘 > 听写中启用。",
@@ -387,6 +390,8 @@
   "settings.launcher_tab.clear": "清除",
   "settings.launcher_tab.record": "录制",
   "settings.launcher_tab.new_snippet_label": "新建片段：",
+  "settings.launcher_tab.universal_action_label": "Universal Action",
+  "settings.launcher_tab.universal_action_desc": "全局快捷键，对选中文本执行 Universal Action",
   "settings.launcher_tab.data_sources_section": "数据源",
   "settings.launcher_tab.data_sources_desc": "启用/禁用数据源并自定义其前缀触发器",
   "settings.launcher_tab.source.applications": "应用程序",
