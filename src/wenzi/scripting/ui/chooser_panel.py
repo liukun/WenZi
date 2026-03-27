@@ -676,11 +676,15 @@ class ChooserPanel:
         else:
             compact = True
         self._compact_results = compact
-        # Defer preview mode until items exist — setting it on an empty
-        # async push causes CSS to switch to preview layout (400px left
-        # panel) while the native panel is still collapsed, breaking the
-        # layout when results arrive.
-        self._show_preview = show_preview and bool(self._current_items)
+        # Defer preview mode until items exist on the FIRST search —
+        # setting it on an empty async push causes CSS to switch to
+        # preview layout while the native panel is still collapsed.
+        # But once preview is already active (from a previous search
+        # with the same source), keep it to avoid collapsing and
+        # re-expanding between searches.
+        self._show_preview = show_preview and (
+            bool(self._current_items) or self._show_preview
+        )
 
         # Push sync results immediately
         self._push_items_to_js(source=source)
