@@ -233,11 +233,6 @@ class ConfigController:
             app._enhancer.thinking = ai_cfg.get("thinking", False)
             app._enhance_thinking_item.state = 1 if app._enhancer.thinking else 0
 
-            # Vocabulary
-            vocab_cfg = ai_cfg.get("vocabulary", {})
-            app._enhancer.vocab_enabled = vocab_cfg.get("enabled", False)
-            app._enhance_vocab_item.state = 1 if app._enhancer.vocab_enabled else 0
-
             # Conversation history
             hist_cfg = ai_cfg.get("conversation_history", {})
             app._enhancer.history_enabled = hist_cfg.get("enabled", False)

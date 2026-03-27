@@ -90,7 +90,7 @@ def _relative_time(iso_str: str) -> str:
 
 def _build_hotwords_html(details: List[HotwordDetail]) -> str:
     """Build an HTML page with a styled table of hotword details."""
-    from wenzi.enhance.vocabulary import LAYER_CONTEXT
+    from wenzi.enhance.vocabulary import LAYER_MANUAL
     from wenzi.i18n import t
 
     rows: list[str] = []
@@ -105,9 +105,8 @@ def _build_hotwords_html(details: List[HotwordDetail]) -> str:
         variants_attr = html.escape(variants_raw, quote=True)
         context_attr = html.escape(d.context, quote=True)
 
-        is_ctx = d.layer == LAYER_CONTEXT
-        layer_cls = "layer-ctx" if is_ctx else "layer-base"
-        layer_label = "ctx" if is_ctx else "base"
+        layer_cls = "layer-manual"
+        layer_label = "manual" if d.layer == LAYER_MANUAL else d.layer
         bonus_str = f"+{d.recency_bonus}" if d.recency_bonus > 0 else "0"
 
         rows.append(
@@ -320,6 +319,7 @@ class ResultPreviewPanel:
 
     _PANEL_WIDTH = 640
     _PANEL_HEIGHT = 396  # Golden ratio: 640 / 1.618
+    _DIFF_PANEL_WIDTH = 280
 
     def __init__(self) -> None:
         self._panel = None
@@ -366,6 +366,12 @@ class ResultPreviewPanel:
         self._page_loaded: bool = False
         self._pending_js: list[str] = []
         self._navigation_delegate = None
+        # Diff panel / manual vocabulary
+        self._on_add_manual_vocab: Optional[Callable] = None
+        self._on_remove_manual_vocab: Optional[Callable] = None
+        self._on_diff_panel_toggle: Optional[Callable[[bool], None]] = None
+        self._diff_panel_open: bool = False
+        self._enhanced_text_cache: str = ""
 
     # ------------------------------------------------------------------
     # Public API
@@ -469,6 +475,10 @@ class ResultPreviewPanel:
         on_select_history: Optional[Callable[[int], None]] = None,
         preview_history_items: Optional[list] = None,
         animate_from_frame: object = None,
+        on_add_manual_vocab: Optional[Callable] = None,
+        on_remove_manual_vocab: Optional[Callable] = None,
+        on_diff_panel_toggle: Optional[Callable[[bool], None]] = None,
+        diff_panel_open: bool = False,
     ) -> None:
         """Show the preview panel with ASR text."""
         self._stop_playback()
@@ -483,8 +493,13 @@ class ResultPreviewPanel:
         self._thinking_enabled = thinking_enabled
         self._on_google_translate = on_google_translate
         self._on_select_history = on_select_history
+        self._on_add_manual_vocab = on_add_manual_vocab
+        self._on_remove_manual_vocab = on_remove_manual_vocab
+        self._on_diff_panel_toggle = on_diff_panel_toggle
+        self._diff_panel_open = diff_panel_open
         self._preview_history_items = preview_history_items or []
         self._user_edited = False
+        self._enhanced_text_cache = ""
         self._show_enhance = show_enhance
         self._asr_text = asr_text
         self._source = source
@@ -915,6 +930,9 @@ class ResultPreviewPanel:
         self._pending_js = []
         self._on_confirm = None
         self._on_cancel = None
+        self._on_add_manual_vocab = None
+        self._on_remove_manual_vocab = None
+        self._on_diff_panel_toggle = None
 
     # ------------------------------------------------------------------
     # Callbacks from JavaScript
@@ -1026,6 +1044,96 @@ class ResultPreviewPanel:
         elif msg_type == "userEdit":
             self._user_edited = True
 
+        elif msg_type == "addManualVocab":
+            variant = body.get("variant", "")
+            term = body.get("term", "")
+            source = body.get("source", "asr")
+            if variant and term and self._on_add_manual_vocab is not None:
+                self._on_add_manual_vocab(variant, term, source)
+
+        elif msg_type == "removeManualVocab":
+            variant = body.get("variant", "")
+            term = body.get("term", "")
+            if variant and term and self._on_remove_manual_vocab is not None:
+                self._on_remove_manual_vocab(variant, term)
+
+        elif msg_type == "diffPanelToggle":
+            is_open = body.get("open", False)
+            self._resize_for_diff_panel(is_open)
+            if self._on_diff_panel_toggle is not None:
+                self._on_diff_panel_toggle(is_open)
+
+        elif msg_type == "computeUserDiffs":
+            final_text = body.get("finalText", "")
+            if self._enhanced_text_cache and final_text:
+                try:
+                    from wenzi.enhance.text_diff import extract_word_pairs
+                    pairs = extract_word_pairs(self._enhanced_text_cache, final_text)
+                    data = [{"variant": v, "term": t} for v, t in pairs]
+                    self._eval_js(f"setUserDiffs({json.dumps(data)})")
+                except Exception as e:
+                    logger.warning("Failed to compute user diffs: %s", e)
+
+    # ------------------------------------------------------------------
+    # Diff panel public API
+    # ------------------------------------------------------------------
+
+    def set_asr_diffs(self, pairs: list[tuple[str, str]]) -> None:
+        """Push ASR→Enhanced diff pairs to the diff panel."""
+        data = [{"variant": v, "term": t} for v, t in pairs]
+        self._push_js(f"setAsrDiffs({json.dumps(data)})")
+
+    def set_user_diffs(self, pairs: list[tuple[str, str]]) -> None:
+        """Push Enhanced→Final diff pairs to the diff panel."""
+        data = [{"variant": v, "term": t} for v, t in pairs]
+        self._push_js(f"setUserDiffs({json.dumps(data)})")
+
+    def set_manual_vocab_state(self, entries: list[dict]) -> None:
+        """Tell JS which diff pairs are already in manual vocab."""
+        self._push_js(f"setManualVocabState({json.dumps(entries)})")
+
+    def set_vocab_hits(self, hits: list[dict]) -> None:
+        """Push vocab hit info cards to the diff panel."""
+        self._push_js(f"setVocabHits({json.dumps(hits)})")
+
+    def _push_js(self, js_call: str) -> None:
+        """Schedule a JS call on the main thread (no-op if webview is gone)."""
+        if self._webview is None:
+            return
+        from PyObjCTools import AppHelper
+
+        def _update():
+            if self._webview is not None:
+                self._eval_js(js_call)
+
+        AppHelper.callAfter(_update)
+
+    def cache_enhanced_text(self, text: str) -> None:
+        """Cache enhanced text for computing user-edit diffs."""
+        self._enhanced_text_cache = text
+
+    def _resize_for_diff_panel(self, is_open: bool) -> None:
+        """Instantly resize the NSPanel for diff panel open/close."""
+        if self._panel is None:
+            return
+        width = self._PANEL_WIDTH + (self._DIFF_PANEL_WIDTH if is_open else 0)
+        frame = self._panel.frame()
+        x = frame.origin.x
+        # Shift left if expanding would overflow the screen right edge
+        if is_open:
+            screen = self._screen_for_mouse()
+            if screen:
+                vis = screen.visibleFrame()
+                max_right = vis.origin.x + vis.size.width
+                overflow = (x + width) - max_right
+                if overflow > 0:
+                    x = max(vis.origin.x, x - overflow)
+        from Foundation import NSMakeRect
+        self._panel.setFrame_display_(
+            NSMakeRect(x, frame.origin.y, width, frame.size.height),
+            True,
+        )
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
@@ -1079,7 +1187,7 @@ class ResultPreviewPanel:
         # Enable ⌘C/⌘V/⌘A via Edit menu in the responder chain
         _ensure_edit_menu()
 
-        # Calculate panel height based on content
+        # Calculate panel dimensions based on content
         has_modes = len(self._available_modes) > 0
         show_enhance_section = self._show_enhance or has_modes
         height = self._PANEL_HEIGHT
@@ -1087,6 +1195,9 @@ class ResultPreviewPanel:
             height -= 60  # Less height without enhance section
         if not has_modes:
             height -= 20  # Less height without mode segment
+        panel_width = self._PANEL_WIDTH
+        if self._diff_panel_open:
+            panel_width += self._DIFF_PANEL_WIDTH
 
         NSApp.setActivationPolicy_(0)  # Regular (foreground)
 
@@ -1094,8 +1205,8 @@ class ResultPreviewPanel:
             # Reuse pre-created panel and webview from warmup()
             panel = self._panel
             webview = self._webview
-            panel.setContentSize_((self._PANEL_WIDTH, height))
-            webview.setFrame_(NSMakeRect(0, 0, self._PANEL_WIDTH, height))
+            panel.setContentSize_((panel_width, height))
+            webview.setFrame_(NSMakeRect(0, 0, panel_width, height))
             if webview.superview() is None:
                 panel.contentView().addSubview_(webview)
         else:
@@ -1110,7 +1221,7 @@ class ResultPreviewPanel:
             from WebKit import WKUserContentController, WKWebView, WKWebViewConfiguration
 
             panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, self._PANEL_WIDTH, height),
+                NSMakeRect(0, 0, panel_width, height),
                 NSTitledWindowMask | NSClosableWindowMask,
                 NSBackingStoreBuffered,
                 False,
@@ -1136,7 +1247,7 @@ class ResultPreviewPanel:
             config.setUserContentController_(content_controller)
 
             webview = WKWebView.alloc().initWithFrame_configuration_(
-                NSMakeRect(0, 0, self._PANEL_WIDTH, height),
+                NSMakeRect(0, 0, panel_width, height),
                 config,
             )
             webview.setAutoresizingMask_(0x12)
@@ -1200,6 +1311,7 @@ class ResultPreviewPanel:
             "puncEnabled": self._punc_enabled,
             "thinkingEnabled": self._thinking_enabled,
             "hasAudio": self._asr_wav_data is not None,
+            "diffPanelOpen": self._diff_panel_open,
             "previewHistory": self._preview_history_items,
             "i18n": get_translations_for_prefix("preview."),
         }

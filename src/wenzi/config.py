@@ -256,7 +256,6 @@ def migrate_xdg_paths() -> None:
         os.path.join(data, "clipboard_images"),
         "clipboard images",
     )
-    _migrate_file(config, data, "vocabulary.json")
     _migrate_file(config, data, "usage_stats.json")
     _migrate_dir_safe(
         os.path.join(config, "usage_stats"),
@@ -272,7 +271,6 @@ def migrate_xdg_paths() -> None:
         os.path.join(cache, "icon_cache"),
         "icon cache",
     )
-    _migrate_file(config, cache, "vocabulary_index.npz")
     _migrate_file(config, cache, "_chooser.html")
 
 
@@ -321,14 +319,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "connection_timeout": 10,
         "max_retries": 2,
         "vocabulary": {
-            "enabled": False,
-            "top_k": 5,
-            "build_timeout": 600,
-            "auto_build": True,
-            "build_provider": "",
-            "build_model": "",
             "max_dynamic_hotwords": 10,
-            "max_static_hotwords": 50,
         },
         "conversation_history": {
             "enabled": False,
@@ -575,8 +566,6 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
          DEFAULT_CONFIG["scripting"]["chooser"]["switch_to_english"]),
         ("ai_enhance.vocabulary.max_dynamic_hotwords", int, lambda v: v > 0,
          DEFAULT_CONFIG["ai_enhance"]["vocabulary"]["max_dynamic_hotwords"]),
-        ("ai_enhance.vocabulary.max_static_hotwords", int, lambda v: v > 0,
-         DEFAULT_CONFIG["ai_enhance"]["vocabulary"]["max_static_hotwords"]),
         ("ai_enhance.input_context", str, lambda v: v in {"off", "basic", "detailed"},
          DEFAULT_CONFIG["ai_enhance"]["input_context"]),
     ]

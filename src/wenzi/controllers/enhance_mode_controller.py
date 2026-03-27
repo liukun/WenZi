@@ -1,4 +1,4 @@
-"""Enhance mode management, vocabulary, and toggle actions extracted from WenZiApp."""
+"""Enhance mode management and toggle actions extracted from WenZiApp."""
 
 from __future__ import annotations
 
@@ -7,15 +7,11 @@ import os
 import threading
 from typing import TYPE_CHECKING
 
-from wenzi import async_loop
-
 if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
 from wenzi.config import save_config
 from wenzi.i18n import t
-from wenzi.statusbar import send_notification
-from wenzi.enhance.vocabulary import get_vocab_entry_count
 from wenzi.ui_helpers import (
     activate_for_dialog,
     restore_accessory,
@@ -182,52 +178,6 @@ Output only the processed text without any explanation."""
         save_config(app._config, app._config_path)
         logger.info("AI thinking set to: %s", new_value)
 
-    def update_vocab_title(self) -> None:
-        """Update the Vocabulary menu item title with the current entry count."""
-
-        app = self._app
-        count = 0
-        if app._enhancer and app._enhancer.vocab_index is not None:
-            count = app._enhancer.vocab_index.entry_count
-        if count == 0:
-            count = get_vocab_entry_count(app._data_dir)
-
-        if count > 0:
-            app._enhance_vocab_item.title = f"Vocabulary ({count})"
-        else:
-            app._enhance_vocab_item.title = "Vocabulary"
-
-    def on_vocab_toggle(self, sender) -> None:
-        """Toggle vocabulary-based retrieval."""
-        app = self._app
-        if not app._enhancer:
-            return
-
-        new_value = not app._enhancer.vocab_enabled
-        app._enhancer.vocab_enabled = new_value
-        sender.state = 1 if new_value else 0
-
-        # Persist to config
-        app._config.setdefault("ai_enhance", {})
-        app._config["ai_enhance"].setdefault("vocabulary", {})
-        app._config["ai_enhance"]["vocabulary"]["enabled"] = new_value
-        save_config(app._config, app._config_path)
-        logger.info("Vocabulary set to: %s", new_value)
-
-    def on_auto_build_toggle(self, sender) -> None:
-        """Toggle automatic vocabulary building."""
-        app = self._app
-        new_value = not app._auto_vocab_builder._enabled
-        app._auto_vocab_builder._enabled = new_value
-        sender.state = 1 if new_value else 0
-
-        # Persist to config
-        app._config.setdefault("ai_enhance", {})
-        app._config["ai_enhance"].setdefault("vocabulary", {})
-        app._config["ai_enhance"]["vocabulary"]["auto_build"] = new_value
-        save_config(app._config, app._config_path)
-        logger.info("Auto vocabulary build set to: %s", new_value)
-
     def on_history_toggle(self, sender) -> None:
         """Toggle conversation history context injection."""
         app = self._app
@@ -244,108 +194,6 @@ Output only the processed text without any explanation."""
         app._config["ai_enhance"]["conversation_history"]["enabled"] = new_value
         save_config(app._config, app._config_path)
         logger.info("Conversation history set to: %s", new_value)
-
-    def on_vocab_build(self, _sender) -> None:
-        """Build vocabulary from correction logs in a background thread."""
-        app = self._app
-        if not app._enhancer:
-            topmost_alert(t("alert.vocab.not_configured"))
-            return
-
-        if app._auto_vocab_builder.is_building():
-            topmost_alert(t("alert.vocab.auto_building"))
-            return
-
-        logger.info("Starting vocabulary build...")
-
-        cancel_event = threading.Event()
-
-        from wenzi.ui.vocab_build_window import VocabBuildProgressPanel
-
-        # Build enhance info string for the progress panel
-        # Use vocab-specific build model if configured, else fall back to enhance default
-        vocab_cfg = app._config.get("ai_enhance", {}).get("vocabulary", {})
-        bp = vocab_cfg.get("build_provider", "")
-        bm = vocab_cfg.get("build_model", "")
-        if bp and bm:
-            enhance_info = f"{bp} / {bm}"
-        elif app._enhancer:
-            parts = []
-            if app._enhancer.provider_name:
-                parts.append(app._enhancer.provider_name)
-            if app._enhancer.model_name:
-                parts.append(app._enhancer.model_name)
-            enhance_info = " / ".join(parts)
-        else:
-            enhance_info = ""
-
-        progress_panel = VocabBuildProgressPanel()
-        # _on_vocab_build runs on the main thread (rumps callback), so show directly
-        progress_panel.show(
-            on_cancel=lambda: cancel_event.set(),
-            enhance_info=enhance_info,
-        )
-
-        async def _build_async():
-            from wenzi.enhance.vocabulary_builder import BuildCallbacks, VocabularyBuilder
-
-            ai_cfg = app._config.get("ai_enhance", {})
-            logger.info("VocabularyBuilder initializing...")
-            builder = VocabularyBuilder(ai_cfg)
-
-            callbacks = BuildCallbacks(
-                on_batch_start=lambda i, t: (
-                    progress_panel.clear_stream_text(),
-                    progress_panel.update_status(f"Batch {i}/{t} — extracting..."),
-                ),
-                on_stream_chunk=lambda chunk: progress_panel.append_stream_text(chunk),
-                on_batch_done=lambda i, t, c: progress_panel.update_status(
-                    f"Batch {i}/{t} done — {c} entries found"
-                ),
-                on_batch_retry=lambda i, t: (
-                    progress_panel.clear_stream_text(),
-                    progress_panel.update_status(f"Batch {i}/{t} — retrying..."),
-                ),
-                on_usage_update=lambda i, c, o, t: progress_panel.update_token_usage(i, c, o, t),
-            )
-
-            old_status = app._current_status
-            app._set_status("statusbar.status.vocab_building")
-            try:
-                summary = await builder.build(
-                    cancel_event=cancel_event, callbacks=callbacks
-                )
-
-                # Reload vocabulary index if enhancer has one
-                if app._enhancer and app._enhancer.vocab_index is not None:
-                    app._enhancer.vocab_index.reload()
-                self.update_vocab_title()
-
-                cancelled = summary.get("cancelled", False)
-                status = "Cancelled" if cancelled else "Built"
-                msg = (
-                    f"{summary['total_entries']} entries "
-                    f"({summary['new_entries']} new)"
-                )
-                progress_panel.update_status(f"{status}: {msg}")
-                try:
-                    send_notification(t("app.name"), t("notification.vocab.status", status=status), msg)
-                except Exception:
-                    logger.debug("Notification center unavailable, skipping notification")
-            except Exception as e:
-                logger.error("Vocabulary build failed: %s", e)
-                progress_panel.update_status(f"Failed: {e}")
-                try:
-                    send_notification(
-                        t("app.name"), t("notification.vocab.build_failed"), str(e)
-                    )
-                except Exception:
-                    logger.debug("Notification center unavailable, skipping notification")
-            finally:
-                app._set_status(old_status or "statusbar.status.ready")
-                progress_panel.close()
-
-        async_loop.submit(_build_async())
 
     def on_preview_toggle(self, sender) -> None:
         """Toggle preview window on/off."""

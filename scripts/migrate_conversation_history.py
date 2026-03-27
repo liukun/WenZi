@@ -135,16 +135,6 @@ def main() -> None:
         print("Run without --dry-run to apply changes.")
         return
 
-    # Backfill correction tracker DB with migrated data
-    print("\nBackfilling correction tracker database...")
-    from wenzi.enhance.correction_tracker import CorrectionTracker
-    from wenzi.enhance.conversation_history import ConversationHistory
-
-    db_path = os.path.join(data_dir, "correction_tracker.db")
-    tracker = CorrectionTracker(db_path=db_path)
-    ch = ConversationHistory(data_dir=data_dir)
-    imported = tracker.backfill_from_history(ch)
-    print(f"Backfill complete: {imported} correction sessions imported to {db_path}")
 
 
 if __name__ == "__main__":

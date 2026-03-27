@@ -18,7 +18,6 @@ class TestMigrateXdgPaths:
         (config / "conversation_history.jsonl").write_text("{}")
         (config / "clipboard_history.db").write_text("")
         (config / "clipboard_history.json").write_text("[]")
-        (config / "vocabulary.json").write_text("{}")
         (config / "usage_stats.json").write_text("{}")
         (config / "chooser_usage.json").write_text("{}")
         (config / "script_data.json").write_text("{}")
@@ -43,7 +42,7 @@ class TestMigrateXdgPaths:
         assert (data / "conversation_history.jsonl").exists()
         assert (data / "clipboard_history.db").exists()
         assert (data / "clipboard_history.json").exists()
-        assert (data / "vocabulary.json").exists()
+
         assert (data / "usage_stats.json").exists()
         assert (data / "chooser_usage.json").exists()
         assert (data / "script_data.json").exists()
@@ -59,7 +58,6 @@ class TestMigrateXdgPaths:
 
         (config / "icon_cache").mkdir()
         (config / "icon_cache" / "abc.png").write_text("")
-        (config / "vocabulary_index.npz").write_text("")
         (config / "_chooser.html").write_text("")
 
         from wenzi.config import migrate_xdg_paths
@@ -70,7 +68,6 @@ class TestMigrateXdgPaths:
             migrate_xdg_paths()
 
         assert (cache / "icon_cache" / "abc.png").exists()
-        assert (cache / "vocabulary_index.npz").exists()
         assert (cache / "_chooser.html").exists()
 
     def test_no_overwrite_existing(self, tmp_path):
@@ -80,8 +77,8 @@ class TestMigrateXdgPaths:
         config.mkdir()
         data.mkdir()
 
-        (config / "vocabulary.json").write_text("old")
-        (data / "vocabulary.json").write_text("new")
+        (config / "usage_stats.json").write_text("old")
+        (data / "usage_stats.json").write_text("new")
 
         from wenzi.config import migrate_xdg_paths
 
@@ -91,9 +88,9 @@ class TestMigrateXdgPaths:
             migrate_xdg_paths()
 
         # Destination keeps its content
-        assert (data / "vocabulary.json").read_text() == "new"
+        assert (data / "usage_stats.json").read_text() == "new"
         # Source still exists (rename was skipped)
-        assert (config / "vocabulary.json").exists()
+        assert (config / "usage_stats.json").exists()
 
     def test_missing_source_is_harmless(self, tmp_path):
         """Migration is a no-op when source files don't exist."""
@@ -141,7 +138,7 @@ class TestMigrateXdgPaths:
         data = tmp_path / "data"
         config.mkdir()
 
-        (config / "vocabulary.json").write_text("v1")
+        (config / "usage_stats.json").write_text("v1")
 
         from wenzi.config import migrate_xdg_paths
 
@@ -152,12 +149,12 @@ class TestMigrateXdgPaths:
         }):
             migrate_xdg_paths()
             # Re-create source (first run renamed it away)
-            (config / "vocabulary.json").write_text("v2")
+            (config / "usage_stats.json").write_text("v2")
             # Second run should skip because destination already exists
             migrate_xdg_paths()
 
         # Destination keeps v1 from first migration, not v2
-        assert (data / "vocabulary.json").read_text() == "v1"
+        assert (data / "usage_stats.json").read_text() == "v1"
 
     def test_cross_device_fallback(self, tmp_path):
         """When rename fails, falls back to copy and keeps the source."""
@@ -165,7 +162,7 @@ class TestMigrateXdgPaths:
         data = tmp_path / "data"
         config.mkdir()
 
-        (config / "vocabulary.json").write_text("hello")
+        (config / "usage_stats.json").write_text("hello")
 
         from wenzi.config import migrate_xdg_paths
 
@@ -175,7 +172,7 @@ class TestMigrateXdgPaths:
 
         def _failing_rename(src, dst, *a, **kw):
             # Only fail for our test file, let other renames through
-            if "vocabulary.json" in str(src):
+            if "usage_stats.json" in str(src):
                 raise OSError(18, "Invalid cross-device link")
             return _orig_rename(src, dst, *a, **kw)
 
@@ -186,9 +183,9 @@ class TestMigrateXdgPaths:
             migrate_xdg_paths()
 
         # File was copied to destination
-        assert (data / "vocabulary.json").read_text() == "hello"
+        assert (data / "usage_stats.json").read_text() == "hello"
         # Source is kept (copy fallback does not delete)
-        assert (config / "vocabulary.json").exists()
+        assert (config / "usage_stats.json").exists()
 
 
 class TestMigrateFile:

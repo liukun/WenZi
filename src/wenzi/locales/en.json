@@ -418,6 +418,7 @@
   "preview.btn.save_audio": "Save",
   "preview.btn.prompt": "Prompt \u24d8",
   "preview.btn.translate": "Translate \u2197",
+  "preview.btn.diff": "Diff",
   "preview.btn.history": "History",
   "preview.btn.cancel": "Cancel",
   "preview.btn.confirm": "Confirm \u23ce",

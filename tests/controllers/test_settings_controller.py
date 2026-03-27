@@ -264,30 +264,6 @@ class TestThinkingToggle:
         ctrl.thinking_toggle(True)  # Should not raise
 
 
-class TestVocabToggle:
-    @patch("wenzi.controllers.settings_controller.save_config")
-    def test_enable_vocab(self, mock_save, ctrl, mock_app):
-        ctrl.vocab_toggle(True)
-
-        assert mock_app._enhancer.vocab_enabled is True
-        assert mock_app._enhance_vocab_item.state == 1
-        assert mock_app._config["ai_enhance"]["vocabulary"]["enabled"] is True
-
-    def test_no_enhancer(self, ctrl, mock_app):
-        mock_app._enhancer = None
-        ctrl.vocab_toggle(True)  # Should not raise
-
-
-class TestAutoBuildToggle:
-    @patch("wenzi.controllers.settings_controller.save_config")
-    def test_toggle_auto_build(self, mock_save, ctrl, mock_app):
-        ctrl.auto_build_toggle(False)
-
-        assert mock_app._auto_vocab_builder._enabled is False
-        assert mock_app._enhance_auto_build_item.state == 0
-        assert mock_app._config["ai_enhance"]["vocabulary"]["auto_build"] is False
-
-
 class TestHistoryToggle:
     @patch("wenzi.controllers.settings_controller.save_config")
     def test_enable_history(self, mock_save, ctrl, mock_app):
@@ -358,10 +334,9 @@ class TestTabChange:
 
 class TestOnOpenSettings:
     def test_shows_panel_with_state_and_callbacks(self, ctrl, mock_app):
-        with patch("wenzi.enhance.vocabulary.get_vocab_entry_count", return_value=5):
-            with patch("wenzi.controllers.settings_controller.PRESETS", []):
-                with patch("wenzi.controllers.settings_controller.build_remote_asr_models", return_value=[]):
-                    ctrl.on_open_settings(None)
+        with patch("wenzi.controllers.settings_controller.PRESETS", []):
+            with patch("wenzi.controllers.settings_controller.build_remote_asr_models", return_value=[]):
+                ctrl.on_open_settings(None)
 
         mock_app._settings_panel.show.assert_called_once()
         state, callbacks = mock_app._settings_panel.show.call_args[0]

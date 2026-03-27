@@ -418,6 +418,7 @@
   "preview.btn.save_audio": "保存",
   "preview.btn.prompt": "提示词 \u24d8",
   "preview.btn.translate": "翻译 \u2197",
+  "preview.btn.diff": "Diff",
   "preview.btn.history": "历史",
   "preview.btn.cancel": "取消",
   "preview.btn.confirm": "确认 \u23ce",

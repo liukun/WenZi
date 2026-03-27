@@ -19,7 +19,6 @@ from wenzi.enhance.enhancer import (
     create_enhancer,
 )
 from wenzi.enhance.mode_loader import ModeDefinition
-from wenzi.enhance.vocabulary import VocabularyEntry, VocabularyIndex
 
 
 # --- TextEnhancer tests ---
@@ -1023,120 +1022,6 @@ class TestCreateEnhancer:
         assert enhancer.conversation_history is shared_history
 
 
-# --- Vocabulary integration tests ---
-
-
-class TestVocabularyIntegration:
-    def test_vocab_disabled_by_default(self):
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(_make_config())
-        assert enhancer.vocab_enabled is False
-        assert enhancer.vocab_index is None
-
-    def test_vocab_enabled_creates_index(self):
-        cfg = _make_config(vocabulary={"enabled": True, "top_k": 3})
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(cfg)
-        assert enhancer.vocab_enabled is True
-        assert enhancer.vocab_index is not None
-
-    def test_vocab_toggle(self):
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(_make_config())
-        assert enhancer.vocab_enabled is False
-        enhancer.vocab_enabled = True
-        assert enhancer.vocab_enabled is True
-        assert enhancer.vocab_index is not None
-
-    def test_enhance_with_vocab_injects_context(self):
-        mock_client = _make_mock_client("enhanced text")
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        mock_vocab.retrieve.return_value = [
-            VocabularyEntry(term="Python", context="编程语言"),
-        ]
-        mock_vocab.format_entry_lines = VocabularyIndex.format_entry_lines
-
-        cfg = _make_config(enabled=True, vocabulary={"enabled": True, "top_k": 5})
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(cfg)
-            enhancer._providers = {
-                "ollama": (mock_client, ["qwen2.5:7b"], {}),
-            }
-            enhancer._active_provider = "ollama"
-            enhancer._active_model = "qwen2.5:7b"
-            enhancer._vocab_index = mock_vocab
-
-        asyncio.run(enhancer.enhance("派森编程"))
-
-        # Verify system prompt includes vocab context
-        call_kwargs = mock_client.chat.completions.create.call_args
-        system_msg = call_kwargs.kwargs["messages"][0]["content"]
-        assert "Python（编程语言）" in system_msg
-
-    def test_enhance_without_vocab_no_injection(self):
-        mock_client = _make_mock_client("enhanced text")
-
-        cfg = _make_config(enabled=True)
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(cfg)
-            enhancer._providers = {
-                "ollama": (mock_client, ["qwen2.5:7b"], {}),
-            }
-            enhancer._active_provider = "ollama"
-            enhancer._active_model = "qwen2.5:7b"
-
-        asyncio.run(enhancer.enhance("hello"))
-
-        call_kwargs = mock_client.chat.completions.create.call_args
-        system_msg = call_kwargs.kwargs["messages"][0]["content"]
-        assert "从用户个人词库中检索到的" not in system_msg
-
-    def test_enhance_vocab_retrieval_failure_graceful(self):
-        mock_client = _make_mock_client("enhanced text")
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        mock_vocab.retrieve.side_effect = RuntimeError("embedding error")
-
-        cfg = _make_config(enabled=True, vocabulary={"enabled": True, "top_k": 5})
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(cfg)
-            enhancer._providers = {
-                "ollama": (mock_client, ["qwen2.5:7b"], {}),
-            }
-            enhancer._active_provider = "ollama"
-            enhancer._active_model = "qwen2.5:7b"
-            enhancer._vocab_index = mock_vocab
-
-        text, usage = asyncio.run(
-            enhancer.enhance("hello")
-        )
-        # Should still enhance successfully
-        assert text == "enhanced text"
-
-    def test_enhance_vocab_empty_results_no_injection(self):
-        mock_client = _make_mock_client("enhanced text")
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        mock_vocab.retrieve.return_value = []
-
-        cfg = _make_config(enabled=True, vocabulary={"enabled": True, "top_k": 5})
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(cfg)
-            enhancer._providers = {
-                "ollama": (mock_client, ["qwen2.5:7b"], {}),
-            }
-            enhancer._active_provider = "ollama"
-            enhancer._active_model = "qwen2.5:7b"
-            enhancer._vocab_index = mock_vocab
-
-        asyncio.run(enhancer.enhance("hello"))
-
-        call_kwargs = mock_client.chat.completions.create.call_args
-        system_msg = call_kwargs.kwargs["messages"][0]["content"]
-        assert "从用户个人词库中检索到的" not in system_msg
-
-
 # --- Debug flags tests ---
 
 
@@ -1685,94 +1570,6 @@ class TestIncrementalHistoryContext:
 
         assert mode_pos < thinking_pos < history_pos
 
-    def test_combined_context_section_with_vocab(self):
-        """When both history and vocab enabled, instructions merge into one header."""
-        enhancer = self._make_enhancer()
-        enhancer._vocab_enabled = True
-
-        # Set up history
-        entries = [self._make_entry(0)]
-        mock_h = self._make_mock_history(entries, log_count=1)
-        enhancer._conversation_history = mock_h
-
-        # Set up vocab
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        mock_vocab.retrieve.return_value = [
-            VocabularyEntry(term="WenZi", context="app name"),
-        ]
-        mock_vocab.format_entry_lines = VocabularyIndex.format_entry_lines
-        enhancer._vocab_index = mock_vocab
-
-        mode_def = _TEST_MODES["proofread"]
-        result = enhancer._build_system_content("test WenZi", mode_def)
-
-        # Combined header should contain both instructions with priority hints
-        header_pos = result.find("以下是辅助纠错的参考上下文")
-        history_instr_pos = result.find("- 对话记录（优先参考）")
-        vocab_instr_pos = result.find("- 词库（仅供辅助）")
-        assert header_pos < history_instr_pos < vocab_instr_pos
-
-        # History entries come before vocab entries
-        history_entry_pos = result.find("[asr→final]_0")
-        vocab_entry_pos = result.find("WenZi（app name）")
-        assert history_entry_pos < vocab_entry_pos
-
-        # All instructions are before any entries
-        assert vocab_instr_pos < history_entry_pos
-
-    def test_context_section_vocab_only(self):
-        """When only vocab enabled (no history), still uses combined section."""
-        enhancer = self._make_enhancer()
-        enhancer._history_enabled = False
-        enhancer._vocab_enabled = True
-
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        mock_vocab.retrieve.return_value = [
-            VocabularyEntry(term="API"),
-        ]
-        mock_vocab.format_entry_lines = VocabularyIndex.format_entry_lines
-        enhancer._vocab_index = mock_vocab
-
-        mode_def = _TEST_MODES["proofread"]
-        result = enhancer._build_system_content("test API", mode_def)
-
-        assert "词库" in result
-        assert "API" in result
-        # No history instruction in header (history disabled)
-        assert "对话记录（优先参考）" not in result
-
-    def test_context_section_history_enabled_but_empty(self):
-        """When history enabled but empty, header still includes history instruction
-        (uses enabled flag for stability), but no '对话记录：' subsection appears."""
-        enhancer = self._make_enhancer()
-        enhancer._vocab_enabled = True
-
-        # Empty history
-        mock_h = self._make_mock_history([], log_count=0)
-        enhancer._conversation_history = mock_h
-
-        # Vocab with matches
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        mock_vocab.retrieve.return_value = [
-            VocabularyEntry(term="WenZi"),
-        ]
-        mock_vocab.format_entry_lines = VocabularyIndex.format_entry_lines
-        enhancer._vocab_index = mock_vocab
-
-        mode_def = _TEST_MODES["proofread"]
-        result = enhancer._build_system_content("test WenZi", mode_def)
-
-        # Vocab should be present
-        assert "WenZi" in result
-        # Header includes history instruction (enabled flag, not content-based)
-        assert "对话记录（优先参考）" in result
-        # But no "对话记录：\n" subsection (no history entries)
-        assert "对话记录：\n" not in result
-
-
 class TestLastSystemPrompt:
     """Test last_system_prompt property."""
 
@@ -1795,31 +1592,6 @@ class TestLastSystemPrompt:
 
         assert enhancer.last_system_prompt == "proofread prompt"
 
-    def test_last_system_prompt_includes_vocab_context(self):
-        mock_client = _make_mock_client("enhanced")
-        mock_vocab = MagicMock(spec=VocabularyIndex)
-        mock_vocab.is_loaded = True
-        entries = [VocabularyEntry(term="API", context="Application Programming Interface")]
-        mock_vocab.retrieve.return_value = entries
-        mock_vocab.format_entry_lines = VocabularyIndex.format_entry_lines
-
-        with patch("wenzi.enhance.enhancer.TextEnhancer._init_providers"):
-            enhancer = TextEnhancer(_make_config(
-                enabled=True, mode="proofread",
-                vocabulary={"enabled": True, "top_k": 5},
-            ))
-            enhancer._providers = {
-                "ollama": (mock_client, ["qwen2.5:7b"], {}),
-            }
-            enhancer._active_provider = "ollama"
-            enhancer._active_model = "qwen2.5:7b"
-            enhancer._vocab_index = mock_vocab
-
-        asyncio.run(enhancer.enhance("test API"))
-
-        assert "proofread prompt" in enhancer.last_system_prompt
-        assert "API（Application Programming Interface）" in enhancer.last_system_prompt
-        assert "词库" in enhancer.last_system_prompt
 
 
 def _make_mock_stream_client(chunks, usage=None):

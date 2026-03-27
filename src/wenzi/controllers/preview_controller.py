@@ -394,8 +394,6 @@ class PreviewController:
             result_holder["confirmed"] = True
             result_holder["copy_to_clipboard"] = copy_to_clipboard
             result_holder["user_corrected"] = correction_info is not None
-            if correction_info is not None:
-                app._auto_vocab_builder.on_correction_logged()
             # Stop any in-flight streaming enhancement to save tokens
             app._enhance_controller.cancel()
             try:
@@ -525,6 +523,10 @@ class PreviewController:
                     on_select_history=self.on_select_history,
                     preview_history_items=self._build_history_items(),
                     animate_from_frame=indicator_frame,
+                    on_add_manual_vocab=self._on_add_manual_vocab,
+                    on_remove_manual_vocab=self._on_remove_manual_vocab,
+                    on_diff_panel_toggle=self._on_diff_panel_toggle,
+                    diff_panel_open=app._manual_vocab_store.panel_open,
                 )
                 if initial_history_index is not None:
                     # Load cached history record — skip STT and enhancement
@@ -700,34 +702,6 @@ class PreviewController:
                 except Exception as e:
                     logger.error("Failed to log conversation: %s", e)
 
-                # Record correction session if the current mode tracks corrections
-                try:
-                    if should_track:
-                        asr_model = app._current_stt_model()
-                        llm_model = app._current_llm_model()
-                        input_ctx = self._input_context
-                        app_bundle_id = (
-                            input_ctx.bundle_id
-                            if input_ctx is not None
-                            and hasattr(input_ctx, "bundle_id")
-                            else None
-                        )
-                        app._correction_tracker.record(
-                            asr_text=app._current_preview_asr_text,
-                            enhanced_text=result_holder.get("enhanced_text"),
-                            final_text=final_text,
-                            asr_model=asr_model,
-                            llm_model=llm_model,
-                            app_bundle_id=app_bundle_id,
-                            enhance_mode=app._enhance_mode,
-                            audio_duration=getattr(app, "_preview_audio_duration", 0.0),
-                            user_corrected=bool(result_holder.get("user_corrected")),
-                            timestamp=ts,
-                            input_context=input_ctx.to_dict() if input_ctx is not None else None,
-                        )
-                except Exception as e:
-                    logger.error("Failed to record correction: %s", e)
-
                 action = "copy" if copy_to_clip else "confirm"
                 self._save_to_preview_history(
                     ts, action, result_holder, wav_data,
@@ -842,8 +816,6 @@ class PreviewController:
             result_holder["confirmed"] = True
             result_holder["copy_to_clipboard"] = copy_to_clipboard
             result_holder["user_corrected"] = correction_info is not None
-            if correction_info is not None:
-                app._auto_vocab_builder.on_correction_logged()
             # Stop any in-flight streaming enhancement to save tokens
             app._enhance_controller.cancel()
             result_event.set()
@@ -914,6 +886,10 @@ class PreviewController:
                 on_google_translate=lambda: app._usage_stats.record_google_translate_open(),
                 on_select_history=self.on_select_history,
                 preview_history_items=self._build_history_items(),
+                on_add_manual_vocab=self._on_add_manual_vocab,
+                on_remove_manual_vocab=self._on_remove_manual_vocab,
+                on_diff_panel_toggle=self._on_diff_panel_toggle,
+                diff_panel_open=app._manual_vocab_store.panel_open,
             )
             if use_enhance:
                 app._preview_panel.enhance_request_id += 1
@@ -999,6 +975,32 @@ class PreviewController:
     # ------------------------------------------------------------------
     # Preview panel callbacks
     # ------------------------------------------------------------------
+
+    def _on_add_manual_vocab(self, variant: str, term: str, source: str) -> None:
+        """Handle user clicking a diff card to add to manual vocabulary."""
+        app = self._app
+        input_ctx = self._input_context
+        app._manual_vocab_store.add(
+            variant=variant,
+            term=term,
+            source=source,
+            app_bundle_id=getattr(input_ctx, "bundle_id", ""),
+            asr_model=app._current_stt_model(),
+            llm_model=app._current_llm_model(),
+            enhance_mode=app._enhance_mode,
+        )
+        logger.info("Manual vocab added: %r → %r (source=%s)", variant, term, source)
+
+    def _on_remove_manual_vocab(self, variant: str, term: str) -> None:
+        """Handle user clicking a diff card to remove from manual vocabulary."""
+        self._app._manual_vocab_store.remove(variant, term)
+        logger.info("Manual vocab removed: %r → %r", variant, term)
+
+    def _on_diff_panel_toggle(self, is_open: bool) -> None:
+        """Persist the diff panel open/closed preference."""
+        store = self._app._manual_vocab_store
+        store.panel_open = is_open
+        store.save()
 
     def on_preview_mode_change(self, mode_id: str) -> None:
         """Handle mode switch from the preview panel's segmented control.

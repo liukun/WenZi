@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tupl
 from wenzi import async_loop
 
 if TYPE_CHECKING:
-    from wenzi.enhance.correction_tracker import CorrectionTracker
+    from wenzi.enhance.manual_vocabulary import ManualVocabularyStore
     from wenzi.input_context import InputContext
 
 from .mode_loader import (
@@ -25,7 +25,6 @@ from .mode_loader import (
 from .conversation_history import ConversationHistory
 from .pool_monitor import PoolMonitor
 from .repetition import detect_repetition, truncate_repeated
-from .vocabulary import VocabularyIndex
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +211,6 @@ class TextEnhancer:
         data_dir: str | None = None,
         cache_dir: str | None = None,
         conversation_history: Optional[ConversationHistory] = None,
-        correction_tracker: Optional[CorrectionTracker] = None,
     ) -> None:
         self._enabled = config.get("enabled", False)
         self._timeout = config.get("timeout", 30)
@@ -256,19 +254,7 @@ class TextEnhancer:
         self._providers_config = config.get("providers", {})
         self._init_providers()
 
-        # Vocabulary retrieval
-        vocab_cfg = config.get("vocabulary", {})
-        self._vocab_enabled = vocab_cfg.get("enabled", False)
-        self._vocab_top_k = vocab_cfg.get("top_k", 5)
-        self._vocab_index: Optional[VocabularyIndex] = None
-        if self._vocab_enabled:
-            kwargs: Dict[str, Any] = {}
-            if data_dir:
-                kwargs["data_dir"] = data_dir
-            self._vocab_index = VocabularyIndex(vocab_cfg, **kwargs)
-
-        # Correction tracker (optional)
-        self._correction_tracker = correction_tracker
+        self._manual_vocab_store: ManualVocabularyStore | None = None
 
         # Conversation history
         history_cfg = config.get("conversation_history", {})
@@ -390,25 +376,6 @@ class TextEnhancer:
     def thinking(self, value: bool) -> None:
         self._thinking = value
         logger.info("AI thinking changed to: %s", value)
-
-    @property
-    def vocab_enabled(self) -> bool:
-        return self._vocab_enabled
-
-    @vocab_enabled.setter
-    def vocab_enabled(self, value: bool) -> None:
-        self._vocab_enabled = value
-        if value and self._vocab_index is None:
-            vocab_cfg = self._config_raw.get("vocabulary", {}) if hasattr(self, "_config_raw") else {}
-            kwargs: Dict[str, Any] = {}
-            if self._data_dir:
-                kwargs["data_dir"] = self._data_dir
-            self._vocab_index = VocabularyIndex(vocab_cfg, **kwargs)
-        logger.info("Vocabulary changed to: %s", value)
-
-    @property
-    def vocab_index(self) -> Optional[VocabularyIndex]:
-        return self._vocab_index
 
     @property
     def history_enabled(self) -> bool:
@@ -675,8 +642,7 @@ class TextEnhancer:
             - entry2
 
             词库：
-            - term1
-            - term2
+            - "variant1" → "term1"
 
             当前输入环境：
             - iTerm2 — "窗口标题" — AXTextArea
@@ -689,68 +655,35 @@ class TextEnhancer:
             except Exception as e:
                 logger.warning("Conversation history retrieval failed: %s", e)
 
-        vocab_lines = ""
-        vocab_existing_terms: set[str] = set()
-        if self._vocab_enabled and self._vocab_index is not None:
-            try:
-                if not self._vocab_index.is_loaded:
-                    self._vocab_index.load()
-                entries = self._vocab_index.retrieve(
-                    text.strip(), top_k=self._vocab_top_k
-                )
-                if entries:
-                    vocab_lines = self._vocab_index.format_entry_lines(entries)
-                    vocab_existing_terms = {e.term.lower() for e in entries}
-                    logger.info(
-                        "Vocabulary matched: %s",
-                        ", ".join(e.term for e in entries),
-                    )
-            except Exception as e:
-                logger.warning("Vocabulary retrieval failed: %s", e)
+        app_bundle_id = getattr(input_context, "bundle_id", None)
 
-        # Merge correction tracker LLM vocab entries (deduplicated by term)
-        if self._correction_tracker is not None:
+        # Manual vocabulary (user-curated correction pairs)
+        vocab_lines = ""
+        if self._manual_vocab_store is not None:
             try:
-                app_bundle_id = (
-                    input_context.bundle_id
-                    if input_context is not None and hasattr(input_context, "bundle_id")
-                    else None
-                )
-                tracker_vocab = self._correction_tracker.get_llm_vocab(
-                    llm_model=self._active_model,
+                manual_entries = self._manual_vocab_store.get_llm_vocab(
                     app_bundle_id=app_bundle_id,
                 )
-                if tracker_vocab:
-                    from .vocabulary import VocabularyEntry
-                    tracker_entries = []
-                    seen_terms = set(vocab_existing_terms)
-                    for item in tracker_vocab:
-                        term = item["corrected_word"]
-                        if term.lower() not in seen_terms:
-                            seen_terms.add(term.lower())
-                            tracker_entries.append(VocabularyEntry(
-                                term=term,
-                                variants=item.get("variants", []),
-                                frequency=item.get("frequency", 1),
-                            ))
-                    if tracker_entries:
-                        tracker_lines = VocabularyIndex.format_entry_lines(tracker_entries)
-                        if vocab_lines:
-                            vocab_lines = vocab_lines + "\n" + tracker_lines
-                        else:
-                            vocab_lines = tracker_lines
-                        logger.info(
-                            "Correction tracker vocab merged: %s",
-                            ", ".join(e.term for e in tracker_entries),
-                        )
+                if manual_entries:
+                    vocab_lines = "\n".join(
+                        f'- "{e.variant}" → "{e.term}"' for e in manual_entries
+                    )
+                    logger.info(
+                        "Manual vocab injected: %s",
+                        ", ".join(e.term for e in manual_entries),
+                    )
             except Exception as e:
-                logger.warning("Correction tracker vocab retrieval failed: %s", e)
+                logger.warning("Manual vocab retrieval failed: %s", e)
 
         env_line = None
         if input_context is not None:
             env_line = input_context.format_for_prompt(self._input_context_level)
 
-        if not history_context and not vocab_lines and not env_line:
+        if (
+            not history_context
+            and not vocab_lines
+            and not env_line
+        ):
             return ""
 
         # Build the combined section — header uses enabled flags for stability
@@ -929,9 +862,9 @@ class TextEnhancer:
     def _context_section_header(self) -> str:
         """Build the combined instruction header for the context section.
 
-        Uses ``_history_enabled`` / ``_vocab_enabled`` flags (not per-request
-        content) so the header stays **stable within a session** and
-        contributes to the cacheable prompt prefix.  The subsection labels
+        Uses ``_history_enabled`` and ``_manual_vocab_store`` flags (not
+        per-request content) so the header stays **stable within a session**
+        and contributes to the cacheable prompt prefix.  The subsection labels
         (``对话记录：`` / ``词库：``) are only emitted when actual content
         exists, so the LLM never sees a label with no data beneath it.
         """
@@ -949,7 +882,7 @@ class TextEnhancer:
                 )
             lines.append(hist_hint)
 
-        if self._vocab_enabled:
+        if self._manual_vocab_store is not None:
             lines.append(
                 "- 词库（仅供辅助）：以下专有名词 ASR 常误写为同音近音词，"
                 "仅当输入中确实存在对应误写时才替换，不要强行套用。"
@@ -1242,7 +1175,6 @@ def create_enhancer(
     data_dir: str | None = None,
     cache_dir: str | None = None,
     conversation_history: Optional[ConversationHistory] = None,
-    correction_tracker: Optional[CorrectionTracker] = None,
 ) -> Optional[TextEnhancer]:
     """Factory function to create a TextEnhancer from app config.
 
@@ -1257,5 +1189,4 @@ def create_enhancer(
         data_dir=data_dir,
         cache_dir=cache_dir,
         conversation_history=conversation_history,
-        correction_tracker=correction_tracker,
     )

@@ -23,23 +23,15 @@ def mock_app():
     app._cache_dir = "/tmp"
     app._enhancer = MagicMock()
     app._enhancer.thinking = False
-    app._enhancer.vocab_enabled = False
-    app._enhancer.vocab_index = None
     app._enhancer.history_enabled = False
     app._enhancer.provider_name = "openai"
     app._enhancer.model_name = "gpt-4o"
     app._enhance_mode = "proofread"
     app._enhance_menu_items = {}
     app._enhance_controller = MagicMock()
-    app._enhance_vocab_item = MagicMock()
-    app._enhance_vocab_item.state = 0
-    app._enhance_vocab_item.title = "Vocabulary"
     app._enhance_history_item = MagicMock()
     app._enhance_thinking_item = MagicMock()
     app._menu_builder = MagicMock()
-    app._auto_vocab_builder = MagicMock()
-    app._auto_vocab_builder._enabled = True
-    app._auto_vocab_builder.is_building.return_value = False
     app._preview_enabled = True
     app._current_status = "statusbar.status.ready"
     return app
@@ -106,37 +98,6 @@ class TestOnEnhanceThinkingToggle:
         # Should not raise
 
 
-class TestVocabToggle:
-    @patch("wenzi.controllers.enhance_mode_controller.save_config")
-    def test_toggle_on(self, mock_save, ctrl, mock_app):
-        sender = MagicMock()
-        mock_app._enhancer.vocab_enabled = False
-
-        ctrl.on_vocab_toggle(sender)
-
-        assert mock_app._enhancer.vocab_enabled is True
-        assert sender.state == 1
-        mock_save.assert_called_once()
-
-    def test_no_enhancer(self, ctrl, mock_app):
-        mock_app._enhancer = None
-        sender = MagicMock()
-        ctrl.on_vocab_toggle(sender)
-
-
-class TestAutoBuildToggle:
-    @patch("wenzi.controllers.enhance_mode_controller.save_config")
-    def test_toggle_off(self, mock_save, ctrl, mock_app):
-        sender = MagicMock()
-        mock_app._auto_vocab_builder._enabled = True
-
-        ctrl.on_auto_build_toggle(sender)
-
-        assert mock_app._auto_vocab_builder._enabled is False
-        assert sender.state == 0
-        mock_save.assert_called_once()
-
-
 class TestHistoryToggle:
     @patch("wenzi.controllers.enhance_mode_controller.save_config")
     def test_toggle_on(self, mock_save, ctrl, mock_app):
@@ -153,26 +114,6 @@ class TestHistoryToggle:
         mock_app._enhancer = None
         sender = MagicMock()
         ctrl.on_history_toggle(sender)
-
-
-class TestUpdateVocabTitle:
-    @patch("wenzi.controllers.enhance_mode_controller.get_vocab_entry_count", return_value=42)
-    def test_with_entries(self, mock_count, ctrl, mock_app):
-        ctrl.update_vocab_title()
-        assert mock_app._enhance_vocab_item.title == "Vocabulary (42)"
-
-    @patch("wenzi.controllers.enhance_mode_controller.get_vocab_entry_count", return_value=0)
-    def test_no_entries(self, mock_count, ctrl, mock_app):
-        ctrl.update_vocab_title()
-        assert mock_app._enhance_vocab_item.title == "Vocabulary"
-
-    @patch("wenzi.controllers.enhance_mode_controller.get_vocab_entry_count", return_value=0)
-    def test_uses_vocab_index_count(self, mock_count, ctrl, mock_app):
-        mock_app._enhancer.vocab_index = MagicMock()
-        mock_app._enhancer.vocab_index.entry_count = 15
-
-        ctrl.update_vocab_title()
-        assert mock_app._enhance_vocab_item.title == "Vocabulary (15)"
 
 
 class TestPreviewToggle:
@@ -196,20 +137,6 @@ class TestPreviewToggle:
 
         assert mock_app._preview_enabled is True
         assert sender.state == 1
-
-
-class TestOnVocabBuild:
-    def test_no_enhancer_shows_alert(self, ctrl, mock_app):
-        mock_app._enhancer = None
-        with patch("wenzi.controllers.enhance_mode_controller.topmost_alert") as mock_alert:
-            ctrl.on_vocab_build(None)
-            mock_alert.assert_called_once()
-
-    def test_building_shows_alert(self, ctrl, mock_app):
-        mock_app._auto_vocab_builder.is_building.return_value = True
-        with patch("wenzi.controllers.enhance_mode_controller.topmost_alert") as mock_alert:
-            ctrl.on_vocab_build(None)
-            mock_alert.assert_called_once()
 
 
 class TestAddModeTemplate:

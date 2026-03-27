@@ -947,35 +947,11 @@ textarea.provider-form-textarea.error {
         <div class="setting-row">
           <div class="setting-left">
             <div class="setting-label" data-i18n="ai_tab.vocabulary">Vocabulary</div>
-            <div class="setting-desc" data-i18n="ai_tab.vocabulary_desc">Use a custom vocabulary to improve recognition of domain-specific terms</div>
+            <div class="setting-desc" data-i18n="ai_tab.vocabulary_desc">User-curated correction pairs for ASR and LLM enhancement</div>
           </div>
           <div class="setting-right">
-            <span id="ctl-vocab-count" style="color:#86868b;font-size:12px;margin-right:8px;">0</span>
-            <div id="ctl-vocab" class="toggle" onclick="toggleClick(this, 'on_vocab_toggle')"></div>
+            <span id="ctl-vocab-count" style="color:#86868b;font-size:12px;">0</span>
           </div>
-        </div>
-        <div class="setting-row">
-          <div class="setting-left">
-            <div class="setting-label" data-i18n="ai_tab.auto_build_vocab">Auto Build</div>
-            <div class="setting-desc" data-i18n="ai_tab.auto_build_vocab_desc">Automatically update vocabulary from your text input history</div>
-          </div>
-          <div class="setting-right">
-            <div id="ctl-auto-build" class="toggle" onclick="toggleClick(this, 'on_auto_build_toggle')"></div>
-          </div>
-        </div>
-        <div class="setting-row">
-          <div class="setting-left">
-            <div class="setting-label" data-i18n="ai_tab.build_model">Build Model</div>
-            <div class="setting-desc" data-i18n="ai_tab.build_model_desc">LLM used for vocabulary extraction (Default = same as AI enhance)</div>
-          </div>
-          <div class="setting-right">
-            <select id="ctl-vocab-build-model"
-                    onchange="postCallback('on_vocab_build_model_select', this.value)">
-            </select>
-          </div>
-        </div>
-        <div class="setting-row" style="justify-content:center; padding:8px;">
-          <button class="toolbar-btn" style="font-size:13px;" data-i18n="ai_tab.build_vocabulary" onclick="postCallback('on_vocab_build')">Build Vocabulary...</button>
         </div>
       </div>
 
@@ -2425,22 +2401,8 @@ function _initState(config) {
   // AI
   renderAiModes();
   setToggle('ctl-thinking', config.thinking);
-  setToggle('ctl-vocab', config.vocab_enabled);
-  setToggle('ctl-auto-build', config.auto_build);
   var vocabCount = document.getElementById('ctl-vocab-count');
   if (vocabCount) vocabCount.textContent = config.vocab_count || '0';
-
-  // Vocab build model select
-  var vocabModelSel = document.getElementById('ctl-vocab-build-model');
-  if (vocabModelSel && config.llm_models) {
-    var opts = '';
-    for (var i = 0; i < config.llm_models.length; i++) {
-      var m = config.llm_models[i];
-      opts += '<option value="' + _esc(m.provider + '/' + m.model) + '">' + _esc(m.display) + '</option>';
-    }
-    vocabModelSel.innerHTML = opts;
-    if (config.vocab_build_model) vocabModelSel.value = config.vocab_build_model;
-  }
 
   // Context
   setToggle('ctl-history', config.history_enabled);
@@ -2809,8 +2771,6 @@ function _updateState(state) {
     if (sw) sw.style.display = state.scripting_enabled ? 'none' : 'block';
   }
   if (state.thinking !== undefined) setToggle('ctl-thinking', state.thinking);
-  if (state.vocab_enabled !== undefined) setToggle('ctl-vocab', state.vocab_enabled);
-  if (state.auto_build !== undefined) setToggle('ctl-auto-build', state.auto_build);
   if (state.history_enabled !== undefined) setToggle('ctl-history', state.history_enabled);
 
   if (state.language !== undefined) {

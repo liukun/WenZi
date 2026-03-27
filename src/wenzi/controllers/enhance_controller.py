@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from wenzi.enhance.enhancer import TextEnhancer
+    from wenzi.enhance.manual_vocabulary import ManualVocabularyStore
     from wenzi.input_context import InputContext
     from wenzi.ui.result_window_web import ResultPreviewPanel
     from wenzi.usage_stats import UsageStats
@@ -63,6 +64,7 @@ class EnhanceController:
         )
         self._current_task: asyncio.Task | None = None
         self._enhance_mode: str = "off"
+        self._manual_vocab_store: "ManualVocabularyStore | None" = None
 
     @property
     def enhancer(self) -> Optional[TextEnhancer]:
@@ -96,6 +98,62 @@ class EnhanceController:
     def clear_cache(self) -> None:
         """Clear all cached enhancement results."""
         self._cache.clear()
+
+    def _push_diffs_and_hits(self, asr_text: str, enhanced: str) -> None:
+        """Compute word-level diffs and vocab hits, push to the preview panel."""
+        from wenzi.enhance.text_diff import extract_word_pairs
+
+        self._preview_panel.cache_enhanced_text(enhanced)
+
+        # ASR → Enhanced diffs
+        try:
+            pairs = extract_word_pairs(asr_text, enhanced)
+            if pairs:
+                self._preview_panel.set_asr_diffs(pairs)
+        except Exception as e:
+            logger.warning("Failed to compute ASR diffs: %s", e)
+
+        # Manual vocab state sync
+        if self._manual_vocab_store is not None:
+            try:
+                self._preview_panel.set_manual_vocab_state(
+                    self._manual_vocab_store.get_all_for_state(),
+                )
+            except Exception as e:
+                logger.warning("Failed to sync manual vocab state: %s", e)
+
+        # Vocab hit detection
+        self._push_vocab_hits(asr_text, enhanced)
+
+    def _push_vocab_hits(self, asr_text: str, enhanced: str) -> None:
+        """Detect and push vocabulary hits to the side panel."""
+        hits: list[dict] = []
+        enhanced_lower = enhanced.lower()
+
+        # Manual vocab hits
+        if self._manual_vocab_store is not None:
+            try:
+                manual_hits = self._manual_vocab_store.find_hits_in_text(asr_text)
+                confirmed = [
+                    h for h in manual_hits
+                    if h.term.lower() in enhanced_lower
+                ]
+                if confirmed:
+                    self._manual_vocab_store.record_hits([
+                        (h.variant, h.term) for h in confirmed
+                    ])
+                    for h in confirmed:
+                        hits.append({
+                            "variant": h.variant, "term": h.term,
+                            "source": "manual",
+                            "hitCount": h.hit_count,
+                            "frequency": h.frequency,
+                        })
+            except Exception as e:
+                logger.warning("Failed to detect manual vocab hits: %s", e)
+
+        if hits:
+            self._preview_panel.set_vocab_hits(hits)
 
     def cancel(self) -> None:
         """Cancel any in-flight enhancement.  Thread-safe."""
@@ -267,6 +325,7 @@ class EnhanceController:
                 thinking_text=self._preview_panel._thinking_text,
                 final_text=enhanced,
             )
+            self._push_diffs_and_hits(asr_text, enhanced)
         else:
             self._preview_panel.set_enhance_label(
                 "Connection failed", request_id=request_id,
@@ -362,5 +421,6 @@ class EnhanceController:
                 thinking_text=self._preview_panel._thinking_text,
                 final_text=enhanced,
             )
+            self._push_diffs_and_hits(asr_text, enhanced)
         finally:
             self._enhancer.mode = original_mode_id

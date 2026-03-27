@@ -15,7 +15,6 @@ from ApplicationServices import AXIsProcessTrusted, AXIsProcessTrustedWithOption
 from CoreFoundation import kCFBooleanTrue
 
 from wenzi import async_loop
-from .enhance.auto_vocab_builder import AutoVocabBuilder
 from .config import (
     DEFAULT_LOG_DIR,
     load_config,
@@ -127,7 +126,6 @@ _STATUS_ICONS: Dict[str, str] = {
     "statusbar.status.restoring": "arrow.counterclockwise",
     "statusbar.status.checking": "cpu",
     "statusbar.status.clearing": "arrow.counterclockwise",
-    "statusbar.status.vocab_building": "book.fill",
 }
 
 # Cache for SF Symbol NSImage objects
@@ -228,6 +226,13 @@ class WenZiApp(StatusBarApp):
         default_provider = asr_cfg.get("default_provider")
         default_model = asr_cfg.get("default_model")
 
+        # Manual vocabulary store: user-curated correction pairs
+        from wenzi.enhance.manual_vocabulary import ManualVocabularyStore
+        self._manual_vocab_store = ManualVocabularyStore(
+            path=os.path.join(self._data_dir, "manual_vocabulary.json"),
+        )
+        self._manual_vocab_store.load()
+
         # Load vocabulary hotwords for ASR injection
         hotwords = self._load_hotwords()
 
@@ -268,20 +273,6 @@ class WenZiApp(StatusBarApp):
         self._preview_panel = ResultPreviewPanel()
         self._conversation_history = ConversationHistory(data_dir=self._data_dir)
         self._usage_stats = UsageStats(data_dir=self._data_dir)
-
-        # Correction tracker: records ASR/LLM correction sessions
-        from wenzi.enhance.correction_tracker import CorrectionTracker
-        self._correction_tracker = CorrectionTracker(
-            db_path=os.path.join(self._data_dir, "correction_tracker.db"),
-        )
-        if self._correction_tracker.is_empty():
-            logger.info("Correction tracker DB is empty, rebuilding from history in background")
-            threading.Thread(
-                target=self._correction_tracker.rebuild_from_history,
-                args=(self._conversation_history,),
-                daemon=True,
-                name="correction-rebuild",
-            ).start()
 
         # Feedback: sound + visual indicator
         fb_cfg = self._config.get("feedback", {})
@@ -345,7 +336,6 @@ class WenZiApp(StatusBarApp):
             data_dir=self._data_dir,
             cache_dir=self._cache_dir,
             conversation_history=self._conversation_history,
-            correction_tracker=self._correction_tracker,
         )
         ai_cfg = self._config.get("ai_enhance", {})
         self._enhance_mode: str = ai_cfg.get("mode", "proofread")
@@ -358,21 +348,9 @@ class WenZiApp(StatusBarApp):
             usage_stats=self._usage_stats,
         )
         self._enhance_controller.enhance_mode = self._enhance_mode
-
-        # Auto vocabulary builder
-        vocab_cfg = ai_cfg.get("vocabulary", {})
-        self._auto_vocab_build_old_status: str | None = None
-        self._auto_vocab_builder = AutoVocabBuilder(
-            config=self._config,
-            enabled=vocab_cfg.get("auto_build", True),
-            threshold=50,
-            on_build_done=self._update_vocab_title,
-            on_status_update=self._on_auto_vocab_status,
-            conversation_history=self._conversation_history,
-            data_dir=self._data_dir,
-        )
+        self._enhance_controller._manual_vocab_store = self._manual_vocab_store
         if self._enhancer:
-            self._auto_vocab_builder.set_enhancer(self._enhancer)
+            self._enhancer._manual_vocab_store = self._manual_vocab_store
 
         # AI Enhance submenu (mode selection only)
         self._enhance_menu = StatusMenuItem(t("menu.ai_enhance"))
@@ -405,14 +383,7 @@ class WenZiApp(StatusBarApp):
         )
         self._enhance_menu.add(self._enhance_add_mode_item)
 
-        # Top-level toggle items (promoted from AI Enhance)
-        vocab_enabled = ai_cfg.get("vocabulary", {}).get("enabled", False)
-        self._enhance_vocab_item = StatusMenuItem(
-            t("menu.vocabulary"), callback=self._on_vocab_toggle
-        )
-        self._enhance_vocab_item.state = 1 if vocab_enabled else 0
-        self._update_vocab_title()
-
+        # Top-level toggle items
         history_enabled = ai_cfg.get("conversation_history", {}).get("enabled", False)
         self._enhance_history_item = StatusMenuItem(
             t("menu.conversation_history"), callback=self._on_history_toggle
@@ -443,19 +414,6 @@ class WenZiApp(StatusBarApp):
         if self._enhancer and self._enhancer.thinking:
             self._enhance_thinking_item.state = 1
         self._ai_settings_menu.add(self._enhance_thinking_item)
-
-        # Build vocabulary action
-        self._ai_settings_menu.add(None)
-        self._enhance_vocab_build_item = StatusMenuItem(
-            t("menu.ai_settings.build_vocab"), callback=self._on_vocab_build
-        )
-        self._ai_settings_menu.add(self._enhance_vocab_build_item)
-
-        self._enhance_auto_build_item = StatusMenuItem(
-            t("menu.ai_settings.auto_build_vocab"), callback=self._on_auto_build_toggle
-        )
-        self._enhance_auto_build_item.state = 1 if vocab_cfg.get("auto_build", True) else 0
-        self._ai_settings_menu.add(self._enhance_auto_build_item)
 
         self._ai_settings_menu.add(None)
         self._enhance_edit_config_item = StatusMenuItem(
@@ -623,67 +581,39 @@ class WenZiApp(StatusBarApp):
         )
 
     def _load_hotwords(self):
-        """Load vocabulary hotwords for static ASR injection (e.g. Sherpa).
-
-        The number of hotwords is capped by
-        ``ai_enhance.vocabulary.max_static_hotwords`` (default 50).
-        """
-        vocab_cfg = self._config.get("ai_enhance", {}).get("vocabulary", {})
-        if not vocab_cfg.get("enabled", False):
-            return None
-        from wenzi.enhance.vocabulary import load_hotwords
-        words = load_hotwords(
-            data_dir=self._data_dir,
-            max_count=vocab_cfg["max_static_hotwords"],
-        ) or None
-        if words:
-            logger.info("Loaded %d static hotwords for ASR injection", len(words))
-            logger.debug("Hotwords: %s", ", ".join(words))
-        return words
+        """Load manual vocabulary hotwords for static ASR injection."""
+        try:
+            terms = self._manual_vocab_store.get_asr_hotwords()
+            if terms:
+                logger.info("Loaded %d manual hotwords for ASR injection", len(terms))
+                logger.debug("Hotwords: %s", ", ".join(terms))
+                return terms
+        except Exception:
+            logger.warning("Failed to load manual hotwords", exc_info=True)
+        return None
 
     def _build_dynamic_hotwords(self) -> tuple:
-        """Build two-layer hotword list for current transcription.
+        """Build hotword list from manual vocabulary for current transcription.
 
         Returns a ``(terms, details)`` tuple where *terms* is
         ``Optional[List[str]]`` for ASR injection and *details* is
         ``List[HotwordDetail]`` for the preview panel display.
-
-        The number of hotwords is capped by
-        ``ai_enhance.vocabulary.max_dynamic_hotwords`` (default 10).
-        Context-layer terms are placed first; base-layer terms fill
-        remaining slots.
         """
+        from wenzi.enhance.vocabulary import build_hotword_list_detailed
+
         vocab_cfg = self._config.get("ai_enhance", {}).get("vocabulary", {})
-        if not vocab_cfg.get("enabled", False):
-            return None, []
+        max_hotwords = vocab_cfg.get("max_dynamic_hotwords", 10)
 
-        from wenzi.enhance.vocabulary import (
-            build_hotword_list_detailed,
-            load_hotwords_detailed,
-        )
-
-        max_hotwords = vocab_cfg["max_dynamic_hotwords"]
-
-        vocab_index = None
-        if self._enhancer:
-            vocab_index = self._enhancer.vocab_index
-
-        base_detail = load_hotwords_detailed(data_dir=self._data_dir)
-
-        # Determine current ASR model and app bundle ID for correction tracker
         asr_model = self._current_stt_model()
         input_ctx = getattr(self, "_recording_controller", None)
         input_ctx = getattr(input_ctx, "input_context", None) if input_ctx else None
         app_bundle_id = getattr(input_ctx, "bundle_id", None) if input_ctx else None
 
         details = build_hotword_list_detailed(
-            vocab_index,
-            self._conversation_history,
-            base_detail,
             max_count=max_hotwords,
-            correction_tracker=self._correction_tracker,
             asr_model=asr_model,
             app_bundle_id=app_bundle_id,
+            manual_vocab_store=self._manual_vocab_store,
         )
 
         terms = [d.term for d in details]
@@ -1037,32 +967,8 @@ class WenZiApp(StatusBarApp):
     def _on_enhance_thinking_toggle(self, sender) -> None:
         self._enhance_mode_controller.on_enhance_thinking_toggle(sender)
 
-    def _on_auto_vocab_status(self, status: str) -> None:
-        """Handle status updates from auto vocabulary builder."""
-        if status:
-            if self._auto_vocab_build_old_status is None:
-                self._auto_vocab_build_old_status = self._current_status
-            self._set_status(status)
-        else:
-            # Build finished — restore previous status
-            old = self._auto_vocab_build_old_status or "statusbar.status.ready"
-            self._auto_vocab_build_old_status = None
-            self._set_status(old)
-
-    def _update_vocab_title(self) -> None:
-        self._enhance_mode_controller.update_vocab_title()
-
-    def _on_vocab_toggle(self, sender) -> None:
-        self._enhance_mode_controller.on_vocab_toggle(sender)
-
-    def _on_auto_build_toggle(self, sender) -> None:
-        self._enhance_mode_controller.on_auto_build_toggle(sender)
-
     def _on_history_toggle(self, sender) -> None:
         self._enhance_mode_controller.on_history_toggle(sender)
-
-    def _on_vocab_build(self, _sender) -> None:
-        self._enhance_mode_controller.on_vocab_build(_sender)
 
     def _on_preview_toggle(self, sender) -> None:
         self._enhance_mode_controller.on_preview_toggle(sender)

@@ -33,10 +33,16 @@ html, body { height: 100%; }
 body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Mono", Menlo, monospace;
     background: var(--bg); color: var(--text);
-    padding: 12px; overflow: hidden;
+    overflow: hidden;
     -webkit-user-select: none; user-select: none;
     font-size: 13px;
+    display: flex; flex-direction: row;
+    height: 100%;
+}
+#preview-content {
+    width: 640px; flex-shrink: 0;
     display: flex; flex-direction: column;
+    padding: 12px; overflow: hidden;
 }
 .section { margin-bottom: 8px; flex-shrink: 0; }
 .section.expand {
@@ -168,9 +174,102 @@ select {
 /* Loading animation */
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .loading { animation: pulse 1.5s ease-in-out infinite; }
+
+/* --- Diff Side Panel --- */
+.diff-panel {
+    flex: 0 0 280px;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+}
+.diff-panel.collapsed {
+    flex-basis: 0; border-left: none;
+    display: none;
+}
+.diff-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px 6px; flex-shrink: 0;
+}
+.diff-title { font-weight: 600; font-size: 13px; }
+.diff-count {
+    font-size: 11px; color: var(--secondary);
+    background: var(--btn-bg); border-radius: 10px;
+    padding: 1px 7px; min-width: 20px; text-align: center;
+}
+.diff-sections {
+    flex: 1; overflow-y: auto; padding: 0 10px 10px;
+}
+.diff-group { margin-bottom: 10px; }
+.diff-group-title {
+    font-size: 10px; font-weight: 600; color: var(--secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 4px; padding: 0 2px;
+}
+.diff-card {
+    padding: 5px 8px; margin-bottom: 3px;
+    border-radius: 5px; border: 1px solid var(--border);
+    background: var(--card-bg);
+    cursor: pointer; font-size: 11px;
+    font-family: "SF Mono", Menlo, monospace;
+    transition: background 0.12s, border-color 0.12s;
+    display: flex; align-items: baseline; gap: 4px;
+    flex-wrap: wrap;
+}
+.diff-card:hover { border-color: var(--accent); }
+.diff-card.added {
+    background: rgba(52, 199, 89, 0.10);
+    border-color: rgba(52, 199, 89, 0.30);
+}
+@media (prefers-color-scheme: dark) {
+    .diff-card.added {
+        background: rgba(48, 209, 88, 0.12);
+        border-color: rgba(48, 209, 88, 0.30);
+    }
+}
+.diff-card .variant { color: var(--red); text-decoration: line-through; }
+.diff-card .arrow { color: var(--secondary); margin: 0 2px; flex-shrink: 0; }
+.diff-card .term { color: var(--green); font-weight: 500; }
+.diff-card .badge {
+    font-size: 9px; color: var(--secondary); margin-left: auto;
+    text-transform: uppercase; opacity: 0.7; flex-shrink: 0;
+}
+.diff-card .check-mark {
+    color: var(--green); font-size: 12px; flex-shrink: 0;
+    display: none;
+}
+.diff-card.added .check-mark { display: inline; }
+
+/* Hit cards (read-only) */
+.hit-card {
+    padding: 5px 8px; margin-bottom: 3px;
+    border-radius: 5px; border: 1px solid var(--border);
+    background: var(--card-bg);
+    font-size: 11px;
+    font-family: "SF Mono", Menlo, monospace;
+}
+.hit-card .hit-badge {
+    font-size: 9px; font-weight: 600; border-radius: 3px;
+    padding: 0 4px; margin-right: 4px;
+    display: inline-block; vertical-align: baseline;
+}
+.hit-badge.manual { color: var(--green); background: rgba(52,199,89,0.12); }
+.hit-badge.auto { color: var(--accent); background: rgba(0,122,255,0.10); }
+@media (prefers-color-scheme: dark) {
+    .hit-badge.manual { background: rgba(48,209,88,0.15); }
+    .hit-badge.auto { background: rgba(10,132,255,0.15); }
+}
+.hit-card .hit-term { font-weight: 500; }
+.hit-card .hit-arrow { color: var(--secondary); margin: 0 3px; }
+.hit-card .hit-variant { color: var(--secondary); }
+.hit-card .hit-stats {
+    font-size: 10px; color: var(--secondary); margin-top: 1px;
+}
 </style>
 </head>
 <body>
+
+<div id="preview-content">
 
 <!-- ASR Section -->
 <div class="section expand" id="asr-section">
@@ -233,6 +332,7 @@ select {
 <div class="button-bar">
     <div class="left-group" id="history-dropdown-wrap" style="position:relative;">
         <button class="bar-btn" id="history-btn" onclick="toggleHistoryDropdown()" style="display:none;"></button>
+        <button class="bar-btn" id="diff-toggle-btn" onclick="toggleDiffPanel()"></button>
         <div id="history-dropdown" style="display:none; position:absolute; bottom:100%; left:0; margin-bottom:4px;
             min-width:280px; max-width:360px; max-height:240px; overflow-y:auto;
             background:var(--card-bg); border:1px solid var(--border); border-radius:8px;
@@ -241,6 +341,30 @@ select {
     </div>
     <button class="bar-btn" id="cancel-btn" onclick="postAction('cancel')"></button>
     <button class="bar-btn primary" id="confirm-btn" onclick="doConfirm(false)"></button>
+</div>
+
+</div><!-- /preview-content -->
+
+<!-- Diff Side Panel -->
+<div id="diff-panel" class="diff-panel collapsed">
+    <div class="diff-header">
+        <span class="diff-title">Corrections</span>
+        <span class="diff-count" id="diff-count">0</span>
+    </div>
+    <div class="diff-sections" id="diff-sections">
+        <div class="diff-group" id="hits-group" style="display:none;">
+            <div class="diff-group-title">Vocab Hits</div>
+            <div id="hits-cards"></div>
+        </div>
+        <div class="diff-group" id="diff-asr-group" style="display:none;">
+            <div class="diff-group-title">ASR → AI</div>
+            <div id="diff-asr-cards"></div>
+        </div>
+        <div class="diff-group" id="diff-user-group" style="display:none;">
+            <div class="diff-group-title">AI → Final</div>
+            <div id="diff-user-cards"></div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -377,6 +501,13 @@ function init() {
             postAction('userEdit');
         }
     });
+
+    // Diff panel button label + auto-open
+    document.getElementById('diff-toggle-btn').textContent = i18n('btn.diff') || 'Diff';
+    if (CONFIG.diffPanelOpen) {
+        diffPanelOpen = true;
+        document.getElementById('diff-panel').classList.remove('collapsed');
+    }
 
     // Focus final text and move cursor to end
     const ft = document.getElementById('final-text');
@@ -741,8 +872,141 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// --- Diff Side Panel ---
+let diffPanelOpen = false;
+let manualVocabSet = {};  // "variant\0term" -> true
+let diffDebounceTimer = null;
+
+function toggleDiffPanel() {
+    diffPanelOpen = !diffPanelOpen;
+    document.getElementById('diff-panel').classList.toggle('collapsed', !diffPanelOpen);
+    postAction('diffPanelToggle', { open: diffPanelOpen });
+}
+
+function _escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _diffKey(variant, term) {
+    return variant.toLowerCase() + '\0' + term.toLowerCase();
+}
+
+function _updateDiffCount() {
+    const total = document.querySelectorAll('.diff-card').length
+        + document.querySelectorAll('.hit-card').length;
+    const el = document.getElementById('diff-count');
+    el.textContent = total;
+    const btn = document.getElementById('diff-toggle-btn');
+    var label = i18n('btn.diff') || 'Diff';
+    if (total > 0) {
+        btn.textContent = label + ' (' + total + ')';
+    } else {
+        btn.textContent = label;
+    }
+}
+
+function _renderDiffCards(containerId, groupId, pairs, source) {
+    const container = document.getElementById(containerId);
+    const group = document.getElementById(groupId);
+    container.innerHTML = '';
+    if (!pairs || pairs.length === 0) { group.style.display = 'none'; return; }
+    group.style.display = '';
+    pairs.forEach(function(p) {
+        const card = document.createElement('div');
+        const key = _diffKey(p.variant, p.term);
+        const isAdded = !!manualVocabSet[key];
+        card.className = 'diff-card' + (isAdded ? ' added' : '');
+        card.innerHTML =
+            '<span class="check-mark">✓</span>' +
+            '<span class="variant">' + _escHtml(p.variant) + '</span>' +
+            '<span class="arrow">→</span>' +
+            '<span class="term">' + _escHtml(p.term) + '</span>' +
+            '<span class="badge">' + _escHtml(source) + '</span>';
+        card.addEventListener('click', function() {
+            const k = _diffKey(p.variant, p.term);
+            if (manualVocabSet[k]) {
+                delete manualVocabSet[k];
+                card.classList.remove('added');
+                postAction('removeManualVocab', { variant: p.variant, term: p.term });
+            } else {
+                manualVocabSet[k] = true;
+                card.classList.add('added');
+                postAction('addManualVocab', { variant: p.variant, term: p.term, source: source });
+            }
+        });
+        container.appendChild(card);
+    });
+    _updateDiffCount();
+}
+
+// Python→JS: set ASR→Enhanced diffs
+function setAsrDiffs(pairs) {
+    _renderDiffCards('diff-asr-cards', 'diff-asr-group', pairs, 'asr');
+}
+
+// Python→JS: set Enhanced→Final diffs (user edits)
+function setUserDiffs(pairs) {
+    _renderDiffCards('diff-user-cards', 'diff-user-group', pairs, 'user');
+}
+
+// Python→JS: set vocab hits (read-only info cards)
+function setVocabHits(hits) {
+    const container = document.getElementById('hits-cards');
+    const group = document.getElementById('hits-group');
+    container.innerHTML = '';
+    if (!hits || hits.length === 0) { group.style.display = 'none'; _updateDiffCount(); return; }
+    group.style.display = '';
+    hits.forEach(function(h) {
+        const card = document.createElement('div');
+        card.className = 'hit-card';
+        const badgeClass = h.source === 'manual' ? 'manual' : 'auto';
+        card.innerHTML =
+            '<div>' +
+                '<span class="hit-badge ' + badgeClass + '">' + _escHtml(h.source) + '</span>' +
+                '<span class="hit-term">' + _escHtml(h.term) + '</span>' +
+                '<span class="hit-arrow">←</span>' +
+                '<span class="hit-variant">' + _escHtml(h.variant) + '</span>' +
+            '</div>' +
+            '<div class="hit-stats">hits: ' + (h.hitCount || 0) + '  freq: ' + (h.frequency || 0) + '</div>';
+        container.appendChild(card);
+    });
+    _updateDiffCount();
+}
+
+// Python→JS: sync manual vocab state for diff card highlighting
+function setManualVocabState(entries) {
+    manualVocabSet = {};
+    (entries || []).forEach(function(e) {
+        manualVocabSet[_diffKey(e.variant, e.term)] = true;
+    });
+    // Refresh all diff card states
+    document.querySelectorAll('.diff-card').forEach(function(card) {
+        const v = card.querySelector('.variant');
+        const t = card.querySelector('.term');
+        if (v && t) {
+            const key = _diffKey(v.textContent, t.textContent);
+            card.classList.toggle('added', !!manualVocabSet[key]);
+        }
+    });
+}
+
 // --- Start ---
 init();
+
+// Set up debounced user-edit diff computation
+document.getElementById('final-text').addEventListener('input', function() {
+    clearTimeout(diffDebounceTimer);
+    diffDebounceTimer = setTimeout(function() {
+        const finalText = document.getElementById('final-text').value;
+        const enhText = document.getElementById('enhance-text').textContent;
+        if (enhText && finalText !== enhText) {
+            postAction('computeUserDiffs', { finalText: finalText });
+        } else {
+            // Clear user diffs if texts match
+            setUserDiffs([]);
+        }
+    }, 500);
+});
 </script>
 </body>
 </html>

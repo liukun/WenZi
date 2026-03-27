@@ -3,15 +3,6 @@
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _fast_common_words(monkeypatch):
-    """Skip loading 8MB word list files — not needed for enhance test logic."""
-    monkeypatch.setattr(
-        "wenzi.enhance.vocabulary_builder._load_common_words",
-        lambda: set(),
-    )
-
-
 @pytest.fixture
 def rate_limit_error():
     """Create a mock 429 RateLimitError for testing."""

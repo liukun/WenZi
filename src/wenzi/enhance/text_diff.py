@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 import re
 import unicodedata
+from difflib import SequenceMatcher
 from typing import List
 
 # ASCII words as whole units, each non-ASCII char individually,
@@ -197,3 +198,58 @@ def inline_diff(asr: str, final: str) -> str:
             parts.append("".join(final_tokens[j1:j2]))
         # delete: omit old text silently
     return "".join(parts)
+
+
+# ------------------------------------------------------------------
+# Word-pair extraction (relocated from correction_tracker)
+# ------------------------------------------------------------------
+
+_DEFAULT_MAX_REPLACE_TOKENS = 8
+
+
+def _is_latin(token: str) -> bool:
+    """Return True if token consists entirely of ASCII alphanumeric characters."""
+    return all(ch.isascii() and ch.isalnum() for ch in token) and len(token) > 0
+
+
+def _join_tokens(tokens: list[str]) -> str:
+    """Join tokens, restoring spaces between consecutive Latin tokens."""
+    if not tokens:
+        return ""
+    parts = [tokens[0]]
+    for i in range(1, len(tokens)):
+        if _is_latin(tokens[i - 1]) and _is_latin(tokens[i]):
+            parts.append(" ")
+        parts.append(tokens[i])
+    return "".join(parts)
+
+
+def extract_word_pairs(
+    text_a: str,
+    text_b: str,
+    max_replace_tokens: int = _DEFAULT_MAX_REPLACE_TOKENS,
+) -> list[tuple[str, str]]:
+    """Extract word-level correction pairs from two texts using diff.
+
+    Returns a list of (original, corrected) tuples derived from replace opcodes.
+    Replace blocks larger than max_replace_tokens on either side are skipped.
+    Punctuation-only replacements are also skipped.
+    """
+    if text_a == text_b:
+        return []
+    tokens_a = tokenize_for_diff(text_a)
+    tokens_b = tokenize_for_diff(text_b)
+    matcher = SequenceMatcher(None, tokens_a, tokens_b)
+    pairs: list[tuple[str, str]] = []
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op != "replace":
+            continue
+        if (i2 - i1) > max_replace_tokens or (j2 - j1) > max_replace_tokens:
+            continue
+        original = _join_tokens(tokens_a[i1:i2])
+        corrected = _join_tokens(tokens_b[j1:j2])
+        if _is_punctuation_only(original) or _is_punctuation_only(corrected):
+            continue
+        if original.strip() and corrected.strip():
+            pairs.append((original, corrected))
+    return pairs
