@@ -247,6 +247,7 @@ class ChooserAPI:
     def show_universal_action(
         self,
         context_text: str,
+        exclusive_source: Optional[str] = None,
         on_close: Optional[Callable] = None,
         initial_query: Optional[str] = None,
         placeholder: Optional[str] = None,
@@ -258,6 +259,7 @@ class ChooserAPI:
 
         Args:
             context_text: Selected text to display as context.
+            exclusive_source: If set, only search this source (bypass prefix logic).
             on_close: Callback invoked when the panel closes.
             initial_query: Pre-fill the search input.
             placeholder: Override the search input placeholder.
@@ -268,6 +270,7 @@ class ChooserAPI:
             AppHelper.callAfter(
                 self._panel.show_universal_action,
                 context_text=context_text,
+                exclusive_source=exclusive_source,
                 on_close=on_close,
                 initial_query=initial_query,
                 placeholder=placeholder,

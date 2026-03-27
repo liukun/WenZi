@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _UA_SOURCE_NAME = "_universal_action"
-_UA_PREFIX = "!"
 
 
 class UniversalActionController:
@@ -69,7 +68,6 @@ class UniversalActionController:
 
         src = ChooserSource(
             name=_UA_SOURCE_NAME,
-            prefix=_UA_PREFIX,
             search=_search,
             priority=999,
         )
@@ -84,8 +82,8 @@ class UniversalActionController:
 
         chooser.show_universal_action(
             context_text=self._selected_text,
+            exclusive_source=_UA_SOURCE_NAME,
             on_close=_on_close,
-            initial_query=_UA_PREFIX + " ",
             placeholder=t("chooser.ua.filter_placeholder"),
         )
 
