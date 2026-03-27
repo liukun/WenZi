@@ -109,7 +109,7 @@ class TestStaticEntries:
         assert "Bluetooth" in titles
         assert "Privacy & Security" in titles
         assert "Keyboard" in titles
-        assert "Apple ID" in titles
+        assert "Apple Account" in titles
 
     def test_privacy_camera_present(self):
         entries = get_static_entries()
@@ -135,11 +135,13 @@ class TestStaticEntries:
         entries = get_static_entries()
         icloud = [e for e in entries if e.sub_id == "icloud"]
         assert len(icloud) == 1
-        assert icloud[0].parent_title == "Apple ID"
+        assert icloud[0].parent_title == "Apple Account"
 
     def test_panels_have_appex_name(self):
         entries = get_static_entries()
-        panels = [e for e in entries if not e.parent_title]
+        # These panels have no appex on disk
+        no_appex = {"Screen Saver", "General", "Autofill & Passwords"}
+        panels = [e for e in entries if not e.parent_title and e.title not in no_appex]
         for panel in panels:
             assert panel.appex_name, f"{panel.title} missing appex_name"
 
@@ -218,7 +220,7 @@ class TestSystemSettingsSource:
     def test_icon_cached_to_disk(self, tmp_path):
         """When appex exists, icon is extracted and cached as PNG."""
         ext_dir = tmp_path / "extensions"
-        appex = ext_dir / "BluetoothSettings.appex"
+        appex = ext_dir / "Bluetooth.appex"
         appex.mkdir(parents=True)
         cache_dir = tmp_path / "icon_cache"
 
