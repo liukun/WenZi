@@ -4,8 +4,6 @@ import json
 import os
 from unittest.mock import patch
 
-import pytest
-
 
 MOCK_MASTER_KEY_B64 = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="  # 32 bytes b64
 
