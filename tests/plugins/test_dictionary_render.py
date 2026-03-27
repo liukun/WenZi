@@ -83,6 +83,14 @@ class TestRenderDefinition:
         assert "həˈloʊ" in html
         assert "həˈləʊ" in html
 
+    def test_contains_audio_buttons(self):
+        from dictionary.render import render_definition
+
+        html = render_definition(SAMPLE_DATA, "hello")
+        assert "dictvoice?audio=hello&type=2" in html  # US
+        assert "dictvoice?audio=hello&type=1" in html  # UK
+        assert "audio-btn" in html
+
     def test_contains_definitions(self):
         from dictionary.render import render_definition
 

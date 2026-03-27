@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from urllib.parse import quote as _urlquote
 
 _STYLE = """\
 <style>
@@ -10,6 +11,10 @@ _STYLE = """\
                color: var(--text); font-size: 13px; line-height: 1.5; }
   .dict-root .word { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
   .dict-root .phonetic { color: var(--secondary); font-size: 13px; margin-left: 8px; }
+  .dict-root .audio-btn { background: none; border: none; cursor: pointer;
+                          font-size: 14px; padding: 0 2px; vertical-align: middle;
+                          opacity: 0.6; }
+  .dict-root .audio-btn:hover { opacity: 1.0; }
   .dict-root .exam-tags { margin: 4px 0 8px; }
   .dict-root .tag { display: inline-block; font-size: 11px; padding: 1px 6px;
                     border-radius: 3px; margin-right: 4px;
@@ -53,10 +58,21 @@ def render_definition(data: dict, word: str) -> str:
     parts.append(f'<div class="word">{escape(word)}')
     usphone = phone_data.get("usphone", "")
     ukphone = phone_data.get("ukphone", "")
+    audio_word = _urlquote(word)
     if usphone:
-        parts.append(f'<span class="phonetic">US /{escape(usphone)}/</span>')
+        parts.append(
+            f'<span class="phonetic">US /{escape(usphone)}/</span>'
+            f'<button class="audio-btn" onclick='
+            f""""new Audio('https://dict.youdao.com/dictvoice?audio={audio_word}&type=2').play()">"""
+            f"\U0001f50a</button>"
+        )
     if ukphone:
-        parts.append(f'<span class="phonetic">UK /{escape(ukphone)}/</span>')
+        parts.append(
+            f'<span class="phonetic">UK /{escape(ukphone)}/</span>'
+            f'<button class="audio-btn" onclick='
+            f""""new Audio('https://dict.youdao.com/dictvoice?audio={audio_word}&type=1').play()">"""
+            f"\U0001f50a</button>"
+        )
     parts.append("</div>")
 
     # --- Exam tags ---
