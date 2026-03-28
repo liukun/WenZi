@@ -540,6 +540,74 @@ class TestUsageTrackerIntegration:
 
         assert tracker.score("saf", "app:Safari") == 1
 
+    def test_ua_mode_boosts_with_empty_query(self):
+        """In Universal Action mode, usage boost works even with empty query."""
+        import os
+        import tempfile
+
+        tmpdir = tempfile.mkdtemp()
+        path = os.path.join(tmpdir, "usage.json")
+        tracker = UsageTracker(path=path)
+
+        panel = ChooserPanel(usage_tracker=tracker)
+        panel._eval_js = MagicMock()
+        panel._page_loaded = True
+
+        items = [
+            ChooserItem(title="Proofread", item_id="ua:enhance:proofread"),
+            ChooserItem(title="Translate", item_id="ua:enhance:translate"),
+            ChooserItem(title="Define", item_id="ua:cmd:define"),
+        ]
+        panel.register_source(
+            ChooserSource(
+                name="_universal_action",
+                search=lambda q: items,
+                priority=999,
+            )
+        )
+        panel._exclusive_source = "_universal_action"
+        panel._context_text = "some selected text"
+
+        # Record "Define" as frequently selected in UA mode
+        tracker.record("_ua", "ua:cmd:define")
+        tracker.record("_ua", "ua:cmd:define")
+        tracker.record("_ua", "ua:cmd:define")
+
+        # Search with empty query — "Define" should be boosted to the top
+        panel._do_search("")
+        ids = [item.item_id for item in panel._current_items]
+        assert len(ids) == 3
+        assert ids[0] == "ua:cmd:define"
+
+    def test_ua_mode_execute_records_with_synthetic_prefix(self):
+        """Selecting an item in UA mode records usage under the '_ua' prefix."""
+        import os
+        import tempfile
+
+        tmpdir = tempfile.mkdtemp()
+        path = os.path.join(tmpdir, "usage.json")
+        tracker = UsageTracker(path=path)
+
+        panel = ChooserPanel(usage_tracker=tracker)
+        panel._eval_js = MagicMock()
+        panel._page_loaded = True
+        panel._last_query = ""
+        panel._context_text = "some selected text"
+        panel._current_items = [
+            ChooserItem(
+                title="Proofread",
+                item_id="ua:enhance:proofread",
+                action=lambda: None,
+            ),
+        ]
+        panel.close = MagicMock()
+
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)):
+            panel._execute_item(0)
+
+        # Should be recorded under "_ua" prefix, not empty string
+        assert tracker.score("_ua", "ua:enhance:proofread") == 1
+
 
 class TestCloseReactivation:
     def test_close_reactivates_previous_app(self):

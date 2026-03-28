@@ -193,6 +193,7 @@ class ChooserPanel:
     _DEFERRED_ACTION_DELAY = 0.15  # seconds to let previous app regain focus
     _DEFAULT_ASYNC_DEBOUNCE = 0.15  # seconds
     _DEFAULT_ASYNC_TIMEOUT = 5.0  # seconds
+    _UA_USAGE_PREFIX = "_ua"  # Synthetic query prefix for UA mode usage tracking
 
     def __init__(self, usage_tracker=None) -> None:
         self._panel = None
@@ -812,7 +813,7 @@ class ChooserPanel:
 
         # Apply usage-based boosting
         if self._usage_tracker and self._current_items:
-            self._boost_by_usage(query)
+            self._boost_by_usage(self._usage_query(query))
 
         # Update calculator sticky mode
         if self._has_calc_results():
@@ -872,6 +873,16 @@ class ChooserPanel:
             scored.append((-usage, i, item))
         scored.sort(key=lambda x: (x[0], x[1]))
         self._current_items = [item for _, _, item in scored]
+
+    def _usage_query(self, query: str) -> str:
+        """Return the query key for usage tracking.
+
+        In Universal Action mode, empty queries use a synthetic prefix so
+        that usage learning still works when the user hasn't typed anything.
+        """
+        if not query and self._context_text is not None:
+            return self._UA_USAGE_PREFIX
+        return query
 
     @staticmethod
     def _default_action_hints():
@@ -1066,7 +1077,7 @@ class ChooserPanel:
                 self._current_items.extend(items[:remaining])
 
             if self._usage_tracker and self._current_items:
-                self._boost_by_usage(self._last_query)
+                self._boost_by_usage(self._usage_query(self._last_query))
 
             self._push_items_to_js(
                 source=source if self._active_source is source else None,
@@ -1345,7 +1356,9 @@ class ChooserPanel:
 
             # Record usage for learning
             if self._usage_tracker and item.item_id:
-                self._usage_tracker.record(self._last_query, item.item_id)
+                self._usage_tracker.record(
+                    self._usage_query(self._last_query), item.item_id
+                )
 
             # Record query history
             if self._query_history and self._last_query and self._last_query.strip():
