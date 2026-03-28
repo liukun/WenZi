@@ -761,11 +761,11 @@ textarea.provider-form-textarea.error {
     </div>
     <div class="sidebar-item" data-tab="plugins" onclick="switchTab('plugins')">
       <span class="sidebar-icon">&#x1f9e9;</span>
-      <span>Plugins</span>
+      <span data-i18n="plugins_tab.title">Plugins</span>
     </div>
     <div class="sidebar-item" data-tab="screenshot" onclick="switchTab('screenshot')">
       <span class="sidebar-icon">&#x2702;</span>
-      <span>Screenshot</span>
+      <span data-i18n="screenshot_tab.title">Screenshot</span>
     </div>
   </div>
 
@@ -1111,36 +1111,36 @@ textarea.provider-form-textarea.error {
 
     <!-- Plugins Tab -->
     <div id="tab-plugins" class="tab-content">
-      <div class="content-title">Plugins</div>
+      <div class="content-title" data-i18n="plugins_tab.title">Plugins</div>
 
       <div class="section">
-        <div class="section-title">Plugins <span id="plugins-loading" style="display:none; font-size:12px; color:#86868b;">Loading...</span></div>
+        <div class="section-title"><span data-i18n="plugins_tab.title">Plugins</span> <span id="plugins-loading" style="display:none; font-size:12px; color:#86868b;" data-i18n="plugins_tab.loading">Loading...</span></div>
         <div id="plugin-list"></div>
         <div id="plugins-error" style="display:none; color:#ff3b30; margin-top:8px;"></div>
       </div>
       <div class="section">
-        <div class="section-title">Install from URL</div>
+        <div class="section-title" data-i18n="plugins_tab.install_from_url">Install from URL</div>
         <div class="manual-install-row">
           <input type="text" id="plugin-url-input" placeholder="plugin.toml URL..." class="text-input" style="flex:1;">
-          <button class="btn btn-primary" onclick="installFromUrl()">Install</button>
+          <button class="btn btn-primary" onclick="installFromUrl()" data-i18n="plugins_tab.install">Install</button>
         </div>
       </div>
       <div id="reload-banner" style="display:none;" class="reload-banner">
-        <span>Plugins changed. Reload to apply.</span>
-        <button class="btn btn-primary" onclick="postCallback('on_plugin_reload')">Reload Now</button>
+        <span data-i18n="plugins_tab.reload_message">Plugins changed. Reload to apply.</span>
+        <button class="btn btn-primary" onclick="postCallback('on_plugin_reload')" data-i18n="plugins_tab.reload_now">Reload Now</button>
       </div>
     </div>
 
     <div id="tab-screenshot" class="tab-content">
-      <div class="content-title">Screenshot</div>
+      <div class="content-title" data-i18n="screenshot_tab.title">Screenshot</div>
 
       <div class="section">
-        <div class="section-title">General</div>
+        <div class="section-title" data-i18n="screenshot_tab.general_section">General</div>
         <div class="setting-group">
           <div class="setting-row">
             <div class="setting-left">
-              <div class="setting-label">Enable Screenshot</div>
-              <div class="setting-desc">Enable screenshot capture and annotation tool</div>
+              <div class="setting-label" data-i18n="screenshot_tab.enable_label">Enable Screenshot</div>
+              <div class="setting-desc" data-i18n="screenshot_tab.enable_desc">Enable screenshot capture and annotation tool</div>
             </div>
             <div class="setting-right">
               <div id="ctl-screenshot-enabled" class="toggle" onclick="toggleClick(this, 'on_screenshot_toggle')"></div>
@@ -1148,13 +1148,13 @@ textarea.provider-form-textarea.error {
           </div>
           <div class="setting-row" id="screenshot-hotkey-row">
             <div class="setting-left">
-              <div class="setting-label">Hotkey</div>
-              <div class="setting-desc">Global hotkey to trigger screenshot capture</div>
+              <div class="setting-label" data-i18n="screenshot_tab.hotkey_label">Hotkey</div>
+              <div class="setting-desc" data-i18n="screenshot_tab.hotkey_desc">Global hotkey to trigger screenshot capture</div>
             </div>
             <div class="setting-right">
-              <span id="ctl-screenshot-hotkey" class="hotkey-badge">None</span>
-              <button class="btn-small" onclick="postCallback('on_screenshot_hotkey_record')">Record</button>
-              <button class="btn-small danger" onclick="postCallback('on_screenshot_hotkey_clear')">Clear</button>
+              <span id="ctl-screenshot-hotkey" class="hotkey-badge" data-i18n="screenshot_tab.hotkey_none">None</span>
+              <button class="btn-small" onclick="postCallback('on_screenshot_hotkey_record')" data-i18n="screenshot_tab.record">Record</button>
+              <button class="btn-small danger" onclick="postCallback('on_screenshot_hotkey_clear')" data-i18n="screenshot_tab.clear">Clear</button>
             </div>
           </div>
         </div>
@@ -2517,7 +2517,7 @@ function _initState(config) {
   var screenshot = config.screenshot || {};
   setToggle('ctl-screenshot-enabled', screenshot.enabled);
   var ssHk = document.getElementById('ctl-screenshot-hotkey');
-  if (ssHk) ssHk.textContent = screenshot.hotkey || 'None';
+  if (ssHk) ssHk.textContent = screenshot.hotkey || _t('screenshot_tab.hotkey_none', 'None');
   updateScreenshotDisabledState();
 
   // Restore last tab (skip on_tab_change to avoid redundant config save)
@@ -2540,7 +2540,7 @@ function renderPlugins() {
   var list = document.getElementById('plugin-list');
   if (!list) return;
   if (!plugins.length) {
-    list.innerHTML = '<div style="color:#86868b;padding:8px;">No plugins available.</div>';
+    list.innerHTML = '<div style="color:#86868b;padding:8px;">' + _esc(_t('plugins_tab.no_plugins', 'No plugins available.')) + '</div>';
     return;
   }
   var html = '';
@@ -2550,28 +2550,28 @@ function renderPlugins() {
 
 function renderPluginCard(p) {
   var badge = p.status === 'manually_placed'
-    ? '<span class="plugin-badge badge-local">Local</span>'
+    ? '<span class="plugin-badge badge-local">' + _esc(_t('plugins_tab.badge_local', 'Local')) + '</span>'
     : p.is_official
-    ? '<span class="plugin-badge badge-official">Official</span>'
-    : '<span class="plugin-badge badge-community">Community</span>';
+    ? '<span class="plugin-badge badge-official">' + _esc(_t('plugins_tab.badge_official', 'Official')) + '</span>'
+    : '<span class="plugin-badge badge-community">' + _esc(_t('plugins_tab.badge_community', 'Community')) + '</span>';
   var pinnedBadge = '';
   if (p.pinned_ref) {
-    pinnedBadge = ' <span class="plugin-badge badge-pinned">Pinned at ' + _esc(p.pinned_ref) + '</span>';
+    pinnedBadge = ' <span class="plugin-badge badge-pinned">' + _esc(_t('plugins_tab.pinned_at', 'Pinned at')) + ' ' + _esc(p.pinned_ref) + '</span>';
   }
   var actions = '';
   var toggleBtn = '<div class="' + (p.enabled ? 'toggle on' : 'toggle') + '" data-action="plugin-toggle" data-id="' + _esc(p.id) + '"></div>';
-  var uninstallBtn = '<button class="btn btn-danger" data-action="plugin-uninstall" data-id="' + _esc(p.id) + '">Uninstall</button>';
+  var uninstallBtn = '<button class="btn btn-danger" data-action="plugin-uninstall" data-id="' + _esc(p.id) + '">' + _esc(_t('plugins_tab.uninstall', 'Uninstall')) + '</button>';
   if (p.status === 'incompatible') {
-    var reqLabel = '<span class="plugin-badge badge-local" style="opacity:0.7;">Requires WenZi \u2265 ' + _esc(p.min_wenzi_version) + '</span>';
+    var reqLabel = '<span class="plugin-badge badge-local" style="opacity:0.7;">' + _esc(_t('plugins_tab.requires_version', 'Requires WenZi \u2265')) + ' ' + _esc(p.min_wenzi_version) + '</span>';
     if (p.installed_version) {
       actions = reqLabel + '<div class="toggle toggle-disabled"></div>';
     } else {
-      actions = '<button class="btn btn-secondary" disabled title="Requires WenZi >= ' + _esc(p.min_wenzi_version) + '">Install</button>';
+      actions = '<button class="btn btn-secondary" disabled title="' + _esc(_t('plugins_tab.requires_version', 'Requires WenZi \u2265')) + ' ' + _esc(p.min_wenzi_version) + '">' + _esc(_t('plugins_tab.install', 'Install')) + '</button>';
     }
   } else if (p.status === 'not_installed') {
-    actions = '<button class="btn btn-primary" data-action="plugin-install" data-id="' + _esc(p.id) + '">Install</button>';
+    actions = '<button class="btn btn-primary" data-action="plugin-install" data-id="' + _esc(p.id) + '">' + _esc(_t('plugins_tab.install', 'Install')) + '</button>';
   } else if (p.status === 'update_available') {
-    actions = '<button class="btn btn-primary" data-action="plugin-update" data-id="' + _esc(p.id) + '">Update (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
+    actions = '<button class="btn btn-primary" data-action="plugin-update" data-id="' + _esc(p.id) + '">' + _esc(_t('plugins_tab.update', 'Update')) + ' (' + _esc(p.installed_version) + ' \u2192 ' + _esc(p.version) + ')</button>';
     actions += toggleBtn + uninstallBtn;
   } else if (p.status === 'installed' || p.status === 'pinned') {
     actions += toggleBtn + uninstallBtn;
@@ -2590,13 +2590,13 @@ function renderPluginCard(p) {
   var displayVer = p.installed_version || p.version;
   var versionHtml = '<span class="plugin-version">v' + _esc(displayVer) + '</span>';
   if (p.pinned_ref && p.version && p.installed_version && p.version !== p.installed_version) {
-    versionHtml += '<span class="plugin-version"> (Latest: v' + _esc(p.version) + ')</span>';
+    versionHtml += '<span class="plugin-version"> (' + _esc(_t('plugins_tab.latest_version', 'Latest: v')) + _esc(p.version) + ')</span>';
   }
   var bodyHtml = '<div class="plugin-body">' + _esc(p.description) + errorHtml
     + '<div class="plugin-progress"><div class="plugin-progress-bar"></div></div>'
     + '</div>';
   var readmeBtn = p.has_readme
-    ? '<button class="btn-icon-readme" data-action="plugin-readme" data-id="' + _esc(p.id) + '" title="Documentation">&#x1F4D6;</button>'
+    ? '<button class="btn-icon-readme" data-action="plugin-readme" data-id="' + _esc(p.id) + '" title="' + _esc(_t('plugins_tab.documentation', 'Documentation')) + '">&#x1F4D6;</button>'
     : '';
   var incompatClass = (p.status === 'incompatible' && p.installed_version) ? ' plugin-card-incompatible' : '';
   return '<div class="plugin-card' + (p.load_error ? ' plugin-card-error' : '') + incompatClass + '" data-plugin-id="' + _esc(p.id) + '">'
@@ -2625,10 +2625,10 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Alt' && !_altKeyHeld) {
     _altKeyHeld = true;
     document.querySelectorAll('[data-action="plugin-install"]').forEach(function(btn) {
-      btn.textContent = 'Install\u2026';
+      btn.textContent = _t('plugins_tab.install_version', 'Install\u2026');
     });
     document.querySelectorAll('[data-action="plugin-uninstall"]').forEach(function(btn) {
-      btn.textContent = 'Install\u2026';
+      btn.textContent = _t('plugins_tab.install_version', 'Install\u2026');
       btn.classList.remove('btn-danger');
       btn.classList.add('btn-primary');
     });
@@ -2639,10 +2639,10 @@ document.addEventListener('keyup', function(e) {
   if (e.key === 'Alt') {
     _altKeyHeld = false;
     document.querySelectorAll('[data-action="plugin-install"]').forEach(function(btn) {
-      btn.textContent = 'Install';
+      btn.textContent = _t('plugins_tab.install', 'Install');
     });
     document.querySelectorAll('[data-action="plugin-uninstall"]').forEach(function(btn) {
-      btn.textContent = 'Uninstall';
+      btn.textContent = _t('plugins_tab.uninstall', 'Uninstall');
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-danger');
     });
@@ -2657,11 +2657,11 @@ function showVersionPopover(pluginId, btn) {
   pop.className = 'version-popover show';
   pop.id = 'version-popover';
   pop.innerHTML =
-    '<label>Version / ref:</label>' +
-    '<input type="text" id="version-popover-input" placeholder="e.g. 0.1.0, feat/branch">' +
+    '<label>' + _esc(_t('plugins_tab.version_label', 'Version / ref:')) + '</label>' +
+    '<input type="text" id="version-popover-input" placeholder="' + _esc(_t('plugins_tab.version_placeholder', 'e.g. 0.1.0, feat/branch')) + '">' +
     '<div class="popover-buttons">' +
-    '<button class="btn btn-secondary" onclick="closeVersionPopover()">Cancel</button>' +
-    '<button class="btn btn-primary" onclick="confirmVersionInstall()">Install</button>' +
+    '<button class="btn btn-secondary" onclick="closeVersionPopover()">' + _esc(_t('common.cancel', 'Cancel')) + '</button>' +
+    '<button class="btn btn-primary" onclick="confirmVersionInstall()">' + _esc(_t('plugins_tab.install', 'Install')) + '</button>' +
     '</div>';
   pop.dataset.pluginId = pluginId;
   actions.appendChild(pop);
@@ -2746,10 +2746,10 @@ function closeModal() {
           else {
             (function(pid) {
               showModal(
-                '<div class="modal-message">Uninstall this plugin? This will delete all plugin files.</div>',
+                '<div class="modal-message">' + _esc(_t('plugins_tab.confirm_uninstall', 'Uninstall this plugin? This will delete all plugin files.')) + '</div>',
                 [
-                  { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-                  { label: 'Uninstall', cls: 'btn-danger', action: function() { closeModal(); postCallback('on_plugin_uninstall', pid); } }
+                  { label: _t('common.cancel', 'Cancel'), cls: 'btn-secondary', action: closeModal },
+                  { label: _t('plugins_tab.uninstall', 'Uninstall'), cls: 'btn-danger', action: function() { closeModal(); postCallback('on_plugin_uninstall', pid); } }
                 ]
               );
             })(id);
@@ -2821,7 +2821,7 @@ function updatePluginProgress(info) {
     _activeProgressCard = document.querySelector('[data-plugin-id="' + info.id + '"]');
     if (!_activeProgressCard) return;
     _activeProgressBar = _activeProgressCard.querySelector('.plugin-progress');
-    var label = (info.action === 'update') ? 'Updating\u2026' : 'Installing\u2026';
+    var label = (info.action === 'update') ? _t('plugins_tab.updating', 'Updating\u2026') : _t('plugins_tab.installing', 'Installing\u2026');
     _activeProgressCard.querySelectorAll('.plugin-actions .btn').forEach(function(btn) {
       btn._origText = btn.textContent;
       btn.textContent = label;
@@ -2952,7 +2952,7 @@ function _updateState(state) {
     var ss = state.screenshot;
     if (ss.enabled !== undefined) setToggle('ctl-screenshot-enabled', ss.enabled);
     var ssHk2 = document.getElementById('ctl-screenshot-hotkey');
-    if (ssHk2 && ss.hotkey !== undefined) ssHk2.textContent = ss.hotkey || 'None';
+    if (ssHk2 && ss.hotkey !== undefined) ssHk2.textContent = ss.hotkey || _t('screenshot_tab.hotkey_none', 'None');
     updateScreenshotDisabledState();
   }
 }

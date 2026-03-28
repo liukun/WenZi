@@ -438,7 +438,7 @@ class WenZiApp(StatusBarApp):
         )
 
         self._screenshot_item = StatusMenuItem(
-            "Screenshot", callback=self._on_screenshot
+            t("menu.screenshot"), callback=self._on_screenshot
         )
         self._screenshot_hotkey_listener = None
         self._clipboard_hotkey_listener = None
