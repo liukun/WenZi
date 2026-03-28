@@ -180,6 +180,34 @@ class TestResizeForDiffPanel:
         panel._panel.setFrame_display_.assert_called_once()
 
 
+class TestSetDiffEnabled:
+    def test_enabled_true_pushes_js(self, mock_appkit, monkeypatch):
+        panel = _build_panel()
+        monkeypatch.setattr(
+            "wenzi.ui.result_window_web.ResultPreviewPanel.set_diff_enabled",
+            lambda self, enabled: self._eval_js(
+                f"setDiffEnabled({'true' if enabled else 'false'})"
+            ),
+        )
+        panel.set_diff_enabled(True)
+        js_call = panel._webview.evaluateJavaScript_completionHandler_
+        assert js_call.called
+        assert "setDiffEnabled(true)" in js_call.call_args[0][0]
+
+    def test_enabled_false_pushes_js(self, mock_appkit, monkeypatch):
+        panel = _build_panel()
+        monkeypatch.setattr(
+            "wenzi.ui.result_window_web.ResultPreviewPanel.set_diff_enabled",
+            lambda self, enabled: self._eval_js(
+                f"setDiffEnabled({'true' if enabled else 'false'})"
+            ),
+        )
+        panel.set_diff_enabled(False)
+        js_call = panel._webview.evaluateJavaScript_completionHandler_
+        assert js_call.called
+        assert "setDiffEnabled(false)" in js_call.call_args[0][0]
+
+
 class TestCacheEnhancedText:
     def test_cache_text(self, mock_appkit):
         panel = _build_panel()

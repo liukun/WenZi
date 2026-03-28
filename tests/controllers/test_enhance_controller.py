@@ -344,6 +344,158 @@ class TestRunSingleAsync:
 
 
 # ---------------------------------------------------------------------------
+# Tests: diff skipping based on track_corrections
+# ---------------------------------------------------------------------------
+
+
+class TestDiffSkipping:
+    """Diffs should only be computed/pushed when mode has track_corrections=True."""
+
+    def _make_mode_def(self, track_corrections):
+        mode_def = MagicMock()
+        mode_def.track_corrections = track_corrections
+        mode_def.steps = []
+        return mode_def
+
+    def _setup_stream(self, mock_enhancer):
+        chunks = [
+            ("result", {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}, False),
+        ]
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_make_async_gen(chunks)
+        )
+
+    def test_single_calls_push_diffs_when_tracked(
+        self, controller, mock_enhancer, mock_panel, event_loop,
+    ):
+        """_push_diffs_and_hits should be called for track_corrections=True mode."""
+        mode_def = self._make_mode_def(track_corrections=True)
+        mock_enhancer.get_mode_definition.return_value = mode_def
+        self._setup_stream(mock_enhancer)
+        controller._push_diffs_and_hits = MagicMock()
+
+        event_loop.run_until_complete(
+            controller._run_single_async("asr text", 1, {}, track_corrections=True)
+        )
+        controller._push_diffs_and_hits.assert_called_once()
+
+    def test_single_skips_push_diffs_when_not_tracked(
+        self, controller, mock_enhancer, mock_panel, event_loop,
+    ):
+        """_push_diffs_and_hits should NOT be called for track_corrections=False mode."""
+        mode_def = self._make_mode_def(track_corrections=False)
+        mock_enhancer.get_mode_definition.return_value = mode_def
+        self._setup_stream(mock_enhancer)
+        controller._push_diffs_and_hits = MagicMock()
+
+        event_loop.run_until_complete(
+            controller._run_single_async("asr text", 1, {}, track_corrections=False)
+        )
+        controller._push_diffs_and_hits.assert_not_called()
+
+    def test_chain_calls_push_diffs_when_tracked(
+        self, controller, mock_enhancer, mock_panel, event_loop,
+    ):
+        """Chain mode with track_corrections=True should push diffs."""
+        call_count = 0
+
+        def _make_step_gen(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return _make_async_gen([
+                ("out", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}, False),
+            ])
+
+        mock_enhancer.enhance_stream = MagicMock(side_effect=_make_step_gen)
+
+        step_def = MagicMock()
+        step_def.label = "Step"
+        chain_mode_def = self._make_mode_def(track_corrections=True)
+
+        def _get_mode_def(mode_id):
+            if mode_id == "chain_mode":
+                return chain_mode_def
+            return step_def
+
+        mock_enhancer.get_mode_definition = MagicMock(side_effect=_get_mode_def)
+        controller._push_diffs_and_hits = MagicMock()
+
+        event_loop.run_until_complete(
+            controller._run_chain_async(
+                "input", 1, {}, ["s1"], "chain_mode", track_corrections=True,
+            )
+        )
+        controller._push_diffs_and_hits.assert_called_once()
+
+    def test_chain_skips_push_diffs_when_not_tracked(
+        self, controller, mock_enhancer, mock_panel, event_loop,
+    ):
+        """Chain mode with track_corrections=False should skip diffs."""
+        mock_enhancer.enhance_stream = MagicMock(
+            return_value=_make_async_gen([
+                ("out", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}, False),
+            ])
+        )
+
+        step_def = MagicMock()
+        step_def.label = "Step"
+        chain_mode_def = self._make_mode_def(track_corrections=False)
+
+        def _get_mode_def(mode_id):
+            if mode_id == "chain_mode":
+                return chain_mode_def
+            return step_def
+
+        mock_enhancer.get_mode_definition = MagicMock(side_effect=_get_mode_def)
+        controller._push_diffs_and_hits = MagicMock()
+
+        event_loop.run_until_complete(
+            controller._run_chain_async(
+                "input", 1, {}, ["s1"], "chain_mode", track_corrections=False,
+            )
+        )
+        controller._push_diffs_and_hits.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: set_diff_enabled notification
+# ---------------------------------------------------------------------------
+
+
+class TestDiffEnabledNotification:
+    """run() should notify the preview panel about diff enabled/disabled state."""
+
+    @patch("wenzi.controllers.enhance_controller.async_loop")
+    def test_diff_enabled_for_proofread(self, mock_async_loop, controller, mock_enhancer, mock_panel):
+        mode_def = MagicMock()
+        mode_def.track_corrections = True
+        mode_def.steps = []
+        mock_enhancer.get_mode_definition.return_value = mode_def
+
+        mock_async_loop.submit.side_effect = lambda coro: coro.close() or MagicMock()
+        controller._run_single_async = MagicMock()
+        controller._run_wrapper = MagicMock(return_value=asyncio.sleep(0))
+
+        controller.run("text", 1)
+        mock_panel.set_diff_enabled.assert_called_with(True)
+
+    @patch("wenzi.controllers.enhance_controller.async_loop")
+    def test_diff_disabled_for_translate(self, mock_async_loop, controller, mock_enhancer, mock_panel):
+        mode_def = MagicMock()
+        mode_def.track_corrections = False
+        mode_def.steps = []
+        mock_enhancer.get_mode_definition.return_value = mode_def
+
+        mock_async_loop.submit.side_effect = lambda coro: coro.close() or MagicMock()
+        controller._run_single_async = MagicMock()
+        controller._run_wrapper = MagicMock(return_value=asyncio.sleep(0))
+
+        controller.enhance_mode = "translate_en"
+        controller.run("text", 1)
+        mock_panel.set_diff_enabled.assert_called_with(False)
+
+
+# ---------------------------------------------------------------------------
 # Tests: _run_chain_async
 # ---------------------------------------------------------------------------
 

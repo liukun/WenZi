@@ -877,6 +877,14 @@ let diffPanelOpen = false;
 let manualVocabSet = {};  // "variant\0term" -> true
 let diffDebounceTimer = null;
 
+function setDiffEnabled(enabled) {
+    const btn = document.getElementById('diff-toggle-btn');
+    btn.style.display = enabled ? '' : 'none';
+    if (!enabled && diffPanelOpen) {
+        toggleDiffPanel();
+    }
+}
+
 function toggleDiffPanel() {
     diffPanelOpen = !diffPanelOpen;
     document.getElementById('diff-panel').classList.toggle('collapsed', !diffPanelOpen);

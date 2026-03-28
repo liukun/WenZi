@@ -185,16 +185,22 @@ class EnhanceController:
                 else:
                     logger.warning("Chain step '%s' not found, skipping", step_id)
 
+        # Notify frontend whether diff panel is relevant for this mode
+        should_diff = current_mode_def is not None and current_mode_def.track_corrections
+        self._preview_panel.set_diff_enabled(should_diff)
+
         if chain_steps:
             coro = self._run_chain_async(
                 asr_text, request_id, result_holder,
                 chain_steps, current_mode_def.mode_id,
                 input_context=input_context,
+                track_corrections=should_diff,
             )
         else:
             coro = self._run_single_async(
                 asr_text, request_id, result_holder,
                 input_context=input_context,
+                track_corrections=should_diff,
             )
 
         wrapper = self._run_wrapper(coro, request_id)
@@ -298,6 +304,7 @@ class EnhanceController:
         self, asr_text: str, request_id: int,
         result_holder: dict | None,
         input_context: "InputContext | None" = None,
+        track_corrections: bool = False,
     ) -> None:
         """Run a single-step streaming enhancement as a coroutine."""
         gen = self._enhancer.enhance_stream(asr_text, input_context=input_context)
@@ -329,7 +336,8 @@ class EnhanceController:
                 thinking_text=self._preview_panel._thinking_text,
                 final_text=enhanced,
             )
-            self._push_diffs_and_hits(asr_text, enhanced)
+            if track_corrections:
+                self._push_diffs_and_hits(asr_text, enhanced)
         else:
             self._preview_panel.set_enhance_label(
                 "Connection failed", request_id=request_id,
@@ -344,6 +352,7 @@ class EnhanceController:
         result_holder: dict | None,
         chain_steps: list[str], original_mode_id: str,
         input_context: "InputContext | None" = None,
+        track_corrections: bool = False,
     ) -> None:
         """Run a multi-step chain enhancement as a coroutine."""
         total_steps = len(chain_steps)
@@ -425,6 +434,7 @@ class EnhanceController:
                 thinking_text=self._preview_panel._thinking_text,
                 final_text=enhanced,
             )
-            self._push_diffs_and_hits(asr_text, enhanced)
+            if track_corrections:
+                self._push_diffs_and_hits(asr_text, enhanced)
         finally:
             self._enhancer.mode = original_mode_id
