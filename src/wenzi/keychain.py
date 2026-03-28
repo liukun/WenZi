@@ -1,8 +1,8 @@
 """macOS Keychain CRUD helpers for WenZi sensitive configuration.
 
 All Security.framework calls are isolated in ``_sec_item_*`` functions so
-that the public API (``keychain_get``, ``keychain_set``, ``keychain_delete``,
-``keychain_list``) can be tested without touching the real Keychain.
+that the public API (``_keychain_get``, ``_keychain_set``, ``_keychain_delete``,
+``_keychain_list``) can be tested without touching the real Keychain.
 
 Low-level Security and Foundation symbols are imported lazily inside each
 ``_sec_item_*`` function to keep module-level imports free of PyObjC so that
@@ -175,7 +175,7 @@ def _sec_item_list(service: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 
-def keychain_get(account: str) -> Optional[str]:
+def _keychain_get(account: str) -> Optional[str]:
     """Return the secret string for *account*, or None if absent or on error."""
     try:
         return _sec_item_copy_matching(SERVICE, account)
@@ -184,7 +184,7 @@ def keychain_get(account: str) -> Optional[str]:
         return None
 
 
-def keychain_set(account: str, value: str) -> bool:
+def _keychain_set(account: str, value: str) -> bool:
     """Store *value* for *account* in the Keychain.
 
     Adds a new item if the account does not yet exist; updates it otherwise.
@@ -205,7 +205,7 @@ def keychain_set(account: str, value: str) -> bool:
         return False
 
 
-def keychain_delete(account: str) -> None:
+def _keychain_delete(account: str) -> None:
     """Remove *account* from the Keychain.  Logs a warning on failure but never raises."""
     try:
         _sec_item_delete(SERVICE, account)
@@ -213,7 +213,7 @@ def keychain_delete(account: str) -> None:
         logger.warning("keychain_delete failed for account=%r", account, exc_info=True)
 
 
-def keychain_list(prefix: str = "") -> List[str]:
+def _keychain_list(prefix: str = "") -> List[str]:
     """Return all account names under SERVICE that start with *prefix*.
 
     Returns an empty list on error.
@@ -226,7 +226,15 @@ def keychain_list(prefix: str = "") -> List[str]:
     return [a for a in all_accounts if a.startswith(prefix)]
 
 
-def keychain_clear_prefix(prefix: str) -> None:
+def _keychain_clear_prefix(prefix: str) -> None:
     """Delete all Keychain accounts whose names start with *prefix*."""
-    for account in keychain_list(prefix):
-        keychain_delete(account)
+    for account in _keychain_list(prefix):
+        _keychain_delete(account)
+
+
+# Temporary aliases — remove after all call sites are migrated to vault
+keychain_get = _keychain_get
+keychain_set = _keychain_set
+keychain_delete = _keychain_delete
+keychain_list = _keychain_list
+keychain_clear_prefix = _keychain_clear_prefix

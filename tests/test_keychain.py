@@ -214,8 +214,8 @@ class TestKeychainClearPrefix:
     def test_deletes_matching_accounts(self):
         """keychain_clear_prefix deletes all accounts matching the prefix."""
         with (
-            patch.object(kc, "keychain_list", return_value=["p.a", "p.b"]) as mock_list,
-            patch.object(kc, "keychain_delete") as mock_delete,
+            patch.object(kc, "_keychain_list", return_value=["p.a", "p.b"]) as mock_list,
+            patch.object(kc, "_keychain_delete") as mock_delete,
         ):
             kc.keychain_clear_prefix("p.")
 
@@ -227,8 +227,8 @@ class TestKeychainClearPrefix:
     def test_no_matches_no_deletes(self):
         """keychain_clear_prefix does nothing when no accounts match."""
         with (
-            patch.object(kc, "keychain_list", return_value=[]),
-            patch.object(kc, "keychain_delete") as mock_delete,
+            patch.object(kc, "_keychain_list", return_value=[]),
+            patch.object(kc, "_keychain_delete") as mock_delete,
         ):
             kc.keychain_clear_prefix("missing.")
 
