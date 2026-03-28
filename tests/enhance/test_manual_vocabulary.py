@@ -248,6 +248,72 @@ class TestGetEntryStats:
         assert stats == {"asr": [], "llm": []}
 
 
+class TestExportImportWithStats:
+    def test_export_all_with_stats(self, store):
+        store.add("派森", "Python", "asr")
+        store.add("库伯尼特斯", "Kubernetes", "asr")
+        misses = store.record_asr_phase("派森编程", asr_model="whisper")
+        store.record_llm_phase(misses, "Python编程", llm_model="gpt-4o")
+        exported = store.export_all_with_stats()
+        assert len(exported) == 2
+        python_entry = next(e for e in exported if e["term"] == "Python")
+        assert "stats" in python_entry
+        assert len(python_entry["stats"]) > 0
+        for s in python_entry["stats"]:
+            assert "metric" in s
+            assert "context_key" in s
+            assert "count" in s
+            assert "last_time" in s
+        # Entry without stats has empty stats list
+        k8s_entry = next(e for e in exported if e["term"] == "Kubernetes")
+        assert k8s_entry["stats"] == []
+
+    def test_import_stats_by_id(self, store):
+        entry = store.add("派森", "Python", "asr")
+        store.import_stats_by_id(entry.id, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 5, "last_time": "2026-03-28T10:00:00"},
+            {"metric": "llm_hit", "context_key": "llm:gpt-4o", "count": 3, "last_time": "2026-03-28T11:00:00"},
+        ])
+        stats = store.get_entry_stats("派森", "Python")
+        assert len(stats["asr"]) > 0
+        assert len(stats["llm"]) > 0
+
+    def test_import_stats_by_id_invalid(self, store):
+        store.import_stats_by_id(0, [{"metric": "asr_miss", "context_key": "x", "count": 1, "last_time": ""}])
+        store.add("派森", "Python", "asr")
+        store.import_stats_by_id(1, [])
+        # Neither should raise or insert anything unexpected
+
+    def test_roundtrip_export_import(self, tmp_path):
+        """Export from one store, import into another, verify stats preserved."""
+        path1 = str(tmp_path / "store1.db")
+        store1 = ManualVocabularyStore(path=path1)
+        store1.add("派森", "Python", "asr")
+        misses = store1.record_asr_phase("派森很好", asr_model="whisper")
+        store1.record_llm_phase(misses, "Python很好", llm_model="gpt-4o")
+        exported = store1.export_all_with_stats()
+
+        path2 = str(tmp_path / "store2.db")
+        store2 = ManualVocabularyStore(path=path2)
+        for entry_data in exported:
+            entry = store2.add(
+                variant=entry_data["variant"],
+                term=entry_data["term"],
+                source=entry_data.get("source", "user"),
+                app_bundle_id=entry_data.get("app_bundle_id", ""),
+                asr_model=entry_data.get("asr_model", ""),
+                llm_model=entry_data.get("llm_model", ""),
+                enhance_mode=entry_data.get("enhance_mode", ""),
+            )
+            store2.import_stats_by_id(entry.id, entry_data.get("stats", []))
+
+        assert store2.entry_count == 1
+        stats2 = store2.get_entry_stats("派森", "Python")
+        stats1 = store1.get_entry_stats("派森", "Python")
+        assert len(stats2["asr"]) == len(stats1["asr"])
+        assert len(stats2["llm"]) == len(stats1["llm"])
+
+
 class TestNormalization:
     """Entries should be stripped of leading/trailing whitespace and punctuation."""
 

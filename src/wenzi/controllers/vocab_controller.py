@@ -454,7 +454,7 @@ class VocabController:
     # ------------------------------------------------------------------
 
     def on_export(self) -> None:
-        """Export vocabulary to JSON via NSSavePanel."""
+        """Export vocabulary with stats to JSON via NSSavePanel."""
         try:
             from AppKit import NSSavePanel
 
@@ -467,10 +467,11 @@ class VocabController:
                 return
             path = str(panel.URL().path())
 
-            entries = self._app._manual_vocab_store.get_all()
+            store = self._app._manual_vocab_store
+            entries = store.export_all_with_stats()
             data = {
-                "version": 1,
-                "entries": [asdict(e) for e in entries],
+                "version": 2,
+                "entries": entries,
             }
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -500,13 +501,13 @@ class VocabController:
             store = self._app._manual_vocab_store
             new_count = 0
             update_count = 0
+            stats_count = 0
             for raw in raw_entries:
                 variant = raw.get("variant", "").strip()
                 term = raw.get("term", "").strip()
                 if not variant or not term:
                     continue
-                existed = store.get(variant, term) is not None
-                store.add(
+                entry = store.add(
                     variant=variant,
                     term=term,
                     source=raw.get("source", "user"),
@@ -515,14 +516,19 @@ class VocabController:
                     llm_model=raw.get("llm_model", ""),
                     enhance_mode=raw.get("enhance_mode", ""),
                 )
-                if existed:
-                    update_count += 1
-                else:
+                if entry.frequency == 1:
                     new_count += 1
+                else:
+                    update_count += 1
+
+                raw_stats = raw.get("stats", [])
+                if raw_stats:
+                    store.import_stats_by_id(entry.id, raw_stats)
+                    stats_count += len(raw_stats)
 
             logger.info(
-                "Imported vocabulary: %d new, %d updated from %s",
-                new_count, update_count, os.path.basename(path),
+                "Imported vocabulary: %d new, %d updated, %d stats rows from %s",
+                new_count, update_count, stats_count, os.path.basename(path),
             )
             self._reload_data()
         except Exception as exc:

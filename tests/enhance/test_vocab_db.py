@@ -178,6 +178,87 @@ class TestStats:
         assert stats == []
 
 
+class TestExportImportStats:
+    def test_get_all_stats(self, db):
+        e1 = db.add("a", "A", "asr")
+        e2 = db.add("b", "B", "asr")
+        db.record_stats([
+            (e1["id"], "asr_miss", "asr:whisper"),
+            (e1["id"], "llm_hit", "llm:gpt-4"),
+            (e2["id"], "asr_miss", "asr:funasr"),
+        ])
+        all_stats = db.get_all_stats()
+        assert e1["id"] in all_stats
+        assert e2["id"] in all_stats
+        assert len(all_stats[e1["id"]]) == 2
+        assert len(all_stats[e2["id"]]) == 1
+        # Each stat dict should not contain entry_id
+        for s in all_stats[e1["id"]]:
+            assert "entry_id" not in s
+            assert "metric" in s
+            assert "context_key" in s
+            assert "count" in s
+            assert "last_time" in s
+
+    def test_get_all_stats_empty(self, db):
+        db.add("a", "A", "asr")
+        all_stats = db.get_all_stats()
+        assert all_stats == {}
+
+    def test_import_stats_new(self, db):
+        entry = db.add("a", "A", "asr")
+        eid = entry["id"]
+        db.import_stats(eid, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 5, "last_time": "2026-03-28T10:00:00"},
+            {"metric": "llm_hit", "context_key": "llm:gpt-4", "count": 3, "last_time": "2026-03-28T11:00:00"},
+        ])
+        stats = db.get_stats(eid)
+        assert len(stats) == 2
+        by_metric = {s["metric"]: s for s in stats}
+        assert by_metric["asr_miss"]["count"] == 5
+        assert by_metric["llm_hit"]["count"] == 3
+
+    def test_import_stats_upsert_keeps_max(self, db):
+        entry = db.add("a", "A", "asr")
+        eid = entry["id"]
+        # Existing: count=10
+        db.import_stats(eid, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 10, "last_time": "2026-03-20T00:00:00"},
+        ])
+        # Import with lower count — should keep 10
+        db.import_stats(eid, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 3, "last_time": "2026-03-19T00:00:00"},
+        ])
+        stats = db.get_stats(eid)
+        assert stats[0]["count"] == 10
+        assert stats[0]["last_time"] == "2026-03-20T00:00:00"
+
+    def test_import_stats_upsert_updates_higher(self, db):
+        entry = db.add("a", "A", "asr")
+        eid = entry["id"]
+        db.import_stats(eid, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 3, "last_time": "2026-03-19T00:00:00"},
+        ])
+        # Import with higher count and later time
+        db.import_stats(eid, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 10, "last_time": "2026-03-28T00:00:00"},
+        ])
+        stats = db.get_stats(eid)
+        assert stats[0]["count"] == 10
+        assert stats[0]["last_time"] == "2026-03-28T00:00:00"
+
+    def test_import_stats_skips_invalid(self, db):
+        entry = db.add("a", "A", "asr")
+        eid = entry["id"]
+        db.import_stats(eid, [
+            {"metric": "", "context_key": "asr:whisper", "count": 5, "last_time": ""},
+            {"metric": "asr_miss", "context_key": "", "count": 5, "last_time": ""},
+            {"count": 5, "last_time": ""},  # missing metric and context_key
+        ])
+        stats = db.get_stats(eid)
+        assert stats == []
+
+
 class TestRankedQueries:
     def _populate(self, db):
         """Create 3 entries with varying stats."""

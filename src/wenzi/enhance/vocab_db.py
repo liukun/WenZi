@@ -294,6 +294,44 @@ class VocabDB:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_all_stats(self) -> dict[int, list[dict]]:
+        """Return all stats rows grouped by entry_id.
+
+        Returns a dict mapping entry_id to a list of stat dicts,
+        each with keys: metric, context_key, count, last_time.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT entry_id, metric, context_key, count, last_time "
+                "FROM vocab_stats ORDER BY entry_id, metric, count DESC",
+            ).fetchall()
+        result: dict[int, list[dict]] = {}
+        for r in rows:
+            d = dict(r)
+            eid = d.pop("entry_id")
+            result.setdefault(eid, []).append(d)
+        return result
+
+    def import_stats(self, entry_id: int, stats_rows: list[dict]) -> None:
+        """Import stats rows for an entry using upsert (keep max count, latest time)."""
+        with self._lock, self._conn:
+            self._conn.executemany(
+                """INSERT INTO vocab_stats (entry_id, metric, context_key, count, last_time)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(entry_id, metric, context_key)
+                   DO UPDATE SET
+                       count = MAX(count, excluded.count),
+                       last_time = CASE
+                           WHEN excluded.last_time > last_time THEN excluded.last_time
+                           ELSE last_time
+                       END""",
+                [
+                    (entry_id, s["metric"], s["context_key"], s["count"], s["last_time"])
+                    for s in stats_rows
+                    if s.get("metric") and s.get("context_key")
+                ],
+            )
+
     def get_stats_summary(self, entry_id: int, metric: str) -> int:
         """Sum all buckets for a given entry and metric."""
         with self._lock:

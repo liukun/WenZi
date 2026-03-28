@@ -267,6 +267,25 @@ class ManualVocabularyStore:
         """Return a snapshot of all entries."""
         return [_entry_from_row(r) for r in self._db.get_all()]
 
+    def export_all_with_stats(self) -> list[dict]:
+        """Return all entries with their stats for export.
+
+        Each dict contains the entry fields plus a ``stats`` key with
+        the list of stat rows (metric, context_key, count, last_time).
+        The internal ``id`` field is stripped from each entry.
+        """
+        rows = self._db.get_all()
+        all_stats = self._db.get_all_stats()
+        for r in rows:
+            r["stats"] = all_stats.get(r.pop("id"), [])
+        return rows
+
+    def import_stats_by_id(self, entry_id: int, stats: list[dict]) -> None:
+        """Import stats rows for an entry identified by id directly."""
+        if entry_id <= 0 or not stats:
+            return
+        self._db.import_stats(entry_id, stats)
+
     def get_all_for_state(self) -> list[dict]:
         """Return ``[{variant, term}]`` for JS-side state synchronization."""
         return [

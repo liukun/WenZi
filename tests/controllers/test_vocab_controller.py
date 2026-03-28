@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -508,3 +509,143 @@ class TestDetailStats:
         assert len(stats_calls) == 1
         # Should still return valid empty structure
         assert '"asr": []' in stats_calls[0]
+
+
+# ---------------------------------------------------------------------------
+# Export / Import
+# ---------------------------------------------------------------------------
+
+
+def _import_entries_with_stats(store, raw_entries):
+    """Simulate the controller's import logic (bypassing NSOpenPanel)."""
+    for raw in raw_entries:
+        entry = store.add(
+            variant=raw["variant"], term=raw["term"],
+            source=raw.get("source", "user"),
+            app_bundle_id=raw.get("app_bundle_id", ""),
+            asr_model=raw.get("asr_model", ""),
+            llm_model=raw.get("llm_model", ""),
+            enhance_mode=raw.get("enhance_mode", ""),
+        )
+        raw_stats = raw.get("stats", [])
+        if raw_stats:
+            store.import_stats_by_id(entry.id, raw_stats)
+
+
+class TestExportImport:
+    def test_export_includes_stats(self, controller, store, tmp_path):
+        """Export should produce version 2 JSON with stats."""
+        store.add("派森", "Python", "asr")
+        entry = store.get_all()[0]
+        store._db.record_stats([
+            (entry.id, "asr_miss", "asr:whisper"),
+            (entry.id, "llm_hit", "llm:gpt-4o"),
+        ])
+        out_path = str(tmp_path / "export.json")
+        exported = store.export_all_with_stats()
+        data = {"version": 2, "entries": exported}
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        with open(out_path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        assert loaded["version"] == 2
+        assert len(loaded["entries"]) == 1
+        entry_data = loaded["entries"][0]
+        assert entry_data["term"] == "Python"
+        assert len(entry_data["stats"]) == 2
+        metrics = {s["metric"] for s in entry_data["stats"]}
+        assert "asr_miss" in metrics
+        assert "llm_hit" in metrics
+
+    def test_import_v2_restores_stats(self, controller, store, tmp_path):
+        """Import version 2 JSON should restore both entries and stats."""
+        v2_data = {
+            "version": 2,
+            "entries": [
+                {
+                    "term": "Kubernetes",
+                    "variant": "库伯尼特斯",
+                    "source": "asr",
+                    "frequency": 3,
+                    "first_seen": "2026-03-20T10:00:00",
+                    "last_updated": "2026-03-28T12:00:00",
+                    "app_bundle_id": "com.apple.dt.Xcode",
+                    "asr_model": "paraformer",
+                    "llm_model": "gpt-4",
+                    "enhance_mode": "translate",
+                    "stats": [
+                        {"metric": "asr_miss", "context_key": "asr:paraformer", "count": 5, "last_time": "2026-03-28T11:00:00"},
+                        {"metric": "llm_hit", "context_key": "llm:gpt-4", "count": 3, "last_time": "2026-03-28T12:00:00"},
+                    ],
+                },
+            ],
+        }
+        _import_entries_with_stats(store, v2_data["entries"])
+
+        assert store.entry_count == 1
+        entry = store.get("库伯尼特斯", "Kubernetes")
+        assert entry is not None
+        stats = store.get_entry_stats("库伯尼特斯", "Kubernetes")
+        assert len(stats["asr"]) > 0
+        assert len(stats["llm"]) > 0
+        asr_bucket = stats["asr"][0]
+        assert asr_bucket["miss"] == 5
+        llm_bucket = stats["llm"][0]
+        assert llm_bucket["hit"] == 3
+
+    def test_import_v1_backward_compatible(self, controller, store, tmp_path):
+        """Version 1 JSON (no stats) should import entries without errors."""
+        v1_data = {
+            "version": 1,
+            "entries": [
+                {
+                    "term": "Python",
+                    "variant": "派森",
+                    "source": "asr",
+                },
+            ],
+        }
+        _import_entries_with_stats(store, v1_data["entries"])
+
+        assert store.entry_count == 1
+        stats = store.get_entry_stats("派森", "Python")
+        assert stats == {"asr": [], "llm": []}
+
+    def test_import_merges_stats_with_existing(self, controller, store, tmp_path):
+        """Import stats for an existing entry should upsert (keep max)."""
+        store.add("派森", "Python", "asr")
+        entry = store.get_all()[0]
+        for _ in range(10):
+            store._db.record_stats([(entry.id, "asr_miss", "asr:whisper")])
+
+        store.import_stats_by_id(entry.id, [
+            {"metric": "asr_miss", "context_key": "asr:whisper", "count": 3, "last_time": "2026-01-01T00:00:00"},
+        ])
+        all_stats = store._db.get_stats(entry.id)
+        asr_miss = next(s for s in all_stats if s["metric"] == "asr_miss")
+        assert asr_miss["count"] == 10
+
+    def test_roundtrip_export_import(self, controller, store, tmp_path):
+        """Full roundtrip: add entries with stats, export, import into fresh store."""
+        store.add("派森", "Python", "asr")
+        store.add("库伯尼特斯", "Kubernetes", "asr")
+        entry = store.get("派森", "Python")
+        store._db.record_stats([
+            (entry.id, "asr_miss", "asr:whisper"),
+            (entry.id, "asr_miss", "asr:whisper"),
+            (entry.id, "llm_hit", "llm:gpt-4o"),
+        ])
+
+        exported = store.export_all_with_stats()
+        store2 = ManualVocabularyStore(path=str(tmp_path / "store2.db"))
+        _import_entries_with_stats(store2, exported)
+
+        assert store2.entry_count == 2
+        stats = store2.get_entry_stats("派森", "Python")
+        asr_buckets = stats["asr"]
+        assert any(b["miss"] == 2 for b in asr_buckets)
+        llm_buckets = stats["llm"]
+        assert any(b["hit"] == 1 for b in llm_buckets)
+        stats_k = store2.get_entry_stats("库伯尼特斯", "Kubernetes")
+        assert stats_k == {"asr": [], "llm": []}
