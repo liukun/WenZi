@@ -142,6 +142,23 @@ class TestCancelKeySelect:
         mock_save.assert_called_once()
 
 
+class TestKeychainToggle:
+    @patch("wenzi.controllers.settings_controller.save_config")
+    def test_toggle_keychain_on(self, mock_save, ctrl, mock_app):
+        ctrl.keychain_toggle(True)
+
+        assert mock_app._config["keychain"]["enabled"] is True
+        mock_save.assert_called_once()
+
+    @patch("wenzi.controllers.settings_controller.save_config")
+    def test_toggle_keychain_off(self, mock_save, ctrl, mock_app):
+        mock_app._config["keychain"] = {"enabled": True}
+        ctrl.keychain_toggle(False)
+
+        assert mock_app._config["keychain"]["enabled"] is False
+        mock_save.assert_called_once()
+
+
 class TestSoundToggle:
     @patch("wenzi.controllers.settings_controller.save_config")
     def test_toggle_sound(self, mock_save, ctrl, mock_app):

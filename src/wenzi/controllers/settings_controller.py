@@ -175,6 +175,7 @@ class SettingsController:
             ),
             "input_context_level": app._config.get("ai_enhance", {}).get("input_context", "basic"),
             "config_dir": app._config_dir,
+            "keychain_enabled": is_keychain_enabled(app._config),
             "scripting_enabled": app._config.get("scripting", {}).get(
                 "enabled", False
             ),
@@ -198,6 +199,7 @@ class SettingsController:
             "on_record_hotkey": lambda: app._on_record_hotkey(None),
             "on_restart_key_select": self.restart_key_select,
             "on_cancel_key_select": self.cancel_key_select,
+            "on_keychain_toggle": self.keychain_toggle,
             "on_scripting_toggle": self.scripting_toggle,
             "on_sound_toggle": self.sound_toggle,
             "on_visual_toggle": self.visual_toggle,
@@ -357,6 +359,14 @@ class SettingsController:
             message=t("settings.general_tab.language_restart_message"),
         )
         restore_accessory()
+
+    def keychain_toggle(self, enabled: bool) -> None:
+        """Handle keychain toggle from Settings panel."""
+        app = self._app
+        kc_cfg = app._config.setdefault("keychain", {})
+        kc_cfg["enabled"] = enabled
+        self._save_and_reload()
+        logger.info("Keychain set to: %s", enabled)
 
     def scripting_toggle(self, enabled: bool) -> None:
         """Handle scripting toggle from Settings panel."""

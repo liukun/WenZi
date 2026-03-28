@@ -840,6 +840,19 @@ textarea.provider-form-textarea.error {
         </div>
       </div>
 
+      <div class="group-title" data-i18n="general_tab.security_section">Security</div>
+      <div class="setting-group">
+        <div class="setting-row">
+          <div class="setting-left">
+            <div class="setting-label" data-i18n="general_tab.keychain">Keychain</div>
+            <div class="setting-desc" data-i18n="general_tab.keychain_desc">Encrypt API keys with macOS Keychain instead of storing plaintext in config file</div>
+          </div>
+          <div class="setting-right">
+            <div id="ctl-keychain" class="toggle" onclick="toggleClick(this, 'on_keychain_toggle')"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="group-title group-title-row"><span data-i18n="general_tab.scripting_section">Advanced</span><span class="help-icon" data-doc="scripting.html#quick-start">?</span></div>
       <div class="setting-group">
         <div class="setting-row">
@@ -2297,10 +2310,6 @@ function renderLauncherSources() {
     html += '    <div class="toggle' + (enabled ? ' on' : '') + '" data-action="launcher-source-toggle" data-key="' + _esc(src.config_key) + '"></div>';
     html += '  </div>';
     html += '</div>';
-    // Clipboard warning
-    if (src.config_key === 'clipboard_history') {
-      html += '<div class="setting-row"><div class="setting-left"><div class="setting-desc" style="color:#e17055;">' + _esc(_t('launcher_tab.clipboard_warning', '')) + '</div></div></div>';
-    }
   }
 
   if (sources.length === 0) {
@@ -2438,6 +2447,9 @@ function _initState(config) {
 
   // Output
   setToggle('ctl-preview', config.preview);
+
+  // Security
+  setToggle('ctl-keychain', config.keychain_enabled);
 
   // Advanced
   setToggle('ctl-scripting', config.scripting_enabled);
@@ -2835,6 +2847,7 @@ function _updateState(state) {
   if (state.visual_indicator !== undefined) setToggle('ctl-visual', state.visual_indicator);
   if (state.show_device_name !== undefined) setToggle('ctl-device-name', state.show_device_name);
   if (state.preview !== undefined) setToggle('ctl-preview', state.preview);
+  if (state.keychain_enabled !== undefined) setToggle('ctl-keychain', state.keychain_enabled);
   if (state.scripting_enabled !== undefined) {
     setToggle('ctl-scripting', state.scripting_enabled);
     var sw = document.getElementById('launcher-scripting-warning');
