@@ -54,14 +54,6 @@ def _mock_quartz(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _mock_sck(monkeypatch):
-    """Install a mock ScreenCaptureKit module."""
-    mock_sck = MagicMock()
-    monkeypatch.setitem(sys.modules, "ScreenCaptureKit", mock_sck)
-    return mock_sck
-
-
-@pytest.fixture(autouse=True)
 def _fresh_capture_module(monkeypatch):
     """Remove cached capture module so each test gets a fresh import."""
     monkeypatch.delitem(sys.modules, "wenzi.screenshot.capture", raising=False)
@@ -200,88 +192,55 @@ class TestCollectWindowMetadata:
 # ---------------------------------------------------------------------------
 
 class TestCaptureDisplaysSync:
-    """Tests for the ScreenCaptureKit display capture wrapper."""
+    """Tests for the Quartz display capture wrapper."""
 
-    def _make_fake_sck(self, display_ids: List[int], image_per_display=True):
-        """Return a mock ScreenCaptureKit module that simulates the capture flow."""
+    def _setup_quartz(self, display_ids: List[int], image_per_display=True):
+        """Configure mock Quartz for CGGetOnlineDisplayList + CGDisplayCreateImage."""
         import sys
-        sck = sys.modules["ScreenCaptureKit"]
+        quartz = sys.modules["Quartz"]
 
-        # Build fake display objects
-        fake_displays = []
-        for did in display_ids:
-            d = MagicMock()
-            d.displayID.return_value = did
-            fake_displays.append(d)
+        # CGGetOnlineDisplayList returns (err, display_id_array, count)
+        quartz.CGGetOnlineDisplayList.return_value = (0, display_ids, len(display_ids))
 
-        # Simulate SCShareableContent.getWithCompletionHandler_ calling the handler
-        def _fake_get_content(handler):
-            content = MagicMock()
-            content.displays.return_value = fake_displays
-            handler(content, None)
-
-        sck.SCShareableContent.getWithCompletionHandler_.side_effect = _fake_get_content
-
-        # Simulate SCScreenshotManager.captureImageWithFilter_configuration_completionHandler_
-        def _fake_capture(filter_, config, handler):
-            fake_image = MagicMock() if image_per_display else None
-            handler(fake_image, None)
-
-        sck.SCScreenshotManager.captureImageWithFilter_configuration_completionHandler_.side_effect = _fake_capture
-
-        # SCContentFilter
-        sck.SCContentFilter.alloc.return_value.initWithDisplay_excludingWindows_.return_value = MagicMock()
-        # SCScreenshotManager config
-        sck.SCScreenshotManager.defaultScreenshotConfiguration.return_value = MagicMock()
-
-        return sck
+        # CGDisplayCreateImage returns a fake image or None
+        if image_per_display:
+            quartz.CGDisplayCreateImage.side_effect = lambda did: MagicMock(name=f"Image-{did}")
+        else:
+            quartz.CGDisplayCreateImage.return_value = None
 
     def test_single_display(self, monkeypatch):
-        self._make_fake_sck([1])
+        self._setup_quartz([1])
         from wenzi.screenshot.capture import _capture_displays_sync
         result = _capture_displays_sync()
         assert 1 in result
         assert result[1] is not None
 
     def test_multiple_displays(self, monkeypatch):
-        self._make_fake_sck([1, 2, 3])
+        self._setup_quartz([1, 2, 3])
         from wenzi.screenshot.capture import _capture_displays_sync
         result = _capture_displays_sync()
         assert set(result.keys()) == {1, 2, 3}
 
     def test_no_displays_returns_empty(self, monkeypatch):
-        import sys
-        sck = sys.modules["ScreenCaptureKit"]
-
-        def _fake_get_content(handler):
-            content = MagicMock()
-            content.displays.return_value = []
-            handler(content, None)
-
-        sck.SCShareableContent.getWithCompletionHandler_.side_effect = _fake_get_content
-
+        self._setup_quartz([])
         from wenzi.screenshot.capture import _capture_displays_sync
         result = _capture_displays_sync()
         assert result == {}
 
     def test_none_image_excluded_from_results(self, monkeypatch):
-        """When a display returns None image, it should be silently excluded."""
-        self._make_fake_sck([1, 2], image_per_display=False)
+        """When CGDisplayCreateImage returns None, display should be excluded."""
+        self._setup_quartz([1, 2], image_per_display=False)
         from wenzi.screenshot.capture import _capture_displays_sync
         result = _capture_displays_sync()
         assert result == {}
 
     def test_error_raises_runtime_error(self, monkeypatch):
         import sys
-        sck = sys.modules["ScreenCaptureKit"]
-
-        def _fake_get_content(handler):
-            handler(None, "permission denied")
-
-        sck.SCShareableContent.getWithCompletionHandler_.side_effect = _fake_get_content
+        quartz = sys.modules["Quartz"]
+        quartz.CGGetOnlineDisplayList.return_value = (-1, None, 0)
 
         from wenzi.screenshot.capture import _capture_displays_sync
-        with pytest.raises(RuntimeError, match="SCShareableContent error"):
+        with pytest.raises(RuntimeError, match="CGGetOnlineDisplayList failed"):
             _capture_displays_sync()
 
 
@@ -293,36 +252,17 @@ class TestCaptureScreen:
     """End-to-end tests for the public capture_screen() function."""
 
     def _install_full_mocks(self, monkeypatch, display_ids: List[int]):
-        """Set up both Quartz and SCK mocks for a full capture_screen() call."""
+        """Set up Quartz mocks for a full capture_screen() call."""
         import sys
 
-        # Quartz mock: return one visible window
         quartz = sys.modules["Quartz"]
+        # Window metadata mock
         quartz.CGWindowListCopyWindowInfo.return_value = [
             _make_window(title="Test App", app="Test", layer=0, width=400, height=300)
         ]
-
-        # SCK mock
-        sck = sys.modules["ScreenCaptureKit"]
-        fake_displays = []
-        for did in display_ids:
-            d = MagicMock()
-            d.displayID.return_value = did
-            fake_displays.append(d)
-
-        def _fake_get_content(handler):
-            content = MagicMock()
-            content.displays.return_value = fake_displays
-            handler(content, None)
-
-        sck.SCShareableContent.getWithCompletionHandler_.side_effect = _fake_get_content
-
-        def _fake_capture(filter_, config, handler):
-            handler(MagicMock(), None)
-
-        sck.SCScreenshotManager.captureImageWithFilter_configuration_completionHandler_.side_effect = _fake_capture
-        sck.SCContentFilter.alloc.return_value.initWithDisplay_excludingWindows_.return_value = MagicMock()
-        sck.SCScreenshotManager.defaultScreenshotConfiguration.return_value = MagicMock()
+        # Display capture mock
+        quartz.CGGetOnlineDisplayList.return_value = (0, display_ids, len(display_ids))
+        quartz.CGDisplayCreateImage.side_effect = lambda did: MagicMock(name=f"Image-{did}")
 
     def test_returns_expected_shape(self, monkeypatch, tmp_path):
         monkeypatch.setattr("wenzi.config.DEFAULT_CACHE_DIR", str(tmp_path))

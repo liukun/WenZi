@@ -1,11 +1,10 @@
-"""Screen capture using ScreenCaptureKit and CGWindowList.
+"""Screen capture using Quartz and CGWindowList.
 
 Provides :func:`capture_screen`, which captures a screenshot of every connected
 display and collects window metadata for the annotation overlay.
 
-Requires macOS 13 (Ventura) or later — ScreenCaptureKit is used for actual
-pixel capture.  ``CGWindowListCopyWindowInfo`` is used for window metadata
-because it is synchronous and reliable.
+Uses ``CGDisplayCreateImage`` for pixel capture and
+``CGWindowListCopyWindowInfo`` for window metadata.
 
 Temp images are written to ``~/.cache/WenZi/screenshot_tmp/`` and should be
 cleaned up by the caller after the annotation session ends.
@@ -15,8 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -99,68 +97,32 @@ def _collect_window_metadata() -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Screen capture via ScreenCaptureKit
+# Screen capture via Quartz (CGDisplayCreateImage)
 # ---------------------------------------------------------------------------
 
 def _capture_displays_sync() -> Dict[int, Any]:
-    """Capture every display using ScreenCaptureKit.
+    """Capture every online display using Quartz CGDisplayCreateImage.
 
     Returns ``{display_id: CGImage}`` for each online display.
-
-    Blocks the calling thread until all captures complete (uses a
-    threading.Event to bridge the async completion handler).
     """
-    import ScreenCaptureKit as SCK  # type: ignore[import]
+    import Quartz
 
     result: Dict[int, Any] = {}
-    error_holder: List[Optional[Exception]] = [None]
 
-    ready = threading.Event()
+    max_displays = 16
+    (err, display_ids, count) = Quartz.CGGetOnlineDisplayList(max_displays, None, None)
+    if err != 0:
+        raise RuntimeError(f"CGGetOnlineDisplayList failed with error {err}")
 
-    def _on_shareable_content(content, error):
-        if error:
-            error_holder[0] = RuntimeError(f"SCShareableContent error: {error}")
-            ready.set()
-            return
+    if not display_ids:
+        return result
 
-        displays = content.displays()
-        if not displays:
-            ready.set()
-            return
-
-        remaining = [len(displays)]
-        lock = threading.Lock()
-
-        for display in displays:
-            display_id = int(display.displayID())
-
-            filter_ = SCK.SCContentFilter.alloc().initWithDisplay_excludingWindows_(
-                display, []
-            )
-            config = SCK.SCScreenshotManager.defaultScreenshotConfiguration()
-
-            def _on_image(image, error, _display_id=display_id):  # noqa: B023
-                if error is not None:
-                    logger.warning("SCScreenshotManager error for display %d: %s",
-                                   _display_id, error)
-                if image is not None:
-                    with lock:
-                        result[_display_id] = image
-                with lock:
-                    remaining[0] -= 1
-                    if remaining[0] == 0:
-                        ready.set()
-
-            SCK.SCScreenshotManager.captureImageWithFilter_configuration_completionHandler_(
-                filter_, config, _on_image
-            )
-
-    SCK.SCShareableContent.getWithCompletionHandler_(_on_shareable_content)
-
-    ready.wait(timeout=10.0)
-
-    if error_holder[0]:
-        raise error_holder[0]
+    for did in display_ids[:count]:
+        image = Quartz.CGDisplayCreateImage(did)
+        if image is not None:
+            result[int(did)] = image
+        else:
+            logger.warning("CGDisplayCreateImage returned None for display %d", did)
 
     return result
 
