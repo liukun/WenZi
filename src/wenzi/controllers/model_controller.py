@@ -304,10 +304,10 @@ models:
             existing = providers.get(name, {})
             actual_api_key = existing.get("api_key", "")
             if not actual_api_key and is_keychain_enabled(app._config):
-                from wenzi.keychain import keychain_get
+                from wenzi.vault import get_vault
 
                 actual_api_key = (
-                    keychain_get(f"asr.providers.{name}.api_key") or ""
+                    get_vault().get(f"asr.providers.{name}.api_key") or ""
                 )
             if not actual_api_key:
                 return {
@@ -376,10 +376,10 @@ models:
             )
             actual_api_key = existing.get("api_key", "")
             if not actual_api_key and is_keychain_enabled(app._config):
-                from wenzi.keychain import keychain_get
+                from wenzi.vault import get_vault
 
                 actual_api_key = (
-                    keychain_get(f"ai_enhance.providers.{name}.api_key") or ""
+                    get_vault().get(f"ai_enhance.providers.{name}.api_key") or ""
                 )
             if not actual_api_key:
                 return {
@@ -996,8 +996,8 @@ models:
 
             # Clean up Keychain entries for this provider
             if is_keychain_enabled(app._config):
-                from wenzi.keychain import keychain_clear_prefix
-                keychain_clear_prefix(f"asr.providers.{pname}.")
+                from wenzi.vault import get_vault
+                get_vault().delete_prefix(f"asr.providers.{pname}.")
 
             save_config(app._config, app._config_path)
 

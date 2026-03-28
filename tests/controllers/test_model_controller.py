@@ -785,7 +785,8 @@ class TestDoVerifyAndSaveSttProvider:
             "groq": {"base_url": "u", "api_key": "", "models": ["m"]}
         }
 
-        with patch("wenzi.keychain.keychain_get", return_value=""):
+        with patch("wenzi.vault.get_vault") as mock_gv:
+            mock_gv.return_value.get.return_value = ""
             result = ctrl.do_verify_and_save_stt_provider(
                 name="groq",
                 base_url="https://new.com/v1",

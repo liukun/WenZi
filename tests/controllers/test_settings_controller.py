@@ -522,9 +522,9 @@ class TestLlmVerifySave:
 class TestLlmDeleteProvider:
     """Tests for llm_delete_provider() via WebView."""
 
-    @patch("wenzi.controllers.settings_controller.keychain_clear_prefix")
+    @patch("wenzi.controllers.settings_controller.get_vault")
     @patch("wenzi.controllers.settings_controller.save_config")
-    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_kc_clear, ctrl, mock_app):
+    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_get_vault, ctrl, mock_app):
         mock_app._enhancer.remove_provider.return_value = True
         mock_app._enhancer.provider_name = "openai"
         mock_app._enhancer.model_name = "gpt-4o"
@@ -533,12 +533,14 @@ class TestLlmDeleteProvider:
             "default_provider": "test-provider",
             "default_model": "m",
         }
+        mock_app._config["keychain"] = {"enabled": True}
 
         ctrl.llm_delete_provider("test-provider")
 
         mock_app._enhancer.remove_provider.assert_called_once_with("test-provider")
         assert "test-provider" not in mock_app._config["ai_enhance"]["providers"]
         mock_save.assert_called_once()
+        mock_get_vault.return_value.delete_prefix.assert_called_once_with("ai_enhance.providers.test-provider.")
 
 
 class TestSttVerifySave:
@@ -578,14 +580,15 @@ class TestSttVerifySave:
 class TestSttDeleteProvider:
     """Tests for stt_delete_provider() via WebView."""
 
-    @patch("wenzi.controllers.settings_controller.keychain_clear_prefix")
+    @patch("wenzi.controllers.settings_controller.get_vault")
     @patch("wenzi.controllers.settings_controller.save_config")
-    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_kc_clear, ctrl, mock_app):
+    def test_delete_removes_provider_and_updates_config(self, mock_save, mock_get_vault, ctrl, mock_app):
         mock_app._config["asr"] = {
             "providers": {"groq": {"base_url": "u", "api_key": "k", "models": ["m"]}},
             "default_provider": "groq",
             "default_model": "m",
         }
+        mock_app._config["keychain"] = {"enabled": True}
         mock_app._current_remote_asr = None
 
         ctrl.stt_delete_provider("groq")
@@ -593,10 +596,11 @@ class TestSttDeleteProvider:
         assert "groq" not in mock_app._config["asr"]["providers"]
         mock_save.assert_called_once()
         mock_app._menu_builder.build_model_menu.assert_called_once()
+        mock_get_vault.return_value.delete_prefix.assert_called_once_with("asr.providers.groq.")
 
-    @patch("wenzi.controllers.settings_controller.keychain_clear_prefix")
+    @patch("wenzi.controllers.settings_controller.get_vault")
     @patch("wenzi.controllers.settings_controller.save_config")
-    def test_delete_active_provider_clears_remote(self, mock_save, mock_kc_clear, ctrl, mock_app):
+    def test_delete_active_provider_clears_remote(self, mock_save, mock_get_vault, ctrl, mock_app):
         """Deleting the active STT provider should clear current_remote_asr."""
         mock_app._config["asr"] = {
             "providers": {"groq": {"base_url": "u", "api_key": "k", "models": ["m"]}},
