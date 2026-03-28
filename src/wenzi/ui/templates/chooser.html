@@ -14,6 +14,7 @@
     --item-selected: rgba(0, 122, 255, 0.12);
     --item-selected-text: #003d99;
     --input-bg: #ffffff;
+    --footer-bg: #ececee;
     --shadow: rgba(0, 0, 0, 0.06);
 }
 @media (prefers-color-scheme: dark) {
@@ -27,6 +28,7 @@
         --item-selected: rgba(10, 132, 255, 0.25);
         --item-selected-text: #64d2ff;
         --input-bg: #3a3a3c;
+        --footer-bg: #1c1c1e;
         --shadow: rgba(0, 0, 0, 0.3);
     }
 }
@@ -272,6 +274,20 @@ body { display: flex; flex-direction: column; }
     padding: 20px;
 }
 
+/* Footer hint */
+.footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 14px; font-size: 11px; color: var(--secondary);
+    background: var(--footer-bg);
+    border-top: 1px solid var(--border); flex-shrink: 0;
+    gap: 12px;
+}
+.footer kbd {
+    display: inline-block; padding: 1px 5px;
+    background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 3px; font-size: 10px; font-family: inherit;
+}
+
 /* Loading spinner for async sources */
 .search-spinner {
     display: none; flex-shrink: 0;
@@ -312,6 +328,10 @@ body { display: flex; flex-direction: column; }
     <div class="preview-panel empty hidden" id="preview-panel"></div>
 </div>
 
+<div class="footer" id="footer">
+    <span id="footer-left"></span>
+    <span id="footer-right"></span>
+</div>
 
 <script>
 // --- i18n ---
@@ -356,6 +376,10 @@ var mainContent = document.querySelector('.main-content');
 var leftPanel = document.querySelector('.left-panel');
 var createGroup = document.getElementById('create-group');
 var createBtn = document.getElementById('create-btn');
+var searchBar = document.querySelector('.search-bar');
+var footer = document.getElementById('footer');
+var footerLeft = document.getElementById('footer-left');
+var footerRight = document.getElementById('footer-right');
 
 // --- Helpers ---
 function post(type, data) {
@@ -920,8 +944,57 @@ function setLoading(loading) {
 }
 
 function _measureCollapsedHeight() {
-    var searchBar = document.querySelector('.search-bar');
-    return searchBar.offsetHeight;
+    return searchBar.offsetHeight + footer.offsetHeight;
+}
+
+function setPrefixHints(hints) {
+    hints = hints || [];
+    if (hints.length > 0) {
+        footerRight.innerHTML = hints.map(function(h) {
+            return _hint(h.prefix, h.label || '');
+        }).join('  ');
+    } else {
+        footerRight.innerHTML = '';
+    }
+    if (!_panelExpanded) {
+        _requestResize();
+    }
+}
+
+function setFooterRightVisible(visible) {
+    footerRight.style.display = visible ? '' : 'none';
+}
+
+function _hint(kbd, label) {
+    return '<span style="white-space:nowrap"><kbd>' + kbd + '</kbd> ' + label + '</span>';
+}
+
+function clearActionHints() {
+    footerLeft.innerHTML = '';
+}
+
+function setActionHints(hints) {
+    var parts = [_hint('\u2191\u2193', i18n('footer.navigate'))];
+    if (hints.enter) {
+        parts.push(_hint('\u21b5', hints.enter));
+    }
+    if (hints.cmd_enter) {
+        parts.push(_hint('\u2318\u21b5', hints.cmd_enter));
+    }
+    if (hints.alt_enter) {
+        parts.push(_hint('\u2325\u21b5', hints.alt_enter));
+    }
+    if (hints['delete']) {
+        parts.push(_hint('\u2318\u232b', hints['delete']));
+    }
+    if (hints.shift) {
+        parts.push(_hint('\u21e7', hints.shift));
+    }
+    if (hints.tab) {
+        parts.push(_hint('\u21e5', hints.tab));
+    }
+    parts.push(_hint('Esc', i18n('footer.close')));
+    footerLeft.innerHTML = parts.join('  ');
 }
 
 var _modifierHintMap = {};

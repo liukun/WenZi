@@ -415,6 +415,40 @@ class TestModifierHints:
         assert "setModifierHints" in call_args
         assert '"cmd": "Copy"' in call_args
         assert '"alt": "Show path"' in call_args
+        # Footer action hints are also pushed
+        assert "setActionHints" in call_args
+
+    def test_push_prefix_hints_on_page_load(self):
+        panel = _make_panel()
+        src = _make_source("clipboard", prefix="cb")
+        src.display_name = "Clipboard"
+        panel.register_source(src)
+        panel._webview = MagicMock()
+        panel._push_prefix_hints_to_js()
+        call_args = panel._eval_js.call_args[0][0]
+        assert "setPrefixHints" in call_args
+        assert '"cb"' in call_args
+        assert '"Clipboard"' in call_args
+
+    def test_clear_action_hints_on_empty_results(self):
+        panel = _make_panel()
+        panel._panel = MagicMock()
+        panel._is_expanded = True
+        src = _make_source("apps", items=[ChooserItem(title="Safari")])
+        panel.register_source(src)
+        panel._do_search("")
+        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
+        assert "clearActionHints()" in all_js
+
+    def test_footer_right_hidden_when_source_active(self):
+        panel = _make_panel()
+        panel._panel = MagicMock()
+        panel._is_expanded = True
+        src = _make_source("clipboard", prefix="cb", items=[ChooserItem(title="Item")])
+        panel.register_source(src)
+        panel._do_search("cb ")
+        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
+        assert "setFooterRightVisible(false)" in all_js
 
 
 class TestPushItemsToJS:

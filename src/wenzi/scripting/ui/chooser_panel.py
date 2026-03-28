@@ -188,7 +188,7 @@ class ChooserPanel:
     """
 
     _INITIAL_WIDTH = 600
-    _INITIAL_HEIGHT = 49  # bootstrap; JS updates after page load
+    _INITIAL_HEIGHT = 80  # bootstrap; JS updates after page load
     _MAX_TOTAL_RESULTS = 50
     _DEFERRED_ACTION_DELAY = 0.15  # seconds to let previous app regain focus
     _DEFAULT_ASYNC_DEBOUNCE = 0.15  # seconds
@@ -728,7 +728,8 @@ class ChooserPanel:
         self._active_source = source
         if source != prev_source:
             has_create = source is not None and source.create_action is not None
-            self._eval_js(f"setCreateButton({'true' if has_create else 'false'})")
+            show_right = "true" if source is None else "false"
+            self._eval_js(f"setCreateButton({'true' if has_create else 'false'});setFooterRightVisible({show_right})")
 
         # When searching across all non-prefix sources (no specific source),
         # empty query returns nothing. When a specific source is active
@@ -740,7 +741,7 @@ class ChooserPanel:
                 self._calc_sticky = False
                 self._compact_results = False
                 self._show_preview = False
-                self._eval_js("setResults([]);setPreviewVisible(false);setCompact(false);setModifierHints({},null)")
+                self._eval_js("setResults([]);setPreviewVisible(false);setCompact(false);setModifierHints({},null);clearActionHints()")
                 self._set_loading(False)
                 return
 
@@ -919,6 +920,7 @@ class ChooserPanel:
             hints = self._sources["calculator"].action_hints or self._default_action_hints()
         else:
             hints = self._default_action_hints()
+        parts.append(f"setActionHints({json.dumps(hints, ensure_ascii=False)})")
         modifier_map = self._action_hints_to_modifier_map(hints)
 
         item_overrides: dict = {}
@@ -1456,6 +1458,8 @@ class ChooserPanel:
             combined = ";".join(pending)
             self._webview.evaluateJavaScript_completionHandler_(combined, None)
 
+        self._push_prefix_hints_to_js()
+
         # Apply custom placeholder
         if self._pending_placeholder is not None:
             self._eval_js(f"setPlaceholder({json.dumps(self._pending_placeholder)})")
@@ -1472,6 +1476,19 @@ class ChooserPanel:
             escaped = json.dumps(self._context_text)
             label = json.dumps(t("chooser.ua.context_label"))
             self._eval_js(f"setContextText({escaped}, {label})")
+
+    def _push_prefix_hints_to_js(self) -> None:
+        """Send prefix hints to JS so the footer shows them."""
+        hints = []
+        for src in self._sources.values():
+            if src.prefix:
+                hints.append(
+                    {
+                        "prefix": src.prefix,
+                        "label": src.display_name or src.name,
+                    }
+                )
+        self._eval_js(f"setPrefixHints({json.dumps(hints, ensure_ascii=False)})")
 
     @staticmethod
     def _ensure_edit_menu() -> None:
