@@ -177,11 +177,23 @@ class AnnotationLayer:
     # ------------------------------------------------------------------
 
     def _send_init(self, canvas_w: int, canvas_h: int) -> None:
-        """Send init data to JS once the page signals ready."""
-        if self._panel is None:
+        """Send init data to JS once the page signals ready.
+
+        The image is sent as a base64 data URL to avoid canvas taint
+        issues with both ``file://`` and ``wz-file://`` schemes in WKWebView.
+        """
+        if self._panel is None or self._image_path is None:
             return
+        import base64
+        import mimetypes
+
+        mime, _ = mimetypes.guess_type(self._image_path)
+        mime = mime or "image/png"
+        with open(self._image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+
         self._panel.send("init", {
-            "imageUrl": f"file://{self._image_path}",
+            "imageUrl": f"data:{mime};base64,{b64}",
             "width": canvas_w,
             "height": canvas_h,
         })
