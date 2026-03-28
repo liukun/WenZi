@@ -42,6 +42,9 @@
 
   // ── Initialization ──
 
+  // Signal Python that handlers are registered
+  wz.send("ready");
+
   wz.on("init", function (data) {
     var w = data.width;
     var h = data.height;
@@ -434,14 +437,16 @@
     if (savingState || !canvas) return;
     savingState = true;
 
-    var json = canvas.toJSON();
+    // Save only objects, not the background image (which never changes
+    // and would bloat each state entry by several MB on Retina screens).
+    var objects = canvas.toJSON().objects || [];
 
     // Trim any redo states ahead of current index
     if (stateIndex < stateStack.length - 1) {
       stateStack = stateStack.slice(0, stateIndex + 1);
     }
 
-    stateStack.push(json);
+    stateStack.push(objects);
 
     // Enforce max stack depth
     if (stateStack.length > MAX_STACK) {
@@ -465,11 +470,16 @@
     restoreState(stateStack[stateIndex]);
   }
 
-  function restoreState(stateJson) {
+  function restoreState(objects) {
     if (!canvas) return;
     savingState = true;
 
-    canvas.loadFromJSON(stateJson).then(function () {
+    // Clear all objects but preserve the background image
+    canvas.remove.apply(canvas, canvas.getObjects());
+    fabric.util.enlivenObjects(objects).then(function (enlivened) {
+      for (var i = 0; i < enlivened.length; i++) {
+        canvas.add(enlivened[i]);
+      }
       canvas.renderAll();
       savingState = false;
       updateUndoRedoButtons();

@@ -1093,16 +1093,12 @@ class WenZiApp(StatusBarApp):
         )
 
     def _on_screenshot_done(self) -> None:
-        """Screenshot completed — clean up."""
-        if self._screenshot_annotation:
-            self._screenshot_annotation.close()
-            self._screenshot_annotation = None
+        """Screenshot completed — AnnotationLayer already closed itself."""
+        self._screenshot_annotation = None
 
     def _on_screenshot_cancel(self) -> None:
-        """Screenshot annotation cancelled."""
-        if self._screenshot_annotation:
-            self._screenshot_annotation.close()
-            self._screenshot_annotation = None
+        """Screenshot cancelled — AnnotationLayer already closed itself."""
+        self._screenshot_annotation = None
 
     def _on_quit_click(self, _) -> None:
         self._update_controller.stop()

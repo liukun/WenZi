@@ -332,8 +332,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "screenshot": {
         "hotkey": "cmd+shift+a",
-        "save_directory": "~/Desktop",
-        "sound_enabled": True,
     },
     "feedback": {
         "sound_enabled": True,
