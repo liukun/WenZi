@@ -1187,6 +1187,59 @@ class TestBuildHotwordsHtml:
         html = _build_hotwords_html([self._make_detail()])
         assert "prefers-color-scheme: dark" in html
 
+    def test_with_context_text(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        details = [self._make_detail()]
+        html = _build_hotwords_html(details, context_text="App:  iTerm2")
+        assert "iTerm2" in html
+        assert "ctx-key" in html
+        assert "<table>" in html
+        # Context appears before the table
+        assert html.index("iTerm2") < html.index("<table>")
+
+    def test_without_context_no_context_rendered(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        html = _build_hotwords_html([self._make_detail()])
+        assert '<div class="section">' not in html
+
+    def test_context_html_escaping(self):
+        from wenzi.ui.result_window_web import _build_hotwords_html
+
+        html = _build_hotwords_html([], context_text="App:  <script>xss</script>")
+        assert "&lt;script&gt;" in html
+
+
+class TestBuildContextSectionHtml:
+    def test_empty_returns_empty(self):
+        from wenzi.ui.result_window_web import _build_context_section_html
+
+        assert _build_context_section_html("") == ""
+
+    def test_key_value_format(self):
+        from wenzi.ui.result_window_web import _build_context_section_html
+
+        result = _build_context_section_html("App:  iTerm2\nWindow:  ~/work")
+        assert "ctx-key" in result
+        assert "App" in result
+        assert "iTerm2" in result
+        assert "~/work" in result
+
+    def test_plain_line(self):
+        from wenzi.ui.result_window_web import _build_context_section_html
+
+        result = _build_context_section_html("some plain text")
+        assert "ctx-val" in result
+        assert "some plain text" in result
+        assert "ctx-key" not in result
+
+    def test_html_escaping(self):
+        from wenzi.ui.result_window_web import _build_context_section_html
+
+        result = _build_context_section_html("App:  <b>bad</b>")
+        assert "&lt;b&gt;" in result
+
 
 class TestBuildContextPanelHtml:
     def _make_entry(self, **kwargs):

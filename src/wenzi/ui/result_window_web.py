@@ -64,53 +64,68 @@ def _ensure_edit_menu() -> None:
 
 
 _VOCAB_TABLE_CSS = """\
-:root {{
+:root {
     --bg: #ffffff; --text: #1d1d1f; --header-bg: #f0f0f2;
     --border: #d2d2d7; --secondary: #86868b;
     --hover: #f5f5f7; --accent: #007aff;
-}}
-@media (prefers-color-scheme: dark) {{
-    :root {{
+}
+@media (prefers-color-scheme: dark) {
+    :root {
         --bg: #1d1d1f; --text: #c8c8cc; --header-bg: #2c2c2e;
         --border: #48484a; --secondary: #98989d;
         --hover: #2c2c2e; --accent: #0a84ff;
-    }}
-}}
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
+    }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Mono",
                  Menlo, monospace;
     font-size: 12px; color: var(--text); background: var(--bg);
     padding: 0; overflow: auto;
-}}
-table {{
+}
+table {
     width: 100%; border-collapse: collapse; table-layout: auto;
-}}
-th {{
+}
+th {
     background: var(--header-bg); font-weight: 600; font-size: 11px;
     padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border);
     white-space: nowrap; color: var(--secondary);
-}}
-td {{
+}
+td {
     padding: 5px 8px; border-bottom: 1px solid var(--border);
     white-space: nowrap; vertical-align: top;
-}}
-tr:hover {{ background: var(--hover); }}
-.cell-term {{ font-weight: 600; color: var(--accent); }}
-.cell-variant {{ color: var(--secondary); font-size: 11px; }}
-.cell-source {{
+}
+tr:hover { background: var(--hover); }
+.cell-term { font-weight: 600; color: var(--accent); }
+.cell-variant { color: var(--secondary); font-size: 11px; }
+.cell-source {
     font-size: 10px; font-weight: 600; text-transform: uppercase;
     color: var(--secondary);
-}}
-.cell-num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-.cell-time {{
+}
+.cell-num { text-align: right; font-variant-numeric: tabular-nums; }
+.cell-time {
     color: var(--secondary); font-size: 11px;
     font-family: "SF Mono", Menlo, monospace;
-}}"""
+}"""
+
+_SECTION_CSS = """\
+.section { padding: 10px 12px; }
+.section + .section { border-top: 1px solid var(--border); padding-top: 10px; }
+.section-title {
+    font-weight: 600; font-size: 11px; color: var(--secondary);
+    text-transform: uppercase; margin-bottom: 6px;
+}
+.context-text { font-size: 12px; }
+.ctx-row { display: flex; gap: 8px; padding: 2px 0; }
+.ctx-key {
+    flex-shrink: 0; width: 60px; text-align: right;
+    font-weight: 600; font-size: 11px; color: var(--secondary);
+}
+.ctx-val { font-family: "SF Mono", Menlo, monospace; }"""
 
 _FMTDATE_JS = """\
 <script>
-function fmtDate(ts) {{
+function fmtDate(ts) {
     if (!ts || ts.length < 10) return '';
     var d = new Date(ts);
     if (isNaN(d.getTime())) return '';
@@ -121,12 +136,12 @@ function fmtDate(ts) {{
     if (diff < 2592000) return Math.floor(diff / 86400) + 'd';
     if (diff < 31536000) return Math.floor(diff / 2592000) + 'mo';
     return Math.floor(diff / 31536000) + 'y';
-}}
-document.querySelectorAll('.cell-time[data-ts]').forEach(function(el) {{
+}
+document.querySelectorAll('.cell-time[data-ts]').forEach(function(el) {
     var ts = el.getAttribute('data-ts');
     el.textContent = fmtDate(ts);
     if (ts) el.title = ts;
-}});
+});
 </script>"""
 
 
@@ -165,9 +180,49 @@ def _build_vocab_table_html(entries: List[ManualVocabEntry]) -> tuple[str, str]:
     return "\n".join(rows), thead
 
 
-def _build_hotwords_html(details: List[HotwordDetail]) -> str:
+def _build_context_section_html(context_text: str) -> str:
+    """Build the Input Context section HTML (empty string if no context)."""
+    from wenzi.i18n import t
+
+    if not context_text:
+        return ""
+
+    items: list[str] = []
+    for line in context_text.splitlines():
+        if ":" in line:
+            key, _, val = line.partition(":")
+            key = html.escape(key.strip())
+            val = html.escape(val.strip())
+            items.append(
+                f'<div class="ctx-row">'
+                f'<span class="ctx-key">{key}</span>'
+                f'<span class="ctx-val">{val}</span>'
+                f'</div>'
+            )
+        elif line.strip():
+            items.append(
+                f'<div class="ctx-row">'
+                f'<span class="ctx-val">{html.escape(line.strip())}</span>'
+                f'</div>'
+            )
+
+    if not items:
+        return ""
+
+    lbl = html.escape(t("preview.context_panel.input_context"))
+    body = "\n".join(items)
+    return f"""<div class="section">
+<div class="section-title">{lbl}</div>
+<div class="context-text">{body}</div>
+</div>"""
+
+
+def _build_hotwords_html(
+    details: List[HotwordDetail], context_text: str = "",
+) -> str:
     """Build an HTML page with a styled table of hotword details."""
     tbody, thead = _build_vocab_table_html(details)
+    context_section = _build_context_section_html(context_text)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -175,9 +230,11 @@ def _build_hotwords_html(details: List[HotwordDetail]) -> str:
 <style>
 {_VOCAB_TABLE_CSS}
 thead {{ position: sticky; top: 0; z-index: 1; }}
+{_SECTION_CSS}
 </style>
 </head>
 <body>
+{context_section}
 <table>
 <thead><tr>    {thead}
 </tr></thead>
@@ -196,39 +253,11 @@ def _build_context_panel_html(
     """Build HTML page with input context and LLM vocabulary table."""
     from wenzi.i18n import t
 
-    context_items: list[str] = []
-    if context_text:
-        for line in context_text.splitlines():
-            if ":" in line:
-                key, _, val = line.partition(":")
-                key = html.escape(key.strip())
-                val = html.escape(val.strip())
-                context_items.append(
-                    f'<div class="ctx-row">'
-                    f'<span class="ctx-key">{key}</span>'
-                    f'<span class="ctx-val">{val}</span>'
-                    f'</div>'
-                )
-            elif line.strip():
-                context_items.append(
-                    f'<div class="ctx-row">'
-                    f'<span class="ctx-val">{html.escape(line.strip())}</span>'
-                    f'</div>'
-                )
-
-    lbl_context = html.escape(t("preview.context_panel.input_context"))
-    lbl_vocab = html.escape(t("preview.context_panel.llm_vocab"))
-
-    context_section = ""
-    if context_items:
-        context_body = "\n".join(context_items)
-        context_section = f"""<div class="section">
-<div class="section-title">{lbl_context}</div>
-<div class="context-text">{context_body}</div>
-</div>"""
+    context_section = _build_context_section_html(context_text)
 
     vocab_section = ""
     if vocab_entries:
+        lbl_vocab = html.escape(t("preview.context_panel.llm_vocab"))
         tbody, thead = _build_vocab_table_html(vocab_entries)
         vocab_section = f"""<div class="section">
 <div class="section-title">{lbl_vocab} ({len(vocab_entries)})</div>
@@ -247,19 +276,7 @@ def _build_context_panel_html(
 <meta charset="utf-8">
 <style>
 {_VOCAB_TABLE_CSS}
-.section {{ padding: 10px 12px; }}
-.section + .section {{ border-top: 1px solid var(--border); padding-top: 10px; }}
-.section-title {{
-    font-weight: 600; font-size: 11px; color: var(--secondary);
-    text-transform: uppercase; margin-bottom: 6px;
-}}
-.context-text {{ font-size: 12px; }}
-.ctx-row {{ display: flex; gap: 8px; padding: 2px 0; }}
-.ctx-key {{
-    flex-shrink: 0; width: 60px; text-align: right;
-    font-weight: 600; font-size: 11px; color: var(--secondary);
-}}
-.ctx-val {{ font-family: "SF Mono", Menlo, monospace; }}
+{_SECTION_CSS}
 </style>
 </head>
 <body>
@@ -1586,7 +1603,7 @@ class ResultPreviewPanel:
         """Display hotword details in a WKWebView-based table panel."""
         self._hotwords_webview_panel = self._open_webview_panel(
             f"Hotwords ({len(details)})",
-            _build_hotwords_html(details),
+            _build_hotwords_html(details, self._input_context_text),
             self._hotwords_webview_panel,
         )
 
