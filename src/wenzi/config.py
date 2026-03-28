@@ -65,7 +65,6 @@ DEFAULT_CHOOSER_USAGE_PATH = os.path.join(DEFAULT_DATA_DIR, "chooser_usage.json"
 DEFAULT_CHOOSER_HISTORY_PATH = os.path.join(DEFAULT_DATA_DIR, "chooser_history.json")
 DEFAULT_SCRIPT_DATA_PATH = os.path.join(DEFAULT_DATA_DIR, "script_data.json")
 DEFAULT_SNIPPET_LAST_CATEGORY_PATH = os.path.join(DEFAULT_DATA_DIR, "snippet_last_category")
-DEFAULT_KEYCHAIN_VAULT_PATH = os.path.join(DEFAULT_DATA_DIR, "keychain.json")
 
 # Cache files (can be safely deleted and regenerated)
 DEFAULT_ICON_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "icon_cache")

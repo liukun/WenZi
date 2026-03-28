@@ -19,7 +19,6 @@ dependencies = [
     "simpleeval>=1.0.5",
     "pint>=0.24",
     "certifi>=2024.0",
-    "cryptography>=43.0",
     "zhconv>=1.4.3",
 ]
 
