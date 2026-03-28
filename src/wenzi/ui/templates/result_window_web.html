@@ -909,7 +909,7 @@ function _renderDiffCards(containerId, groupId, pairs, source) {
     const container = document.getElementById(containerId);
     const group = document.getElementById(groupId);
     container.innerHTML = '';
-    if (!pairs || pairs.length === 0) { group.style.display = 'none'; return; }
+    if (!pairs || pairs.length === 0) { group.style.display = 'none'; _updateDiffCount(); return; }
     group.style.display = '';
     pairs.forEach(function(p) {
         const card = document.createElement('div');
