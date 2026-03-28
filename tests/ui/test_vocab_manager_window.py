@@ -178,6 +178,7 @@ class TestMessageHandling:
             "on_remove": MagicMock(),
             "on_batch_remove": MagicMock(),
             "on_edit": MagicMock(),
+            "on_edit_field": MagicMock(),
             "on_export": MagicMock(),
             "on_import": MagicMock(),
         }
@@ -217,7 +218,43 @@ class TestMessageHandling:
     def test_add_entry(self):
         panel, cbs = self._make_panel_with_callbacks()
         panel._handle_js_message({"type": "addEntry", "variant": "v", "term": "t", "source": "user"})
-        cbs["on_add"].assert_called_once_with("v", "t", "user")
+        cbs["on_add"].assert_called_once_with(
+            "v", "t", "user",
+            app_bundle_id="", asr_model="", llm_model="",
+        )
+
+    def test_add_entry_with_models(self):
+        panel, cbs = self._make_panel_with_callbacks()
+        panel._handle_js_message({
+            "type": "addEntry", "variant": "v", "term": "t", "source": "asr",
+            "app_bundle_id": "com.apple.dt.Xcode",
+            "asr_model": "whisper-large-v3",
+            "llm_model": "zai / glm-5",
+        })
+        cbs["on_add"].assert_called_once_with(
+            "v", "t", "asr",
+            app_bundle_id="com.apple.dt.Xcode",
+            asr_model="whisper-large-v3",
+            llm_model="zai / glm-5",
+        )
+
+    def test_edit_field(self):
+        panel, cbs = self._make_panel_with_callbacks()
+        panel._handle_js_message({
+            "type": "editField", "variant": "v", "term": "t",
+            "fields": {"source": "llm"},
+        })
+        cbs["on_edit_field"].assert_called_once_with("v", "t", {"source": "llm"})
+
+    def test_edit_field_multiple(self):
+        panel, cbs = self._make_panel_with_callbacks()
+        panel._handle_js_message({
+            "type": "editField", "variant": "v", "term": "t",
+            "fields": {"asr_model": "whisper", "llm_model": "glm-5"},
+        })
+        cbs["on_edit_field"].assert_called_once_with(
+            "v", "t", {"asr_model": "whisper", "llm_model": "glm-5"},
+        )
 
     def test_remove_entry(self):
         panel, cbs = self._make_panel_with_callbacks()

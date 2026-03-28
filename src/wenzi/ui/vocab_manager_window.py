@@ -231,7 +231,14 @@ class VocabManagerPanel:
         elif msg_type == "addEntry":
             cb = self._callbacks.get("on_add")
             if cb:
-                cb(body.get("variant", ""), body.get("term", ""), body.get("source", "user"))
+                cb(
+                    body.get("variant", ""),
+                    body.get("term", ""),
+                    body.get("source", "user"),
+                    app_bundle_id=body.get("app_bundle_id", ""),
+                    asr_model=body.get("asr_model", ""),
+                    llm_model=body.get("llm_model", ""),
+                )
 
         elif msg_type == "removeEntry":
             cb = self._callbacks.get("on_remove")
@@ -251,6 +258,15 @@ class VocabManagerPanel:
                     body.get("oldTerm", ""),
                     body.get("newVariant", ""),
                     body.get("newTerm", ""),
+                )
+
+        elif msg_type == "editField":
+            cb = self._callbacks.get("on_edit_field")
+            if cb:
+                cb(
+                    body.get("variant", ""),
+                    body.get("term", ""),
+                    body.get("fields", {}),
                 )
 
         elif msg_type == "exportVocab":

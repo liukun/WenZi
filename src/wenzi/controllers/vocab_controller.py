@@ -80,6 +80,7 @@ class VocabController:
             "on_remove": self.on_remove_entry,
             "on_batch_remove": self.on_batch_remove,
             "on_edit": self.on_edit_entry,
+            "on_edit_field": self.on_edit_field,
             "on_export": self.on_export,
             "on_import": self.on_import,
         }
@@ -205,6 +206,25 @@ class VocabController:
 
         self._panel._eval_js(f"setTagOptions({json.dumps(tags)})")
 
+        # Push unique raw values for the add-row selects
+        apps: dict[str, str] = {}  # bundle_id → display_name
+        asr_models: set[str] = set()
+        llm_models: set[str] = set()
+        for e in self._all_entries:
+            if e.app_bundle_id:
+                apps[e.app_bundle_id] = _app_display_name(e.app_bundle_id)
+            if e.asr_model:
+                asr_models.add(e.asr_model)
+            if e.llm_model:
+                llm_models.add(e.llm_model)
+
+        add_opts = {
+            "apps": [{"id": k, "name": v} for k, v in sorted(apps.items(), key=lambda x: x[1].lower())],
+            "asr_models": sorted(asr_models),
+            "llm_models": sorted(llm_models),
+        }
+        self._panel._eval_js(f"setAddOptions({json.dumps(add_opts)})")
+
     # ------------------------------------------------------------------
     # JS message handlers
     # ------------------------------------------------------------------
@@ -261,7 +281,16 @@ class VocabController:
     # CRUD
     # ------------------------------------------------------------------
 
-    def on_add_entry(self, variant: str, term: str, source: str) -> None:
+    def on_add_entry(
+        self,
+        variant: str,
+        term: str,
+        source: str,
+        *,
+        app_bundle_id: str = "",
+        asr_model: str = "",
+        llm_model: str = "",
+    ) -> None:
         """Add a new vocabulary entry."""
         variant = variant.strip()
         term = term.strip()
@@ -273,6 +302,9 @@ class VocabController:
             variant=variant,
             term=term,
             source=source or SOURCE_USER,
+            app_bundle_id=app_bundle_id,
+            asr_model=asr_model,
+            llm_model=llm_model,
         )
         self._reload_data()
 
@@ -327,6 +359,25 @@ class VocabController:
             store.save()
 
         self._reload_data()
+
+    _EDITABLE_FIELDS = frozenset({"source", "app_bundle_id", "asr_model", "llm_model"})
+
+    def on_edit_field(
+        self, variant: str, term: str, fields: dict,
+    ) -> None:
+        """Update one or more fields on an existing entry."""
+        store = self._app._manual_vocab_store
+        entry = store.get(variant, term)
+        if entry is None:
+            return
+        changed = False
+        for field, value in fields.items():
+            if field in self._EDITABLE_FIELDS:
+                setattr(entry, field, value)
+                changed = True
+        if changed:
+            store.save()
+            self._reload_data()
 
     # ------------------------------------------------------------------
     # Import / Export

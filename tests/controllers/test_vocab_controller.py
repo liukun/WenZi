@@ -222,6 +222,19 @@ class TestCRUD:
         assert store.entry_count == 1
         assert store.contains("Cloud", "Claude")
 
+    def test_add_entry_with_app_and_models(self, controller, store):
+        controller.on_add_entry(
+            "Cloud", "Claude", "asr",
+            app_bundle_id="com.apple.dt.Xcode",
+            asr_model="whisper-large-v3",
+            llm_model="zai / glm-5",
+        )
+        assert store.entry_count == 1
+        entry = store.get_all()[0]
+        assert entry.app_bundle_id == "com.apple.dt.Xcode"
+        assert entry.asr_model == "whisper-large-v3"
+        assert entry.llm_model == "zai / glm-5"
+
     def test_add_empty_variant_ignored(self, controller, store):
         controller.on_add_entry("", "Claude", "user")
         assert store.entry_count == 0
@@ -281,6 +294,38 @@ class TestCRUD:
         """Editing a non-existent entry still creates the new entry."""
         controller.on_edit_entry("nonexist", "nonexist", "new", "New")
         assert store.contains("new", "New")
+
+    def test_edit_field_source(self, controller, store):
+        store.add("Cloud", "Claude", source="asr")
+        controller.on_edit_field("Cloud", "Claude", {"source": "llm"})
+        entry = store.get("Cloud", "Claude")
+        assert entry.source == "llm"
+
+    def test_edit_field_app_bundle_id(self, controller, store):
+        store.add("Cloud", "Claude", source="user")
+        controller.on_edit_field("Cloud", "Claude", {"app_bundle_id": "com.apple.dt.Xcode"})
+        entry = store.get("Cloud", "Claude")
+        assert entry.app_bundle_id == "com.apple.dt.Xcode"
+
+    def test_edit_field_multiple(self, controller, store):
+        store.add("Cloud", "Claude", source="asr")
+        controller.on_edit_field("Cloud", "Claude", {
+            "asr_model": "whisper-large-v3",
+            "llm_model": "zai / glm-5",
+        })
+        entry = store.get("Cloud", "Claude")
+        assert entry.asr_model == "whisper-large-v3"
+        assert entry.llm_model == "zai / glm-5"
+
+    def test_edit_field_disallowed_field_ignored(self, controller, store):
+        store.add("Cloud", "Claude", source="asr")
+        controller.on_edit_field("Cloud", "Claude", {"term": "hacked"})
+        entry = store.get("Cloud", "Claude")
+        assert entry.term == "Claude"  # unchanged
+
+    def test_edit_field_nonexistent_entry_ignored(self, controller, store):
+        controller.on_edit_field("nonexist", "nonexist", {"source": "llm"})
+        assert store.entry_count == 0
 
 
 # ---------------------------------------------------------------------------

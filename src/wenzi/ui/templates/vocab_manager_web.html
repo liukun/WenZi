@@ -224,6 +224,10 @@ body {
     font-family: inherit;
 }
 .inline-edit:focus { box-shadow: 0 0 0 2px var(--focus-ring); }
+select.inline-edit {
+    height: 24px; cursor: pointer; padding: 0 4px;
+}
+.col-models select.inline-edit { flex: 1; min-width: 0; }
 
 /* Add row */
 .add-row {
@@ -244,7 +248,10 @@ body {
     border: 1px solid var(--border); border-radius: 4px;
     background: var(--text-bg); color: var(--text);
     font-size: 11px; cursor: pointer;
+    min-width: 0;
 }
+.add-row .col-app select { width: 100%; }
+.add-row .col-models select { flex: 1; min-width: 0; }
 .add-row .add-actions {
     display: flex; gap: 4px;
 }
@@ -359,9 +366,11 @@ let selectedRows = new Set(); // indices of checked rows on current page
 let sortColumn = 'last_updated';
 let sortAsc = false;
 let addRowVisible = false;
+let addOptions = {apps: [], asr_models: [], llm_models: []};
 let editingCell = null; // {row, field, original}
 let editBlurTimer = null;
 
+var SOURCE_OPTIONS = [{value:'user',label:'user'},{value:'asr',label:'asr'},{value:'llm',label:'llm'}];
 var GROUP_LABELS = {source: 'Source', app: 'App', asr_model: 'ASR', llm_model: 'LLM'};
 
 function post(msg) {
@@ -491,20 +500,25 @@ function _showAddRow() {
         '<div class="col col-cb"></div>' +
         '<div class="col col-term"><input type="text" id="add-term" placeholder="' + esc(i18n('add_placeholder_term')) + '"></div>' +
         '<div class="col col-variant"><input type="text" id="add-variant" placeholder="' + esc(i18n('add_placeholder_variant')) + '"></div>' +
-        '<div class="col col-app"></div>' +
+        '<div class="col col-app"><select id="add-app"></select></div>' +
         '<div class="col col-mode"></div>' +
         '<div class="col col-date"></div>' +
         '<div class="col col-hits"></div>' +
         '<div class="col col-freq"></div>' +
         '<div class="col col-date"></div>' +
         '<div class="col col-date"></div>' +
-        '<div class="col col-source"><select id="add-source"><option value="user">user</option><option value="asr">asr</option><option value="llm">llm</option></select></div>' +
-        '<div class="col col-models"></div>' +
+        '<div class="col col-source"><select id="add-source"></select></div>' +
+        '<div class="col col-models"><select id="add-asr" title="ASR model"></select><select id="add-llm" title="LLM model"></select></div>' +
         '<div class="col col-actions"><div class="add-actions">' +
         '<button class="confirm-btn" title="Confirm">✓</button>' +
         '<button class="cancel-btn" title="Cancel">✕</button>' +
         '</div></div>';
     tableBody.insertBefore(row, tableBody.firstChild);
+
+    _buildSelectOpts('add-source', SOURCE_OPTIONS);
+    _buildSelectOpts('add-app', [{value:'',label:'—'}].concat(addOptions.apps.map(function(a){return {value:a.id, label:a.name};})));
+    _buildSelectOpts('add-asr', [{value:'',label:'—'}].concat(addOptions.asr_models.map(function(m){return {value:m, label:abbr(m), title:m};})));
+    _buildSelectOpts('add-llm', [{value:'',label:'—'}].concat(addOptions.llm_models.map(function(m){return {value:m, label:abbr(m), title:m};})));
 
     var termInput = document.getElementById('add-term');
     var variantInput = document.getElementById('add-variant');
@@ -528,11 +542,22 @@ function _commitAdd() {
     var v = document.getElementById('add-variant');
     var t = document.getElementById('add-term');
     var s = document.getElementById('add-source');
+    var app = document.getElementById('add-app');
+    var asr = document.getElementById('add-asr');
+    var llm = document.getElementById('add-llm');
     if (!v || !t) return;
     var variant = v.value.trim();
     var term = t.value.trim();
     if (!variant || !term) { v.focus(); return; }
-    post({type:'addEntry', variant: variant, term: term, source: s.value});
+    post({
+        type: 'addEntry',
+        variant: variant,
+        term: term,
+        source: s.value,
+        app_bundle_id: app ? app.value : '',
+        asr_model: asr ? asr.value : '',
+        llm_model: llm ? llm.value : ''
+    });
     _cancelAdd();
 }
 
@@ -567,53 +592,148 @@ function _renderTagPills() {
 }
 
 /* --- Inline editing --- */
+function _selectFieldMapping(field) {
+    // Returns {cssClass, options:[{value,label}]} or null for text/special fields
+    if (field === 'source') return {
+        cssClass: 'col-source',
+        options: SOURCE_OPTIONS
+    };
+    if (field === 'app_bundle_id') return {
+        cssClass: 'col-app',
+        options: [{value:'',label:'—'}].concat(addOptions.apps.map(function(a){return {value:a.id, label:a.name};}))
+    };
+    if (field === 'models') return null; // special two-select case
+    return null;
+}
+
 function _startEdit(rowEl, field, idx) {
-    // Cancel any pending blur commit from a previous cell
     if (editBlurTimer) { clearTimeout(editBlurTimer); editBlurTimer = null; }
     if (editingCell) _cancelEdit();
-    var cell = rowEl.querySelector('.col-' + field);
+
+    var r = currentRecords[idx];
+
+    // Models is a special case: two selects in one cell
+    if (field === 'models') {
+        var cell = rowEl.querySelector('.col-models');
+        if (!cell) return;
+        editingCell = {idx: idx, field: field, original: {asr_model: r.asr_model||'', llm_model: r.llm_model||''}, cell: cell};
+        cell.innerHTML = '';
+        var selAsr = _buildInlineSelect(
+            [{value:'',label:'—'}].concat(addOptions.asr_models.map(function(m){return {value:m, label:abbr(m), title:m};})),
+            r.asr_model || '', 'ASR'
+        );
+        var selLlm = _buildInlineSelect(
+            [{value:'',label:'—'}].concat(addOptions.llm_models.map(function(m){return {value:m, label:abbr(m), title:m};})),
+            r.llm_model || '', 'LLM'
+        );
+        cell.appendChild(selAsr);
+        cell.appendChild(selLlm);
+        selAsr.focus();
+        return;
+    }
+
+    var mapping = _selectFieldMapping(field);
+    var cssClass = mapping ? mapping.cssClass : 'col-' + field;
+    var cell = rowEl.querySelector('.' + cssClass);
     if (!cell) return;
-    var original = currentRecords[idx][field] || '';
+
+    var original = (field === 'app_bundle_id') ? (r.app_bundle_id || '') : (r[field] || '');
     editingCell = {idx: idx, field: field, original: original, cell: cell};
+    cell.innerHTML = '';
 
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'inline-edit';
-    input.value = original;
-    cell.textContent = '';
-    cell.appendChild(input);
-    input.focus();
-    input.select();
+    if (mapping) {
+        var sel = _buildInlineSelect(mapping.options, original);
+        cell.appendChild(sel);
+        sel.focus();
+    } else {
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'inline-edit';
+        input.value = original;
+        cell.appendChild(input);
+        input.focus();
+        input.select();
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); _commitEdit(); }
+            if (e.key === 'Escape') { e.preventDefault(); _cancelEdit(); }
+        });
+        input.addEventListener('blur', function() {
+            editBlurTimer = setTimeout(function() { editBlurTimer = null; if (editingCell) _commitEdit(); }, 100);
+        });
+    }
+}
 
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); _commitEdit(); }
+function _buildInlineSelect(options, current, titlePrefix) {
+    var sel = document.createElement('select');
+    sel.className = 'inline-edit';
+    if (titlePrefix) sel.title = titlePrefix;
+    options.forEach(function(o) {
+        var opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        if (o.title) opt.title = o.title;
+        if (o.value === current) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    sel.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') { e.preventDefault(); _cancelEdit(); }
     });
-    input.addEventListener('blur', function() {
-        editBlurTimer = setTimeout(function() { editBlurTimer = null; if (editingCell) _commitEdit(); }, 100);
+    sel.addEventListener('change', function() {
+        if (editBlurTimer) { clearTimeout(editBlurTimer); editBlurTimer = null; }
+        _commitEdit();
     });
+    sel.addEventListener('blur', function() {
+        editBlurTimer = setTimeout(function() { editBlurTimer = null; if (editingCell) _commitEdit(); }, 150);
+    });
+    return sel;
 }
 
 function _commitEdit() {
     if (editBlurTimer) { clearTimeout(editBlurTimer); editBlurTimer = null; }
     if (!editingCell) return;
-    var input = editingCell.cell.querySelector('.inline-edit');
-    var newVal = input ? input.value.trim() : editingCell.original;
     var idx = editingCell.idx;
     var field = editingCell.field;
     var original = editingCell.original;
-    editingCell = null;
+    var r = currentRecords[idx];
 
-    if (newVal === original || !newVal) {
-        // Restore original text if unchanged or empty
-        _restoreCell(idx, field, original);
+    if (field === 'models') {
+        var sels = editingCell.cell.querySelectorAll('select.inline-edit');
+        var newAsr = sels[0] ? sels[0].value : original.asr_model;
+        var newLlm = sels[1] ? sels[1].value : original.llm_model;
+        editingCell = null;
+        var fields = {};
+        if (newAsr !== original.asr_model) fields.asr_model = newAsr;
+        if (newLlm !== original.llm_model) fields.llm_model = newLlm;
+        if (Object.keys(fields).length === 0) {
+            _restoreCell(idx, field, original);
+            return;
+        }
+        post({type:'editField', variant: r.variant, term: r.term, fields: fields});
         return;
     }
-    var r = currentRecords[idx];
-    if (field === 'variant') {
-        post({type:'editEntry', oldVariant: r.variant, oldTerm: r.term, newVariant: newVal, newTerm: r.term});
-    } else if (field === 'term') {
-        post({type:'editEntry', oldVariant: r.variant, oldTerm: r.term, newVariant: r.variant, newTerm: newVal});
+
+    var input = editingCell.cell.querySelector('.inline-edit');
+    var newVal = input ? input.value.trim() : original;
+    editingCell = null;
+
+    if (field === 'variant' || field === 'term') {
+        if (newVal === original || !newVal) {
+            _restoreCell(idx, field, original);
+            return;
+        }
+        if (field === 'variant') {
+            post({type:'editEntry', oldVariant: r.variant, oldTerm: r.term, newVariant: newVal, newTerm: r.term});
+        } else {
+            post({type:'editEntry', oldVariant: r.variant, oldTerm: r.term, newVariant: r.variant, newTerm: newVal});
+        }
+    } else {
+        if (newVal === original) {
+            _restoreCell(idx, field, original);
+            return;
+        }
+        var fields = {};
+        fields[field] = newVal;
+        post({type:'editField', variant: r.variant, term: r.term, fields: fields});
     }
 }
 
@@ -627,11 +747,33 @@ function _cancelEdit() {
     _restoreCell(idx, field, original);
 }
 
-function _restoreCell(idx, field, text) {
+function _restoreCell(idx, field, original) {
     var rowEl = tableBody.querySelector('.row[data-idx="' + idx + '"]');
     if (!rowEl) return;
+    var r = currentRecords[idx];
+    if (field === 'models') {
+        var cell = rowEl.querySelector('.col-models');
+        if (!cell) return;
+        var html = '';
+        if (r.asr_model) html += miniTag(abbr(r.asr_model), 'stt', 'ASR: ' + r.asr_model);
+        if (r.llm_model) html += miniTag(abbr(r.llm_model), 'llm', 'LLM: ' + r.llm_model);
+        cell.innerHTML = html;
+        return;
+    }
+    if (field === 'source') {
+        var cell = rowEl.querySelector('.col-source');
+        if (!cell) return;
+        var src = r.source || 'user';
+        cell.innerHTML = '<span class="source-badge ' + src.toLowerCase() + '">' + esc(src) + '</span>';
+        return;
+    }
+    if (field === 'app_bundle_id') {
+        var cell = rowEl.querySelector('.col-app');
+        if (cell) cell.textContent = r.app_name || '';
+        return;
+    }
     var cell = rowEl.querySelector('.col-' + field);
-    if (cell) cell.textContent = text;
+    if (cell) cell.textContent = original;
 }
 
 /* --- Keyboard --- */
@@ -654,7 +796,7 @@ function setRecords(records, totalCount, page, numPages, filteredCount) {
     selectAllCb.checked = false;
     _updateBatchDelete();
     _cancelAdd();
-    if (editingCell) { editingCell = null; }
+    if (editingCell) _cancelEdit();
 
     /* Stats */
     if (totalCount !== filteredCount) {
@@ -695,15 +837,15 @@ function setRecords(records, totalCount, page, numPages, filteredCount) {
             '<div class="col col-cb"><input type="checkbox" class="row-cb" data-idx="' + i + '"></div>' +
             '<div class="col col-term" data-field="term">' + esc(r.term || '') + '</div>' +
             '<div class="col col-variant" data-field="variant">' + esc(r.variant || '') + '</div>' +
-            '<div class="col col-app">' + esc(r.app_name || '') + '</div>' +
+            '<div class="col col-app" data-field="app_bundle_id">' + esc(r.app_name || '') + '</div>' +
             '<div class="col col-mode">' + esc(r.enhance_mode || '') + '</div>' +
             '<div class="col col-date" data-tip="' + escAttr(r.last_hit || '') + '">' + esc(lhTs) + '</div>' +
             '<div class="col col-hits">' + (r.hit_count || 0) + '</div>' +
             '<div class="col col-freq">' + (r.frequency || 0) + '</div>' +
             '<div class="col col-date" data-tip="' + escAttr(r.first_seen || '') + '">' + esc(fsTs) + '</div>' +
             '<div class="col col-date" data-tip="' + escAttr(r.last_updated || '') + '">' + esc(ts) + '</div>' +
-            '<div class="col col-source"><span class="source-badge ' + srcClass + '">' + esc(r.source || '') + '</span></div>' +
-            '<div class="col col-models">' + modelTags + '</div>' +
+            '<div class="col col-source" data-field="source"><span class="source-badge ' + srcClass + '">' + esc(r.source || '') + '</span></div>' +
+            '<div class="col col-models" data-field="models">' + modelTags + '</div>' +
             '<div class="col col-actions"><button class="delete-btn" data-variant="' + escAttr(r.variant) + '" data-term="' + escAttr(r.term) + '">×</button></div>' +
             '</div>';
     }
@@ -741,6 +883,23 @@ function setTagOptions(tags) {
     });
 }
 
+function setAddOptions(opts) {
+    addOptions = opts || {apps: [], asr_models: [], llm_models: []};
+}
+
+function _buildSelectOpts(id, options) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = '';
+    options.forEach(function(o) {
+        var opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        if (o.title) opt.title = o.title;
+        sel.appendChild(opt);
+    });
+}
+
 function setSortState(column, asc) {
     sortColumn = column;
     sortAsc = asc;
@@ -773,6 +932,7 @@ tableBody.addEventListener('click', function(e) {
     }
 });
 
+var EDITABLE_FIELDS = ['variant', 'term', 'app_bundle_id', 'source', 'models'];
 tableBody.addEventListener('dblclick', function(e) {
     var cell = e.target.closest('[data-field]');
     if (!cell) return;
@@ -780,7 +940,7 @@ tableBody.addEventListener('dblclick', function(e) {
     if (!row) return;
     var idx = parseInt(row.getAttribute('data-idx'), 10);
     var field = cell.getAttribute('data-field');
-    if (field === 'variant' || field === 'term') {
+    if (EDITABLE_FIELDS.indexOf(field) !== -1) {
         _startEdit(row, field, idx);
     }
 });
