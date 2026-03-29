@@ -352,7 +352,6 @@ class SettingsWebPanel:
             NSPanel,
             NSResizableWindowMask,
             NSScreen,
-            NSStatusWindowLevel,
             NSTitledWindowMask,
         )
         from Foundation import NSMakeRect
@@ -381,8 +380,8 @@ class SettingsWebPanel:
             NSBackingStoreBuffered,
             False,
         )
-        panel.setLevel_(NSStatusWindowLevel)
-        panel.setFloatingPanel_(True)
+        panel.setLevel_(0)  # NSNormalWindowLevel
+        panel.setFloatingPanel_(False)
         panel.setHidesOnDeactivate_(False)
         panel.setTitle_("Settings")
 

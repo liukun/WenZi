@@ -353,10 +353,8 @@ class WindowAPI:
         workspace = NSWorkspace.sharedWorkspace()
 
         for app in workspace.runningApplications():
-            if app.activationPolicy() != NSApplicationActivationPolicyRegular:
-                continue
             pid = app.processIdentifier()
-            if pid == own_pid:
+            if pid != own_pid and app.activationPolicy() != NSApplicationActivationPolicyRegular:
                 continue
             app_name = app.localizedName() or ""
             bundle_url = app.bundleURL()
