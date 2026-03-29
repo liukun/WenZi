@@ -43,6 +43,7 @@ class _WZNamespace:
         self._window_api = None
         self._menubar_api = None
         self._keychain_api = None
+        self._menu_api = None
         self._reload_callback: Optional[Callable] = None
 
     @property
@@ -98,6 +99,15 @@ class _WZNamespace:
 
             self._keychain_api = KeychainAPI()
         return self._keychain_api
+
+    @property
+    def menu(self):
+        """Access the main menu API (lazy init)."""
+        if self._menu_api is None:
+            from .menu import MenuAPI
+
+            self._menu_api = MenuAPI()
+        return self._menu_api
 
     def leader(
         self,

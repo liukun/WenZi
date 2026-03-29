@@ -140,3 +140,23 @@ class TestMenuTrigger:
             result = api.trigger("Parent > Child")
             assert result is True
             assert len(called) == 1
+
+
+class TestWZNamespaceIntegration:
+    def test_wz_menu_property_returns_menu_api(self):
+        from wenzi.scripting.registry import ScriptingRegistry
+        from wenzi.scripting.api import _WZNamespace
+
+        registry = ScriptingRegistry()
+        wz = _WZNamespace(registry)
+        assert wz.menu is not None
+        from wenzi.scripting.api.menu import MenuAPI
+        assert isinstance(wz.menu, MenuAPI)
+
+    def test_wz_menu_is_same_instance(self):
+        from wenzi.scripting.registry import ScriptingRegistry
+        from wenzi.scripting.api import _WZNamespace
+
+        registry = ScriptingRegistry()
+        wz = _WZNamespace(registry)
+        assert wz.menu is wz.menu

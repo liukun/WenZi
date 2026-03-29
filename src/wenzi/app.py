@@ -1493,6 +1493,7 @@ class WenZiApp(StatusBarApp):
             )
             self._script_engine._ua_controller = self._ua_controller
             self._script_engine.start()
+            self._script_engine.wz.menu._set_root(self._menu)
             self._script_engine.set_open_settings_callback(
                 lambda: self._on_open_settings(None)
             )
