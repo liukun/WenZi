@@ -26,11 +26,21 @@ fi
 
 cd "$PROJECT_DIR"
 
+# Parse flags
+FAST=false
+NO_LAUNCH=false
+for arg in "$@"; do
+    case "$arg" in
+        --fast) FAST=true ;;
+        --no-launch) NO_LAUNCH=true ;;
+    esac
+done
+
 echo "==> Setting up Lite venv..."
 test -d .venv-lite || uv venv .venv-lite
 UV_PROJECT_ENVIRONMENT=.venv-lite uv sync --group dev
 
-if [ "${1:-}" = "--fast" ]; then
+if [ "$FAST" = true ]; then
     echo "==> Fast build (incremental, skipping clean)..."
     CLEAN_FLAG=""
 else
@@ -89,7 +99,9 @@ APP_SIZE=$(du -sh "$APP_PATH" | cut -f1)
 echo ""
 echo "==> Build complete: $APP_PATH ($APP_SIZE)"
 
-if [ "${1:-}" = "--fast" ]; then
+if [ "$NO_LAUNCH" = true ]; then
+    echo "    Run with: open $APP_PATH"
+elif [ "$FAST" = true ]; then
     # Kill the running instance (if any) and relaunch
     BUNDLE_ID="io.github.airead.wenzi"
     OLD_PID=$(lsappinfo info -only pid -app "$BUNDLE_ID" 2>/dev/null | grep -o '[0-9]*' || true)

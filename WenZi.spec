@@ -36,6 +36,7 @@ a = Analysis(
         (os.path.join(_spec_dir, 'src/wenzi/locales'), 'wenzi/locales'),
         (os.path.join(_spec_dir, 'src/wenzi/ui/vendor'), 'wenzi/ui/vendor'),
         (os.path.join(_spec_dir, 'src/wenzi/ui/templates'), 'wenzi/ui/templates'),
+        (os.path.join(_spec_dir, 'src/wenzi/screenshot/templates'), 'wenzi/screenshot/templates'),
     ],
     hiddenimports=mlx_hiddenimports + mlx_whisper_hiddenimports + sherpa_hiddenimports + librosa_hiddenimports + certifi_hiddenimports + [
         # wenzi core
