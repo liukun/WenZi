@@ -56,11 +56,19 @@ def render_definition(data: dict, word: str) -> str:
     """Render a Youdao lookup response as HTML for the preview panel."""
     parts = [_STYLE, '<div class="dict-root">']
 
-    ec = data.get("ec", {})
-    ec_word = ec.get("word", {})
-    simple = data.get("simple", {})
-    simple_words = simple.get("word", [{}])
-    phone_data = simple_words[0] if simple_words else ec_word
+    ec = data.get("ec") or {}
+    _ec_word_raw = ec.get("word")
+    # Youdao returns ec.word as a dict for common words but as a list for
+    # less common ones.  Normalise to dict.
+    if isinstance(_ec_word_raw, list):
+        ec_word = _ec_word_raw[0] if _ec_word_raw else {}
+    elif isinstance(_ec_word_raw, dict):
+        ec_word = _ec_word_raw
+    else:
+        ec_word = {}
+    simple = data.get("simple") or {}
+    simple_words = simple.get("word") or [{}]
+    phone_data = simple_words[0] if isinstance(simple_words[0], dict) else ec_word
 
     # --- Header: word + phonetics ---
     parts.append(f'<div class="word">{escape(word)}')
@@ -84,7 +92,7 @@ def render_definition(data: dict, word: str) -> str:
     parts.append("</div>")
 
     # --- Exam tags ---
-    exam_types = ec.get("exam_type", [])
+    exam_types = ec.get("exam_type") or []
     if exam_types:
         parts.append('<div class="exam-tags">')
         for tag in exam_types:
@@ -92,7 +100,7 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div>")
 
     # --- Definitions (ec) ---
-    trs = ec_word.get("trs", [])
+    trs = ec_word.get("trs") or []
     if trs:
         parts.append('<div class="section">')
         parts.append('<div class="section-title">Definitions</div>')
@@ -106,7 +114,7 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div>")
 
     # --- Word forms ---
-    wfs = ec_word.get("wfs", [])
+    wfs = ec_word.get("wfs") or []
     if wfs:
         parts.append('<div class="section"><div class="wf-tags">')
         for wf_item in wfs:
@@ -120,7 +128,7 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div></div>")
 
     # --- Phrases ---
-    phrs_data = data.get("phrs", {}).get("phrs", [])
+    phrs_data = (data.get("phrs") or {}).get("phrs") or []
     if phrs_data:
         parts.append('<div class="section">')
         parts.append('<div class="section-title">Phrases</div>')
@@ -135,13 +143,13 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div>")
 
     # --- Synonyms ---
-    synos = data.get("syno", {}).get("synos", [])
+    synos = (data.get("syno") or {}).get("synos") or []
     if synos:
         parts.append('<div class="section">')
         parts.append('<div class="section-title">Synonyms</div>')
         for s in synos:
             pos = s.get("pos", "")
-            ws = ", ".join(s.get("ws", []))
+            ws = ", ".join(s.get("ws") or [])
             tran = s.get("tran", "")
             parts.append(
                 f'<div class="tran"><span class="pos">{escape(pos)}</span>'
@@ -151,7 +159,7 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div>")
 
     # --- Example sentences ---
-    sents = data.get("blng_sents_part", {}).get("sentence-pair", [])
+    sents = (data.get("blng_sents_part") or {}).get("sentence-pair") or []
     if sents:
         parts.append('<div class="section">')
         parts.append('<div class="section-title">Examples</div>')
@@ -166,16 +174,16 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div>")
 
     # --- Collins ---
-    collins_entries = data.get("collins", {}).get("collins_entries", [])
+    collins_entries = (data.get("collins") or {}).get("collins_entries") or []
     for ce in collins_entries:
-        entries = ce.get("entries", {}).get("entry", [])
+        entries = (ce.get("entries") or {}).get("entry") or []
         if not entries:
             continue
         parts.append('<div class="section">')
         parts.append('<div class="section-title">Collins</div>')
         for entry in entries:
-            for te in entry.get("tran_entry", []):
-                pos_entry = te.get("pos_entry", {})
+            for te in entry.get("tran_entry") or []:
+                pos_entry = te.get("pos_entry") or {}
                 pos = pos_entry.get("pos", "")
                 pos_tips = pos_entry.get("pos_tips", "")
                 tran = te.get("tran", "")
@@ -186,7 +194,7 @@ def render_definition(data: dict, word: str) -> str:
                     f"{_sanitize_html(tran)}</div>"
                 )
                 # Collins example sentences
-                exam_sents = te.get("exam_sents", {}).get("sent", [])
+                exam_sents = (te.get("exam_sents") or {}).get("sent") or []
                 for sent in exam_sents[:2]:
                     en = sent.get("eng_sent", "")
                     zh = sent.get("chn_sent", "")
@@ -198,7 +206,7 @@ def render_definition(data: dict, word: str) -> str:
         parts.append("</div>")
 
     # --- Etymology ---
-    etym_list = data.get("etym", {}).get("etyms", {}).get("zh", [])
+    etym_list = ((data.get("etym") or {}).get("etyms") or {}).get("zh") or []
     if etym_list:
         parts.append('<div class="section">')
         parts.append('<div class="section-title">Etymology</div>')
@@ -208,13 +216,13 @@ def render_definition(data: dict, word: str) -> str:
 
     # --- Web translations (ZH→EN fallback when ec is absent) ---
     if not ec_word.get("trs"):
-        web_trans = data.get("web_trans", {}).get("web-translation", [])
+        web_trans = (data.get("web_trans") or {}).get("web-translation") or []
         if web_trans:
             parts.append('<div class="section">')
             parts.append('<div class="section-title">Translations</div>')
             for wt in web_trans[:10]:
                 key = wt.get("key", "")
-                values = [t.get("value", "") for t in wt.get("trans", [])]
+                values = [t.get("value", "") for t in (wt.get("trans") or [])]
                 if values:
                     parts.append(
                         f'<div class="tran">'
@@ -229,7 +237,7 @@ def render_definition(data: dict, word: str) -> str:
         not ec_word.get("trs")
         and not collins_entries
         and not synos
-        and not data.get("web_trans", {}).get("web-translation")
+        and not (data.get("web_trans") or {}).get("web-translation")
     ):
         parts.append(
             f'<div class="fallback">{escape(word)}<br>No definition found</div>'

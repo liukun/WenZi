@@ -252,6 +252,84 @@ class TestRenderDefinition:
         html = render_definition(data, "test")
         assert "<b>hello</b>" in html
 
+    def test_null_sections_do_not_crash(self):
+        """Youdao API may return null where dicts are expected.
+
+        .get("key", {}) returns None (not {}) when the key exists with
+        value None.  render_definition must not crash in that case.
+        """
+        from dictionary.render import render_definition
+
+        data_with_nulls = {
+            "ec": None,
+            "simple": None,
+            "phrs": None,
+            "syno": None,
+            "blng_sents_part": None,
+            "collins": None,
+            "etym": None,
+            "web_trans": None,
+        }
+        html = render_definition(data_with_nulls, "imperceptible")
+        assert "imperceptible" in html
+        # Should show fallback since no definitions were rendered
+        assert "No definition found" in html
+
+    def test_partial_null_nested_values(self):
+        """Nested values may be null even when parent keys exist."""
+        from dictionary.render import render_definition
+
+        data = {
+            "ec": {"word": None, "exam_type": None},
+            "simple": {"word": None},
+            "phrs": {"phrs": None},
+            "syno": {"synos": None},
+            "blng_sents_part": {"sentence-pair": None},
+            "collins": {"collins_entries": None},
+            "etym": {"etyms": None},
+        }
+        html = render_definition(data, "test")
+        assert "test" in html
+
+    def test_ec_word_as_list(self):
+        """Youdao returns ec.word as a list for uncommon words."""
+        from dictionary.render import render_definition
+
+        data = {
+            "ec": {
+                "word": [
+                    {
+                        "trs": [{"pos": "adj.", "tran": "感觉不到的"}],
+                        "wfs": [{"wf": {"name": "比较级", "value": "more imperceptible"}}],
+                        "return-phrase": {"l": {"i": "imperceptible"}},
+                    }
+                ],
+            },
+            "simple": {"word": [{"usphone": "ˌɪmpərˈsɛptəbəl"}]},
+        }
+        html = render_definition(data, "imperceptible")
+        assert "adj." in html
+        assert "感觉不到的" in html
+        assert "more imperceptible" in html
+
+    def test_ec_word_as_empty_list(self):
+        """ec.word as an empty list should not crash."""
+        from dictionary.render import render_definition
+
+        data = {"ec": {"word": []}}
+        html = render_definition(data, "test")
+        assert "test" in html
+
+    def test_synos_with_null_ws(self):
+        """Synonym entry with ws=null must not crash join()."""
+        from dictionary.render import render_definition
+
+        data = {
+            "syno": {"synos": [{"pos": "adj.", "ws": None, "tran": "微小的"}]},
+        }
+        html = render_definition(data, "test")
+        assert "adj." in html
+
     def test_collins_tran_strips_event_handler_attributes(self):
         from dictionary.render import render_definition
 

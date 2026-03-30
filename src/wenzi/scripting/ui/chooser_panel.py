@@ -984,7 +984,8 @@ class ChooserPanel:
                         preview = preview()
                     except Exception:
                         preview = None
-                    item.preview = preview  # cache resolved value
+                    if preview is not None:
+                        item.preview = preview  # cache resolved value
                 if preview is not None:
                     js_item["preview"] = preview
             js_items.append(js_item)
@@ -1507,8 +1508,10 @@ class ChooserPanel:
                     except Exception:
                         logger.debug("Preview provider error", exc_info=True)
                         preview = None
-                    # Cache the resolved result
-                    item.preview = preview
+                    # Only cache successful resolutions; keep the
+                    # callable around so the user can retry.
+                    if preview is not None:
+                        item.preview = preview
                 if preview is not None:
                     self._eval_js(f"setPreview({json.dumps(preview, ensure_ascii=False)})")
                     return

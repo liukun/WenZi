@@ -29,6 +29,9 @@ htmlcov/
 # macOS
 .DS_Store
 
+# Local config overrides
+.config/
+
 # Claude Code
 .claude/worktrees/
 
