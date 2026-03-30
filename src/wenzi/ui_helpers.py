@@ -14,6 +14,23 @@ from .statusbar import InputWindow
 logger = logging.getLogger(__name__)
 
 
+def screen_under_mouse():
+    """Return the NSScreen containing the mouse pointer.
+
+    Falls back to ``NSScreen.mainScreen()`` when no hit is found.
+    More reliable than ``mainScreen()`` alone because the latter may
+    return *None* in accessory mode with no key window.
+    """
+    from AppKit import NSEvent, NSScreen
+    from Foundation import NSPointInRect
+
+    mouse_loc = NSEvent.mouseLocation()
+    for s in NSScreen.screens() or []:
+        if NSPointInRect(mouse_loc, s.frame()):
+            return s
+    return NSScreen.mainScreen()
+
+
 def activate_for_dialog() -> None:
     """Set activation policy so modal dialogs can show from non-bundled process.
 

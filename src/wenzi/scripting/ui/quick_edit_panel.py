@@ -109,11 +109,11 @@ class QuickEditPanel:
     ) -> None:
         """Show the editor panel with *content* pre-filled."""
         self._reveal_path = reveal_path
-        self._build_panel(content)
 
         from AppKit import NSApp
 
         NSApp.setActivationPolicy_(0)  # Regular (foreground)
+        self._build_panel(content)
         self._panel.makeKeyAndOrderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
 
@@ -283,7 +283,6 @@ class QuickEditPanel:
             NSMiniaturizableWindowMask,
             NSPanel,
             NSResizableWindowMask,
-            NSScreen,
             NSScrollView,
             NSStatusWindowLevel,
             NSTextView,
@@ -311,8 +310,9 @@ class QuickEditPanel:
         panel.setHidesOnDeactivate_(False)
         panel.setMinSize_(NSMakeSize(300, 200))
 
-        # Center on screen
-        screen = NSScreen.mainScreen()
+        from wenzi.ui_helpers import screen_under_mouse
+
+        screen = screen_under_mouse()
         if screen:
             sf = screen.visibleFrame()
             pf = panel.frame()

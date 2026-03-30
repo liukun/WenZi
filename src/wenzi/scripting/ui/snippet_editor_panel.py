@@ -89,11 +89,11 @@ class SnippetEditorPanel:
         """
         self._on_saved = on_saved
         last_cat = self._store.last_category
-        self._build_panel(initial_query, last_cat)
 
         from AppKit import NSApp
 
         NSApp.setActivationPolicy_(0)  # Regular (foreground)
+        self._build_panel(initial_query, last_cat)
         self._panel.makeKeyAndOrderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
 
@@ -330,7 +330,6 @@ class SnippetEditorPanel:
             NSColor,
             NSFont,
             NSPanel,
-            NSScreen,
             NSScrollView,
             NSStatusWindowLevel,
             NSTextField,
@@ -370,8 +369,9 @@ class SnippetEditorPanel:
         panel.setFloatingPanel_(True)
         panel.setHidesOnDeactivate_(False)
 
-        # Center on screen
-        screen = NSScreen.mainScreen()
+        from wenzi.ui_helpers import screen_under_mouse
+
+        screen = screen_under_mouse()
         if screen:
             sf = screen.visibleFrame()
             pf = panel.frame()

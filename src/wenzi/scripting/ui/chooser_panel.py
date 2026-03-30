@@ -255,6 +255,21 @@ class ChooserPanel:
         new_frame = NSMakeRect(new_x, new_y, width, height)
         self._panel.setFrame_display_(new_frame, True)
 
+    def _center_on_main_screen(self) -> None:
+        """Reposition the panel to center-top of the current main screen."""
+        if self._panel is None:
+            return
+        from wenzi.ui_helpers import screen_under_mouse
+
+        screen = screen_under_mouse()
+        if not screen:
+            return
+        sf = screen.frame()
+        pf = self._panel.frame()
+        x = sf.origin.x + (sf.size.width - pf.size.width) / 2
+        y = sf.origin.y + sf.size.height - pf.size.height - 200
+        self._panel.setFrameOrigin_((x, y))
+
     # ------------------------------------------------------------------
     # Panel reuse helpers
     # ------------------------------------------------------------------
@@ -532,6 +547,7 @@ class ChooserPanel:
             # Reuse hidden panel — reconnect refs and reset UI
             self._reconnect_panel_refs()
             self._reset_panel_ui(initial_query, placeholder)
+            self._center_on_main_screen()
         else:
             # First show — build from scratch
             self._build_panel()
@@ -1535,7 +1551,6 @@ class ChooserPanel:
         """Create NSPanel + WKWebView."""
         from AppKit import (
             NSBackingStoreBuffered,
-            NSScreen,
             NSStatusWindowLevel,
         )
         from Foundation import NSMakeRect, NSURL
@@ -1582,17 +1597,6 @@ class ChooserPanel:
         panel.contentView().layer().setCornerRadius_(12.0)
         panel.contentView().layer().setMasksToBounds_(True)
 
-        # Position: center-top of main screen (like Spotlight)
-        # Top edge is always 200px below the screen top, regardless of height
-        screen = NSScreen.mainScreen()
-        if screen:
-            sf = screen.frame()
-            x = sf.origin.x + (sf.size.width - initial_width) / 2
-            y = sf.origin.y + sf.size.height - initial_height - 200
-            panel.setFrameOrigin_((x, y))
-        else:
-            panel.center()
-
         # WKWebView with message handler
         wk_config = WKWebViewConfiguration.alloc().init()
         content_controller = WKUserContentController.alloc().init()
@@ -1624,6 +1628,8 @@ class ChooserPanel:
         self._page_loaded = False
         self._pending_js = []
         self._current_items = []
+
+        self._center_on_main_screen()
 
         # Load HTML from a temp file so WKWebView grants file:// access.
         # Icons live in ~/.cache/WenZi and clipboard images in
