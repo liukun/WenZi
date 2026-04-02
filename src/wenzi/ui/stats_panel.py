@@ -142,6 +142,14 @@ class StatsChartPanel:
         """Close panel and restore accessory mode."""
         try:
             if self._webview is not None:
+                # Destroy Chart.js instances to release canvas memory
+                # in the shared Web Content process.
+                self._webview.evaluateJavaScript_completionHandler_(
+                    "Object.values(chartInstances).forEach("
+                    "c => { if (c) c.destroy(); });"
+                    "chartInstances = {};",
+                    None,
+                )
                 self._webview.stopLoading_(None)
                 self._webview = None
             if self._panel is not None:

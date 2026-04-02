@@ -1620,6 +1620,12 @@ class ResultPreviewPanel:
 
         if old_panel is not None:
             try:
+                # Stop the old WKWebView and load empty content to release
+                # canvas/IOSurface memory in the shared Web Content process.
+                for subview in (old_panel.contentView().subviews() or []):
+                    if hasattr(subview, 'stopLoading_'):
+                        subview.stopLoading_(None)
+                        subview.loadHTMLString_baseURL_("", None)
                 old_panel.close()
             except Exception:
                 pass
