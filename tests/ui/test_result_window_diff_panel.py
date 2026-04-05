@@ -149,7 +149,7 @@ class TestHandleJsMessage:
 
 
 class TestResizeForDiffPanel:
-    def test_open_expands(self, mock_appkit):
+    def test_open_expands(self, mock_appkit, monkeypatch):
         panel = _build_panel()
         mock_frame = MagicMock()
         mock_frame.origin.x = 400
@@ -162,7 +162,10 @@ class TestResizeForDiffPanel:
         vis.origin.x = 0
         vis.size.width = 1920
         screen.visibleFrame.return_value = vis
-        panel._screen_for_mouse = MagicMock(return_value=screen)
+        monkeypatch.setattr(
+            "wenzi.ui_helpers.screen_under_mouse",
+            lambda: screen,
+        )
 
         panel._resize_for_diff_panel(True)
         panel._panel.setFrame_display_.assert_called_once()

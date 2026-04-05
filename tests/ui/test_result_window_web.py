@@ -1396,8 +1396,8 @@ def _make_mock_screen(x, y, w, h):
     return screen
 
 
-class TestScreenForMouse:
-    """Test _screen_for_mouse returns the screen containing the cursor."""
+class TestScreenUnderMouse:
+    """Test screen_under_mouse returns the screen containing the cursor."""
 
     @pytest.fixture(autouse=True)
     def _patch_appkit(self, monkeypatch):
@@ -1420,21 +1420,21 @@ class TestScreenForMouse:
         self._mock_ns_event.mouseLocation.return_value = pt
 
     def test_returns_screen_containing_mouse(self):
-        from wenzi.ui.result_window_web import ResultPreviewPanel
+        from wenzi.ui_helpers import screen_under_mouse
 
         left = _make_mock_screen(0, 0, 1920, 1080)
         right = _make_mock_screen(1920, 0, 1920, 1080)
         self._mock_ns_screen.screens.return_value = [left, right]
         self._set_mouse(2500, 500)
 
-        assert ResultPreviewPanel._screen_for_mouse() is right
+        assert screen_under_mouse() is right
 
     def test_fallback_to_main_screen(self):
-        from wenzi.ui.result_window_web import ResultPreviewPanel
+        from wenzi.ui_helpers import screen_under_mouse
 
         main = MagicMock()
         self._mock_ns_screen.screens.return_value = []
         self._mock_ns_screen.mainScreen.return_value = main
         self._set_mouse(100, 100)
 
-        assert ResultPreviewPanel._screen_for_mouse() is main
+        assert screen_under_mouse() is main
