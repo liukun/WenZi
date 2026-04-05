@@ -13,6 +13,8 @@ import logging
 import os
 import threading
 import time
+
+import objc
 from typing import List, Optional
 
 from wenzi.config import DEFAULT_ICON_CACHE_DIR as _CFG_ICON_CACHE_DIR
@@ -57,57 +59,59 @@ _CORE_SERVICES_APPS = [
 
 def _get_display_name(path: str, fallback: str) -> str:
     """Return the localized display name for an app bundle path."""
-    try:
-        from Foundation import NSFileManager
+    with objc.autorelease_pool():
+        try:
+            from Foundation import NSFileManager
 
-        fm = NSFileManager.defaultManager()
-        display = fm.displayNameAtPath_(path)
-        if display:
-            name = str(display)
-            # displayNameAtPath_ may include ".app" for non-localized names
-            if name.endswith(".app"):
-                name = name[:-4]
-            return name
-    except Exception:
-        pass
-    return fallback
+            fm = NSFileManager.defaultManager()
+            display = fm.displayNameAtPath_(path)
+            if display:
+                name = str(display)
+                # displayNameAtPath_ may include ".app" for non-localized names
+                if name.endswith(".app"):
+                    name = name[:-4]
+                return name
+        except Exception:
+            pass
+        return fallback
 
 
 def _get_app_icon_png(path: str) -> Optional[bytes]:
     """Return raw PNG bytes for the app icon, or None on failure."""
-    try:
-        from AppKit import (
-            NSBitmapImageRep,
-            NSCompositingOperationCopy,
-            NSImage,
-            NSPNGFileType,
-            NSWorkspace,
-        )
-        from Foundation import NSMakeRect, NSSize
+    with objc.autorelease_pool():
+        try:
+            from AppKit import (
+                NSBitmapImageRep,
+                NSCompositingOperationCopy,
+                NSImage,
+                NSPNGFileType,
+                NSWorkspace,
+            )
+            from Foundation import NSMakeRect, NSSize
 
-        ws = NSWorkspace.sharedWorkspace()
-        icon = ws.iconForFile_(path)
-        if icon is None:
+            ws = NSWorkspace.sharedWorkspace()
+            icon = ws.iconForFile_(path)
+            if icon is None:
+                return None
+
+            # Render into a fixed-size image to control pixel output
+            size = NSSize(_ICON_SIZE, _ICON_SIZE)
+            target = NSImage.alloc().initWithSize_(size)
+            target.lockFocus()
+            icon.drawInRect_fromRect_operation_fraction_(
+                NSMakeRect(0, 0, _ICON_SIZE, _ICON_SIZE),
+                NSMakeRect(0, 0, icon.size().width, icon.size().height),
+                NSCompositingOperationCopy,
+                1.0,
+            )
+            target.unlockFocus()
+
+            rep = NSBitmapImageRep.imageRepWithData_(target.TIFFRepresentation())
+            png_data = rep.representationUsingType_properties_(NSPNGFileType, None)
+            return bytes(png_data) if png_data else None
+        except Exception:
+            logger.debug("Failed to get icon for %s", path, exc_info=True)
             return None
-
-        # Render into a fixed-size image to control pixel output
-        size = NSSize(_ICON_SIZE, _ICON_SIZE)
-        target = NSImage.alloc().initWithSize_(size)
-        target.lockFocus()
-        icon.drawInRect_fromRect_operation_fraction_(
-            NSMakeRect(0, 0, _ICON_SIZE, _ICON_SIZE),
-            NSMakeRect(0, 0, icon.size().width, icon.size().height),
-            NSCompositingOperationCopy,
-            1.0,
-        )
-        target.unlockFocus()
-
-        rep = NSBitmapImageRep.imageRepWithData_(target.TIFFRepresentation())
-        png_data = rep.representationUsingType_properties_(NSPNGFileType, None)
-        return bytes(png_data) if png_data else None
-    except Exception:
-        logger.debug("Failed to get icon for %s", path, exc_info=True)
-        return None
 
 
 def _cache_key(path: str) -> str:

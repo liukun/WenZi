@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 
+import objc
+
 logger = logging.getLogger(__name__)
 
 # VNRequestTextRecognitionLevelFast = 0
@@ -33,37 +35,38 @@ def recognize_text(
     if languages is None:
         languages = ["zh-Hans", "zh-Hant", "en-US"]
 
-    try:
-        from Foundation import NSURL
-        from Quartz import VNImageRequestHandler, VNRecognizeTextRequest
+    with objc.autorelease_pool():
+        try:
+            from Foundation import NSURL
+            from Quartz import VNImageRequestHandler, VNRecognizeTextRequest
 
-        image_url = NSURL.fileURLWithPath_(image_path)
-        handler = VNImageRequestHandler.alloc().initWithURL_options_(
-            image_url, None,
-        )
+            image_url = NSURL.fileURLWithPath_(image_path)
+            handler = VNImageRequestHandler.alloc().initWithURL_options_(
+                image_url, None,
+            )
 
-        request = VNRecognizeTextRequest.alloc().init()
-        request.setRecognitionLevel_(_RECOGNITION_LEVEL_FAST)
-        request.setRecognitionLanguages_(languages)
+            request = VNRecognizeTextRequest.alloc().init()
+            request.setRecognitionLevel_(_RECOGNITION_LEVEL_FAST)
+            request.setRecognitionLanguages_(languages)
 
-        success = handler.performRequests_error_([request], None)
-        if not success:
-            logger.debug("Vision request failed for %s", image_path)
+            success = handler.performRequests_error_([request], None)
+            if not success:
+                logger.debug("Vision request failed for %s", image_path)
+                return ""
+
+            results = request.results()
+            if not results:
+                return ""
+
+            lines = []
+            for observation in results:
+                candidates = observation.topCandidates_(1)
+                if candidates:
+                    text = str(candidates[0].string())
+                    if text:
+                        lines.append(text)
+
+            return "\n".join(lines)
+        except Exception:
+            logger.debug("OCR failed for %s", image_path, exc_info=True)
             return ""
-
-        results = request.results()
-        if not results:
-            return ""
-
-        lines = []
-        for observation in results:
-            candidates = observation.topCandidates_(1)
-            if candidates:
-                text = str(candidates[0].string())
-                if text:
-                    lines.append(text)
-
-        return "\n".join(lines)
-    except Exception:
-        logger.debug("OCR failed for %s", image_path, exc_info=True)
-        return ""
