@@ -174,6 +174,8 @@ class AnnotationLayer:
                 pass
         self._image_path = None
         self._pending_action = None
+        self._on_done = None
+        self._on_cancel = None
 
     # ------------------------------------------------------------------
     # Event handlers

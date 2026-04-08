@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from dataclasses import dataclass, field
@@ -120,10 +121,8 @@ class ChooserSource:
 _HAS_CJK = re.compile(r"[\u4e00-\u9fff]")
 _IS_ASCII = re.compile(r"^[a-zA-Z0-9]+$")
 
-# Cache: Chinese text → (full_pinyin, pinyin_initials)
-_pinyin_cache: Dict[str, Tuple[str, str]] = {}
 
-
+@functools.lru_cache(maxsize=4096)
 def _get_pinyin(text: str) -> Tuple[str, str]:
     """Return (full_pinyin, pinyin_initials) for *text*.
 
@@ -131,11 +130,8 @@ def _get_pinyin(text: str) -> Tuple[str, str]:
     pinyin_initials: "系统设置" → "xtsh"
 
     Non-CJK characters are kept as-is in both forms.
-    Results are cached for performance.
+    Results are LRU-cached (bounded to 4096 entries) for performance.
     """
-    if text in _pinyin_cache:
-        return _pinyin_cache[text]
-
     try:
         from pypinyin import lazy_pinyin, Style
 
@@ -147,7 +143,6 @@ def _get_pinyin(text: str) -> Tuple[str, str]:
     except Exception:
         full = initials = ""
 
-    _pinyin_cache[text] = (full, initials)
     return full, initials
 
 

@@ -249,7 +249,7 @@ class ScriptingRegistry:
         self._remaps.clear()
         self._chooser_sources.clear()
         self._event_listeners.clear()
-        self._event_executor.shutdown(wait=False)
+        self._event_executor.shutdown(wait=False, cancel_futures=True)
         self._event_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=4, thread_name_prefix="event-dispatch",
         )

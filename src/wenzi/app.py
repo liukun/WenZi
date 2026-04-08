@@ -1167,11 +1167,27 @@ class WenZiApp(StatusBarApp):
                 self._screenshot_annotation.close()
         except Exception:
             logger.debug("Screenshot annotation close failed", exc_info=True)
+        # Clean up preview history temp files
+        try:
+            self._preview_controller._preview_history.shutdown()
+        except Exception:
+            logger.debug("Preview history shutdown failed", exc_info=True)
         # Flush usage stats to disk before shutting down
         try:
             self._usage_stats.shutdown()
         except Exception:
             logger.debug("Usage stats shutdown failed", exc_info=True)
+        # Close manual vocabulary database
+        try:
+            self._manual_vocab_store.close()
+        except Exception:
+            logger.debug("Manual vocab store close failed", exc_info=True)
+        # Shut down the input context executor
+        try:
+            from wenzi.input_context import shutdown_input_context
+            shutdown_input_context()
+        except Exception:
+            logger.debug("Input context shutdown failed", exc_info=True)
         # Flush encrypted vault to disk before shutting down
         try:
             from wenzi.vault import shutdown_vault

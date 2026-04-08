@@ -182,6 +182,7 @@ def _scan_apps() -> list[dict]:
 
 _running_apps_cache: set[str] = set()
 _running_apps_time: float = 0.0
+_running_apps_lock = threading.Lock()
 _RUNNING_APPS_TTL: float = 2.0  # seconds
 
 
@@ -194,25 +195,28 @@ def _get_running_app_names() -> set[str]:
     global _running_apps_cache, _running_apps_time
 
     now = time.monotonic()
-    if now - _running_apps_time < _RUNNING_APPS_TTL:
-        return _running_apps_cache
+    with _running_apps_lock:
+        if now - _running_apps_time < _RUNNING_APPS_TTL:
+            return _running_apps_cache
 
     try:
         from AppKit import NSWorkspace
 
         workspace = NSWorkspace.sharedWorkspace()
         running = workspace.runningApplications()
-        _running_apps_cache = {
+        new_cache = {
             str(app.localizedName())
             for app in running
             if app.localizedName()
         }
     except Exception:
         logger.debug("Failed to get running apps", exc_info=True)
-        _running_apps_cache = set()
+        new_cache = set()
 
-    _running_apps_time = now
-    return _running_apps_cache
+    with _running_apps_lock:
+        _running_apps_cache = new_cache
+        _running_apps_time = now
+        return _running_apps_cache
 
 
 def _launch_app(path: str) -> None:

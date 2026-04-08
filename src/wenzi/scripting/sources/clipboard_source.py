@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections import OrderedDict
 from typing import Dict, List, Optional
 
 from wenzi.scripting.clipboard_monitor import (
@@ -126,7 +127,7 @@ class ClipboardSource:
         self._empty_cache: Optional[List[ChooserItem]] = None
         self._empty_cache_version: int = -1
         self._empty_cache_time: float = 0.0
-        self._icon_mem_cache: Dict[str, str] = {}  # bundle_id → data URI or ""
+        self._icon_mem_cache: OrderedDict[str, str] = OrderedDict()  # bundle_id → data URI or ""
         self._icon_miss_until: Dict[str, float] = {}  # bundle_id → retry-after ts
 
     _ICON_MISS_TTL = 30.0  # seconds before rechecking disk for a missed icon
@@ -141,10 +142,8 @@ class ClipboardSource:
         """
         if not bundle_id:
             return ""
-        if len(self._icon_mem_cache) > 200:
-            self._icon_mem_cache.clear()
-            self._icon_miss_until.clear()
         if bundle_id in self._icon_mem_cache:
+            self._icon_mem_cache.move_to_end(bundle_id)
             return self._icon_mem_cache[bundle_id]
 
         # Avoid repeated disk checks for icons we recently failed to find
@@ -160,12 +159,20 @@ class ClipboardSource:
         if os.path.isfile(png_path):
             uri = "file://" + png_path
             self._icon_mem_cache[bundle_id] = uri
+            while len(self._icon_mem_cache) > 200:
+                self._icon_mem_cache.popitem(last=False)
             self._icon_miss_until.pop(bundle_id, None)
             return uri
 
         # Icon not cached yet — suppress disk checks for a while.
         # Polling thread will cache it on the next clipboard change.
         self._icon_miss_until[bundle_id] = now + self._ICON_MISS_TTL
+        # Cap miss cache to prevent unbounded growth
+        if len(self._icon_miss_until) > 500:
+            # Evict expired entries; if still too many, drop oldest half
+            self._icon_miss_until = {
+                k: v for k, v in self._icon_miss_until.items() if v > now
+            }
         return ""
 
     def search(self, query: str) -> List[ChooserItem]:

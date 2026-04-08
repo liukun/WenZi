@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, Optional
 
 from wenzi.vault import get_vault
 
 logger = logging.getLogger(__name__)
+
+# Pre-compiled regex for stripping trailing commas in JSONC
+_TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
 
 # Modifier key choices for restart/cancel key config.
 # Each entry is (config_value, display_label). Used by both validate_config()
@@ -441,14 +445,17 @@ def _strip_jsonc(text: str) -> str:
             i += 1
 
     # Remove trailing commas before } or ]
-    import re
     cleaned = "".join(result)
-    cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+    cleaned = _TRAILING_COMMA_RE.sub(r"\1", cleaned)
     return cleaned
 
 
 def _merge_dict(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
     result = dict(base)
+    # Deep-copy list values from base so mutations don't affect DEFAULT_CONFIG
+    for key, value in result.items():
+        if isinstance(value, list):
+            result[key] = list(value)
     for key, value in overrides.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
             result[key] = _merge_dict(result[key], value)

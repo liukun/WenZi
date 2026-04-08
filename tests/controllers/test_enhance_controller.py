@@ -182,8 +182,9 @@ class TestEnhanceModeSetterDiffRefresh:
 
 class TestCacheOperations:
     def test_cache_key(self, controller):
+        controller._current_asr_text = "hello"
         key = controller.cache_key()
-        assert key == ("proofread", "ollama", "qwen2.5:7b", False)
+        assert key == ("proofread", "ollama", "qwen2.5:7b", False, hash("hello"))
 
     def test_cache_key_changes_with_mode(self, controller):
         key1 = controller.cache_key()
@@ -203,13 +204,26 @@ class TestCacheOperations:
         key2 = controller.cache_key()
         assert key1 != key2
 
+    def test_cache_key_changes_with_asr_text(self, controller):
+        controller._current_asr_text = "text1"
+        key1 = controller.cache_key()
+        controller._current_asr_text = "text2"
+        key2 = controller.cache_key()
+        assert key1 != key2
+
+    def test_cache_key_explicit_asr_text(self, controller):
+        controller._current_asr_text = "default"
+        key = controller.cache_key(asr_text="override")
+        assert key[-1] == hash("override")
+
     def test_cache_key_no_enhancer(self, mock_panel, mock_stats):
         ctrl = EnhanceController(
             enhancer=None, preview_panel=mock_panel, usage_stats=mock_stats,
         )
         ctrl.enhance_mode = "proofread"
+        ctrl._current_asr_text = ""
         key = ctrl.cache_key()
-        assert key == ("proofread", "", "", False)
+        assert key == ("proofread", "", "", False, hash(""))
 
     def test_get_cached_miss(self, controller):
         assert controller.get_cached() is None

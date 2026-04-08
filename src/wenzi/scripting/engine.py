@@ -108,6 +108,8 @@ class ScriptEngine:
             self._system_settings_source = None
         if self._query_history is not None:
             self._query_history.flush_sync()
+        if self._usage_tracker is not None:
+            self._usage_tracker.flush_sync()
         self._wz.pasteboard._set_monitor(None)
         self._wz.snippets._set_store(None)
         if self._wz._keychain_api is not None:

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import List, Optional
-
-from openai import OpenAI
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import BaseTranscriber, build_hotwords_prompt
+
+if TYPE_CHECKING:
+    from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class WhisperAPITranscriber(BaseTranscriber):
         self._language = language
         self._temperature = temperature if temperature is not None else 0.0
         self._hotwords = hotwords
-        self._client: Optional[OpenAI] = None
+        self._client: Optional["OpenAI"] = None
         self._initialized = False
 
     @property
@@ -46,6 +47,7 @@ class WhisperAPITranscriber(BaseTranscriber):
     def initialize(self) -> None:
         if self._initialized:
             return
+        from openai import OpenAI
         self._client = OpenAI(base_url=self._base_url, api_key=self._api_key)
         self._initialized = True
         logger.info(
@@ -110,6 +112,7 @@ class WhisperAPITranscriber(BaseTranscriber):
 
         client = None
         try:
+            from openai import OpenAI
             client = OpenAI(base_url=base_url, api_key=api_key)
             audio_file = io.BytesIO(wav_data)
             audio_file.name = "test.wav"

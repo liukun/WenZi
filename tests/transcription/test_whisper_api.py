@@ -101,7 +101,7 @@ class TestInitialize:
         t = _make_transcriber()
         mock_client = MagicMock()
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client) as mock_cls:
+        with patch("openai.OpenAI", return_value=mock_client) as mock_cls:
             t.initialize()
 
         mock_cls.assert_called_once_with(
@@ -116,7 +116,7 @@ class TestInitialize:
         t = _make_transcriber()
         mock_client = MagicMock()
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client) as mock_cls:
+        with patch("openai.OpenAI", return_value=mock_client) as mock_cls:
             t.initialize()
             t.initialize()
 
@@ -124,7 +124,7 @@ class TestInitialize:
 
     def test_initialize_sets_initialized_flag(self):
         t = _make_transcriber()
-        with patch("wenzi.transcription.whisper_api.OpenAI"):
+        with patch("openai.OpenAI"):
             t.initialize()
         assert t._initialized is True
 
@@ -225,7 +225,7 @@ class TestVerifyProvider:
         mock_client = MagicMock()
         mock_client.audio.transcriptions.create.return_value = MagicMock()
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client):
+        with patch("openai.OpenAI", return_value=mock_client):
             result = WhisperAPITranscriber.verify_provider(
                 base_url="https://api.example.com/v1",
                 api_key="key",
@@ -236,7 +236,7 @@ class TestVerifyProvider:
 
     def test_returns_error_string_on_failure(self):
         with patch(
-            "wenzi.transcription.whisper_api.OpenAI",
+            "openai.OpenAI",
             side_effect=Exception("connection refused"),
         ):
             result = WhisperAPITranscriber.verify_provider(
@@ -251,7 +251,7 @@ class TestVerifyProvider:
         mock_client = MagicMock()
         mock_client.audio.transcriptions.create.side_effect = Exception("401 Unauthorized")
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client):
+        with patch("openai.OpenAI", return_value=mock_client):
             result = WhisperAPITranscriber.verify_provider(
                 base_url="https://api.example.com/v1",
                 api_key="bad-key",
@@ -265,7 +265,7 @@ class TestVerifyProvider:
         mock_client = MagicMock()
         mock_client.audio.transcriptions.create.return_value = MagicMock()
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client):
+        with patch("openai.OpenAI", return_value=mock_client):
             WhisperAPITranscriber.verify_provider(
                 base_url="https://api.example.com/v1",
                 api_key="key",
@@ -286,7 +286,7 @@ class TestVerifyProvider:
         mock_client = MagicMock()
         mock_client.audio.transcriptions.create.return_value = MagicMock()
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client) as mock_cls:
+        with patch("openai.OpenAI", return_value=mock_client) as mock_cls:
             WhisperAPITranscriber.verify_provider(
                 base_url="https://custom.api/v1",
                 api_key="mykey",
@@ -302,7 +302,7 @@ class TestVerifyProvider:
         mock_client = MagicMock()
         mock_client.audio.transcriptions.create.return_value = MagicMock()
 
-        with patch("wenzi.transcription.whisper_api.OpenAI", return_value=mock_client):
+        with patch("openai.OpenAI", return_value=mock_client):
             WhisperAPITranscriber.verify_provider(
                 base_url="https://api.example.com/v1",
                 api_key="key",

@@ -151,6 +151,7 @@ class StatsChartPanel:
                     None,
                 )
                 self._webview.stopLoading_(None)
+                self._webview.loadHTMLString_baseURL_("", None)
                 self._webview = None
             if self._panel is not None:
                 self._panel.setDelegate_(None)

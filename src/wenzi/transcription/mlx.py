@@ -107,6 +107,16 @@ class MLXWhisperTranscriber(BaseTranscriber):
         self._mlx_whisper = None
         self._initialized = False
         self._transcription_count = 0
+
+        # Remove mlx_whisper modules from sys.modules to release the
+        # module-level model cache in mlx_whisper.load_models.  Without
+        # this, the cached model stays alive via sys.modules even after
+        # self._mlx_whisper is set to None.
+        import sys
+        for mod_name in list(sys.modules):
+            if mod_name.startswith("mlx_whisper"):
+                del sys.modules[mod_name]
+
         gc.collect()
         try:
             import mlx.core as mx

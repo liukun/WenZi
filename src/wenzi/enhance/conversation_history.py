@@ -6,6 +6,7 @@ import glob
 import json
 import logging
 import os
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -80,30 +81,31 @@ class ConversationHistory:
         return self._cache
 
     def _load_tail(self, n: int) -> List[Dict[str, Any]]:
-        """Load the last *n* valid records from the JSONL file."""
+        """Load the last *n* valid records from the JSONL file.
+
+        Keeps a buffer larger than *n* to account for blank/malformed lines,
+        then returns only the last *n* valid records.
+        """
         if not os.path.exists(self._history_path):
             return []
         try:
             with open(self._history_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+                # Over-read to tolerate blank/malformed lines
+                tail_lines = deque(f, maxlen=n + 50)
         except Exception as e:
             logger.warning("Failed to read conversation history: %s", e)
             return []
 
         results: List[Dict[str, Any]] = []
-        for line in reversed(lines):
+        for line in tail_lines:
             line = line.strip()
             if not line:
                 continue
             try:
-                record = json.loads(line)
+                results.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-            results.append(record)
-            if len(results) >= n:
-                break
-        results.reverse()
-        return results
+        return results[-n:]
 
     def _ensure_full_cache(self) -> List[Dict[str, Any]]:
         """Return the full cache, reloading from disk if the file changed."""

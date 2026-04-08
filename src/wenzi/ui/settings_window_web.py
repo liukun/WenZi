@@ -154,7 +154,12 @@ class SettingsWebPanel:
             self._close_delegate = None
             self._panel.orderOut_(None)
             self._panel = None
+        if self._webview is not None:
+            self._webview.stopLoading_(None)
+            self._webview.loadHTMLString_baseURL_("", None)
         self._webview = None
+        if self._message_handler is not None:
+            self._message_handler._panel_ref = None
         self._message_handler = None
         self._callbacks = None
 

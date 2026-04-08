@@ -1021,7 +1021,13 @@ class ResultPreviewPanel:
         if self._webview is not None:
             self._webview.setNavigationDelegate_(None)
             cleanup_webview_handler(self._webview, "action")
+            self._webview.stopLoading_(None)
+            self._webview.loadHTMLString_baseURL_("", None)
         self._webview = None
+        if self._message_handler is not None:
+            self._message_handler._panel_ref = None
+        if self._navigation_delegate is not None:
+            self._navigation_delegate._panel_ref = None
         self._message_handler = None
         self._navigation_delegate = None
         self._page_loaded = False
@@ -1035,6 +1041,11 @@ class ResultPreviewPanel:
             child = getattr(self, attr, None)
             if child is not None:
                 try:
+                    # Release WKWebView canvas/IOSurface memory before closing
+                    for subview in (child.contentView().subviews() or []):
+                        if hasattr(subview, 'stopLoading_'):
+                            subview.stopLoading_(None)
+                            subview.loadHTMLString_baseURL_("", None)
                     child.close()
                 except Exception:
                     pass

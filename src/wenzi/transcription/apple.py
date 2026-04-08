@@ -193,23 +193,23 @@ def prompt_siri_setup():
     return result_holder["value"]
 
 
-_audio_fmt = None  # Cached AVAudioFormat (created once per sample rate)
-_audio_fmt_sr = None
+_audio_fmt_cache = (None, None)  # (AVAudioFormat, sample_rate)
 
 
 def _int16_to_avaudiopcmbuffer(samples: np.ndarray, sample_rate: int = 16000):
     """Convert int16 numpy array to AVAudioPCMBuffer for Speech framework."""
-    global _audio_fmt, _audio_fmt_sr
+    global _audio_fmt_cache
     from AVFoundation import AVAudioFormat, AVAudioPCMBuffer
 
-    if _audio_fmt is None or _audio_fmt_sr != sample_rate:
-        _audio_fmt = AVAudioFormat.alloc().initStandardFormatWithSampleRate_channels_(
+    fmt, sr = _audio_fmt_cache
+    if fmt is None or sr != sample_rate:
+        fmt = AVAudioFormat.alloc().initStandardFormatWithSampleRate_channels_(
             float(sample_rate), 1
         )
-        _audio_fmt_sr = sample_rate
+        _audio_fmt_cache = (fmt, sample_rate)
 
     frame_count = len(samples)
-    buf = AVAudioPCMBuffer.alloc().initWithPCMFormat_frameCapacity_(_audio_fmt, frame_count)
+    buf = AVAudioPCMBuffer.alloc().initWithPCMFormat_frameCapacity_(fmt, frame_count)
     buf.setFrameLength_(frame_count)
 
     float_samples = samples.astype(np.float32) / 32768.0

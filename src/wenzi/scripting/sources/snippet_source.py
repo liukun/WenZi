@@ -48,6 +48,7 @@ import logging
 import os
 import random as _random
 import re
+import time
 from typing import Dict, List, Optional, Tuple
 
 from wenzi.config import DEFAULT_SNIPPETS_DIR as _CFG_SNIPPETS_DIR
@@ -289,6 +290,7 @@ class SnippetStore:
         self._snippets: List[Dict[str, str]] = []
         self._migrated = False
         self._cached_mtime: float = 0.0  # max mtime across directory tree
+        self._last_mtime_check: float = 0.0  # monotonic time of last os.walk
 
     @property
     def snippets(self) -> List[Dict[str, str]]:
@@ -329,7 +331,12 @@ class SnippetStore:
         if not self._migrated:
             self._migrated = True
             self._maybe_migrate()
+        # Skip the expensive os.walk mtime check if we checked recently
+        now = time.monotonic()
+        if self._snippets and now - self._last_mtime_check < 2.0:
+            return
         current_mtime = self._get_dir_tree_mtime()
+        self._last_mtime_check = now
         if self._snippets and current_mtime == self._cached_mtime:
             return
         self._scan_directory()
@@ -646,6 +653,7 @@ class SnippetStore:
         """Force reload from disk."""
         self._snippets = []
         self._cached_mtime = 0.0
+        self._last_mtime_check = 0.0
         self._ensure_loaded()
 
     # -- last category persistence ------------------------------------------

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
@@ -14,7 +16,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PreviewRecord:
-    """A single preview result cached in memory."""
+    """A single preview result cached in memory.
+
+    WAV audio is stored in a temporary file to avoid keeping large
+    byte buffers in RAM.  Use :meth:`load_wav_data` to read the bytes
+    back and :attr:`wav_path` to check whether audio is available.
+    """
 
     timestamp: Optional[str]  # None = from cancel (not in ConversationHistory)
     created_at: str  # always set — local ISO time for display
@@ -25,7 +32,7 @@ class PreviewRecord:
     enhance_mode: str
     stt_model: str
     llm_model: str
-    wav_data: Optional[bytes]
+    wav_data: Optional[bytes]  # deprecated — use wav_path / load_wav_data()
     audio_duration: float
     source: str  # "voice" | "clipboard"
     system_prompt: str = ""
@@ -33,6 +40,41 @@ class PreviewRecord:
     token_usage: dict | None = None
     hotwords_detail: list = field(default_factory=list)  # List[HotwordDetail]
     input_context: "InputContext | None" = None
+    wav_path: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """If wav_data bytes were provided, spill them to a temp file."""
+        if self.wav_data is not None and self.wav_path is None:
+            try:
+                fd, path = tempfile.mkstemp(suffix=".wav", prefix="wenzi_preview_")
+                try:
+                    os.write(fd, self.wav_data)
+                finally:
+                    os.close(fd)
+                self.wav_path = path
+                self.wav_data = None  # only clear after successful write
+            except Exception as e:
+                logger.warning("Failed to write WAV temp file: %s", e)
+
+    def load_wav_data(self) -> Optional[bytes]:
+        """Read WAV bytes from the backing temp file, or return None."""
+        if self.wav_path is None:
+            return self.wav_data
+        try:
+            with open(self.wav_path, "rb") as f:
+                return f.read()
+        except Exception as e:
+            logger.warning("Failed to read WAV temp file %s: %s", self.wav_path, e)
+            return None
+
+    def cleanup_wav(self) -> None:
+        """Delete the backing WAV temp file if it exists."""
+        if self.wav_path is not None:
+            try:
+                os.unlink(self.wav_path)
+            except OSError:
+                pass
+            self.wav_path = None
 
 
 class PreviewHistoryStore:
@@ -41,6 +83,10 @@ class PreviewHistoryStore:
     Keeps the most recent *max_size* records.  Oldest records are
     discarded when the limit is exceeded.  Not persisted — cleared
     on application restart.
+
+    WAV audio data is stored in temporary files rather than in-memory
+    bytes to limit RAM usage.  Temp files are deleted when records are
+    evicted or when :meth:`clear` / :meth:`shutdown` is called.
     """
 
     def __init__(self, max_size: int = 10) -> None:
@@ -51,7 +97,8 @@ class PreviewHistoryStore:
         """Append a record.  Drops the oldest if at capacity."""
         self._records.append(record)
         if len(self._records) > self._max_size:
-            self._records.pop(0)
+            evicted = self._records.pop(0)
+            evicted.cleanup_wav()
 
     def get_all(self) -> list[PreviewRecord]:
         """Return all records, newest first."""
@@ -89,4 +136,11 @@ class PreviewHistoryStore:
         return len(self._records)
 
     def clear(self) -> None:
+        """Remove all records and clean up their temp files."""
+        for record in self._records:
+            record.cleanup_wav()
         self._records.clear()
+
+    def shutdown(self) -> None:
+        """Clean up all temp files.  Call on application quit."""
+        self.clear()

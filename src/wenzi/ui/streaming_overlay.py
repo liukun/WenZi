@@ -72,8 +72,7 @@ class StreamingOverlayPanel:
         self._panel: object = None
         self._webview: object = None
         self._nav_delegate: object = None
-        self._key_tap: object = None
-        self._key_tap_source: object = None
+        self._tap_runner: object = None
         self._cancel_event: Optional[threading.Event] = None
         self._on_cancel: object = None
         self._on_confirm_asr: object = None
@@ -255,108 +254,68 @@ class StreamingOverlayPanel:
 
     def _register_key_tap(self) -> None:
         """Create a CGEventTap that intercepts and swallows ESC / Enter."""
-        if self._key_tap is not None:
+        if self._tap_runner is not None:
             return
-        try:
-            import Quartz
-        except ImportError:
-            logger.warning("Quartz not available, cannot create key tap")
-            return
+        from wenzi import _cgeventtap as cg
 
-        _kCGEventKeyDown = Quartz.kCGEventKeyDown
-        _kCGKeyboardEventKeycode = Quartz.kCGKeyboardEventKeycode
+        self._tap_runner = cg.CGEventTapRunner()
+        mask = cg.CGEventMaskBit(cg.kCGEventKeyDown)
+        self._tap_runner.start(mask, self._key_tap_callback)
 
-        def _callback(proxy, event_type, event, refcon):
-            try:
-                if event_type == Quartz.kCGEventTapDisabledByTimeout:
-                    if self._key_tap is not None:
-                        Quartz.CGEventTapEnable(self._key_tap, True)
-                    return event
-                if event_type != _kCGEventKeyDown:
-                    return event
-
-                keycode = Quartz.CGEventGetIntegerValueField(
-                    event, _kCGKeyboardEventKeycode,
-                )
-
-                if keycode == _ESC_KEY_CODE:
-                    # Disable tap to prevent auto-repeat queueing
-                    if self._key_tap is not None:
-                        Quartz.CGEventTapEnable(self._key_tap, False)
-                    if self._cancel_event is not None:
-                        self._cancel_event.set()
-                    if self._on_cancel is not None:
-                        try:
-                            self._on_cancel()
-                        except Exception:
-                            logger.error(
-                                "on_cancel callback failed", exc_info=True
-                            )
-                    from PyObjCTools import AppHelper
-
-                    AppHelper.callAfter(self._do_close)
-                    logger.info("Streaming cancelled via ESC key")
-                    return None  # swallow
-
-                if keycode == _RETURN_KEY_CODE and self._on_confirm_asr is not None:
-                    try:
-                        self._on_confirm_asr()
-                    except Exception:
-                        logger.error(
-                            "on_confirm_asr callback failed",
-                            exc_info=True,
-                        )
-                    logger.info("ASR confirmed via Enter key")
-                    return None  # swallow
-
-            except Exception:
-                logger.warning("Key tap callback error", exc_info=True)
-            return event
-
-        mask = Quartz.CGEventMaskBit(_kCGEventKeyDown)
-        tap = Quartz.CGEventTapCreate(
-            Quartz.kCGSessionEventTap,
-            Quartz.kCGHeadInsertEventTap,
-            Quartz.kCGEventTapOptionDefault,
-            mask,
-            _callback,
-            None,
-        )
-        if tap is None:
-            logger.warning("Failed to create key event tap (no permission?)")
-            return
+    def _key_tap_callback(self, proxy, event_type, event, refcon):
+        """CGEventTap callback — runs on the tap's background thread."""
+        from wenzi import _cgeventtap as cg
 
         try:
-            source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+            if event_type == cg.kCGEventTapDisabledByTimeout:
+                if self._tap_runner is not None and self._tap_runner.tap is not None:
+                    cg.CGEventTapEnable(self._tap_runner.tap, True)
+                return event
+
+            if event_type != cg.kCGEventKeyDown:
+                return event
+
+            keycode = cg.CGEventGetIntegerValueField(
+                event, cg.kCGKeyboardEventKeycode,
+            )
+
+            if keycode == _ESC_KEY_CODE:
+                # Disable tap to prevent auto-repeat queueing
+                if self._tap_runner is not None and self._tap_runner.tap is not None:
+                    cg.CGEventTapEnable(self._tap_runner.tap, False)
+                if self._cancel_event is not None:
+                    self._cancel_event.set()
+                from PyObjCTools import AppHelper
+
+                # Marshal callbacks to the main thread — this callback
+                # runs on the CGEventTap background thread.
+                on_cancel = self._on_cancel
+                if on_cancel is not None:
+                    AppHelper.callAfter(on_cancel)
+                AppHelper.callAfter(self._do_close)
+                logger.info("Streaming cancelled via ESC key")
+                return None  # swallow
+
+            if keycode == _RETURN_KEY_CODE and self._on_confirm_asr is not None:
+                # Disable tap to prevent auto-repeat queueing
+                if self._tap_runner is not None and self._tap_runner.tap is not None:
+                    cg.CGEventTapEnable(self._tap_runner.tap, False)
+                from PyObjCTools import AppHelper
+
+                on_confirm = self._on_confirm_asr
+                AppHelper.callAfter(on_confirm)
+                logger.info("ASR confirmed via Enter key")
+                return None  # swallow
+
         except Exception:
-            logger.warning("Failed to create run loop source", exc_info=True)
-            return
-        loop = Quartz.CFRunLoopGetMain()
-        Quartz.CFRunLoopAddSource(loop, source, Quartz.kCFRunLoopDefaultMode)
-        Quartz.CGEventTapEnable(tap, True)
-
-        self._key_tap = tap
-        self._key_tap_source = source
-        logger.debug("Key event tap started")
+            logger.warning("Key tap callback error", exc_info=True)
+        return event
 
     def _remove_key_tap(self) -> None:
         """Disable and remove the CGEventTap."""
-        if self._key_tap is None:
-            return
-        try:
-            import Quartz
-
-            Quartz.CGEventTapEnable(self._key_tap, False)
-            if self._key_tap_source is not None:
-                loop = Quartz.CFRunLoopGetMain()
-                Quartz.CFRunLoopRemoveSource(
-                    loop, self._key_tap_source,
-                    Quartz.kCFRunLoopDefaultMode,
-                )
-        except Exception:
-            logger.warning("Failed to stop key tap", exc_info=True)
-        self._key_tap = None
-        self._key_tap_source = None
+        if self._tap_runner is not None:
+            self._tap_runner.stop()
+            self._tap_runner = None
 
     # ------------------------------------------------------------------
     # Loading timer (elapsed seconds while waiting for first chunk)
@@ -453,7 +412,7 @@ class StreamingOverlayPanel:
 
         def _update():
             self._cancel_event = cancel_event
-            if self._key_tap is None:
+            if self._tap_runner is None:
                 self._register_key_tap()
 
         AppHelper.callAfter(_update)
@@ -584,6 +543,8 @@ class StreamingOverlayPanel:
         try:
             if self._webview is not None:
                 self._webview.setNavigationDelegate_(None)
+                self._webview.stopLoading_(None)
+                self._webview.loadHTMLString_baseURL_("", None)
             if self._nav_delegate is not None:
                 self._nav_delegate._panel_ref = None
         except Exception:

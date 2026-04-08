@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import weakref
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +61,8 @@ class LiveTranscriptionOverlay:
     # Alpha value for the inactive (waiting-for-recording) state
     _INACTIVE_ALPHA = 0.35
 
-    # Track all live instances for bulk cleanup
-    _instances: set[LiveTranscriptionOverlay] = set()
+    # Track all live instances for bulk cleanup (weak references to allow GC)
+    _instances: weakref.WeakSet[LiveTranscriptionOverlay] = weakref.WeakSet()
 
     def __init__(self) -> None:
         self._panel: object = None

@@ -179,6 +179,8 @@ class _DebounceEntry(NamedTuple):
 # Panel
 # ---------------------------------------------------------------------------
 
+_ESC_KEYCODE = 53
+
 
 class ChooserPanel:
     """Alfred/Raycast-style search launcher panel.
@@ -222,8 +224,7 @@ class ChooserPanel:
         self._ql_panel = None  # Quick Look preview panel
         self._calc_mode: bool = False  # Calculator pin mode
         self._calc_sticky: bool = False  # Sticky: keep pinned for incomplete expressions
-        self._esc_tap = None  # CGEventTap for global ESC
-        self._esc_source = None  # CFRunLoopSource for ESC tap
+        self._esc_runner = None  # CGEventTapRunner for global ESC
         self._show_preview: bool = False
         self._compact_results: bool = False
         self._switch_english: bool = True
@@ -473,84 +474,51 @@ class ChooserPanel:
         logger.debug("Exited calculator pin mode")
 
     def _start_esc_tap(self) -> None:
-        """Create a CGEventTap on the main run loop that swallows ESC."""
-        try:
-            import Quartz
-        except ImportError:
-            logger.warning("Quartz not available, cannot create ESC tap")
-            self.close()
+        """Create a CGEventTap on a background thread that swallows ESC."""
+        if self._esc_runner is not None:
             return
+        from wenzi import _cgeventtap as cg
+        from PyObjCTools import AppHelper
 
-        _kCGEventKeyDown = Quartz.kCGEventKeyDown
-        _kCGKeyboardEventKeycode = Quartz.kCGKeyboardEventKeycode
-        _ESC_KEYCODE = 53
-
-        def _esc_callback(proxy, event_type, event, refcon):
-            try:
-                if event_type == Quartz.kCGEventTapDisabledByTimeout:
-                    if self._esc_tap is not None:
-                        Quartz.CGEventTapEnable(self._esc_tap, True)
-                    return event
-                if event_type == _kCGEventKeyDown:
-                    keycode = Quartz.CGEventGetIntegerValueField(
-                        event,
-                        _kCGKeyboardEventKeycode,
-                    )
-                    if keycode == _ESC_KEYCODE:
-                        # Disable tap immediately to prevent auto-repeat
-                        # from queuing multiple close() calls
-                        if self._esc_tap is not None:
-                            Quartz.CGEventTapEnable(self._esc_tap, False)
-                        from PyObjCTools import AppHelper
-
-                        AppHelper.callAfter(self.close)
-                        return None  # Swallow ESC
-            except Exception:
-                logger.warning("ESC tap callback error", exc_info=True)
-            return event
-
-        mask = Quartz.CGEventMaskBit(_kCGEventKeyDown)
-        tap = Quartz.CGEventTapCreate(
-            Quartz.kCGSessionEventTap,
-            Quartz.kCGHeadInsertEventTap,
-            Quartz.kCGEventTapOptionDefault,
-            mask,
-            _esc_callback,
-            None,
+        self._esc_runner = cg.CGEventTapRunner()
+        mask = cg.CGEventMaskBit(cg.kCGEventKeyDown)
+        self._esc_runner.start(
+            mask, self._esc_tap_callback,
+            on_create_failed=lambda: AppHelper.callAfter(self.close),
         )
-        if tap is None:
-            logger.warning("Failed to create ESC event tap — closing panel instead")
-            self.close()
-            return
 
-        source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
-        loop = Quartz.CFRunLoopGetMain()
-        Quartz.CFRunLoopAddSource(loop, source, Quartz.kCFRunLoopDefaultMode)
-        Quartz.CGEventTapEnable(tap, True)
+    def _esc_tap_callback(self, proxy, event_type, event, refcon):
+        """CGEventTap callback for ESC — runs on the tap's background thread."""
+        from wenzi import _cgeventtap as cg
 
-        self._esc_tap = tap
-        self._esc_source = source
-        logger.debug("ESC event tap started on main run loop")
+        try:
+            if event_type == cg.kCGEventTapDisabledByTimeout:
+                if self._esc_runner is not None and self._esc_runner.tap is not None:
+                    cg.CGEventTapEnable(self._esc_runner.tap, True)
+                return event
+            if event_type == cg.kCGEventKeyDown:
+                keycode = cg.CGEventGetIntegerValueField(
+                    event,
+                    cg.kCGKeyboardEventKeycode,
+                )
+                if keycode == _ESC_KEYCODE:
+                    # Disable tap immediately to prevent auto-repeat
+                    # from queuing multiple close() calls
+                    if self._esc_runner is not None and self._esc_runner.tap is not None:
+                        cg.CGEventTapEnable(self._esc_runner.tap, False)
+                    from PyObjCTools import AppHelper
+
+                    AppHelper.callAfter(self.close)
+                    return None  # Swallow ESC
+        except Exception:
+            logger.warning("ESC tap callback error", exc_info=True)
+        return event
 
     def _stop_esc_tap(self) -> None:
         """Disable and remove the ESC event tap."""
-        if self._esc_tap is None:
-            return
-        try:
-            import Quartz
-
-            Quartz.CGEventTapEnable(self._esc_tap, False)
-            if self._esc_source is not None:
-                loop = Quartz.CFRunLoopGetMain()
-                Quartz.CFRunLoopRemoveSource(
-                    loop,
-                    self._esc_source,
-                    Quartz.kCFRunLoopDefaultMode,
-                )
-        except Exception:
-            logger.warning("Failed to stop ESC tap", exc_info=True)
-        self._esc_tap = None
-        self._esc_source = None
+        if self._esc_runner is not None:
+            self._esc_runner.stop()
+            self._esc_runner = None
         logger.debug("ESC event tap stopped")
 
     # ------------------------------------------------------------------

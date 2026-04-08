@@ -488,6 +488,8 @@ class TestSnippetStore:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(_format_snippet_file(";;a", "updated"))
 
+        # Reset mtime TTL cache so the change is detected immediately
+        store._last_mtime_check = 0
         result = store.snippets
         assert len(result) == 1
         assert result[0]["content"] == "updated"
@@ -671,6 +673,7 @@ class TestSnippetStore:
         time.sleep(0.05)
         _write_snippet(sdir, "b", ";;b", "bbb")
 
+        store._last_mtime_check = 0  # reset TTL cache
         assert len(store.snippets) == 2
 
 

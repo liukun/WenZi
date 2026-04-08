@@ -67,6 +67,7 @@ class EnhanceController:
         self._current_task: asyncio.Task | None = None
         self._enhance_mode: str = "off"
         self._last_pushed_asr_text: str = ""
+        self._current_asr_text: str = ""
 
     @property
     def enhancer(self) -> Optional[TextEnhancer]:
@@ -85,13 +86,19 @@ class EnhanceController:
         self._enhance_mode = value
         self._refresh_diffs_for_mode(value)
 
-    def cache_key(self) -> tuple:
-        """Build cache key from current enhance settings."""
+    def cache_key(self, asr_text: str | None = None) -> tuple:
+        """Build cache key from current enhance settings and ASR text.
+
+        Includes a hash of the ASR text so that different input texts
+        produce different cache keys, preventing stale result reuse.
+        """
+        text = asr_text if asr_text is not None else self._current_asr_text
         return (
             self._enhance_mode,
             self._enhancer.provider_name if self._enhancer else "",
             self._enhancer.model_name if self._enhancer else "",
             self._enhancer.thinking if self._enhancer else False,
+            hash(text),
         )
 
     def get_cached(self) -> EnhanceCacheEntry | None:
@@ -296,6 +303,7 @@ class EnhanceController:
             return
 
         self.cancel()
+        self._current_asr_text = asr_text
 
         # Resolve chain steps
         current_mode_def = self._enhancer.get_mode_definition(self._enhance_mode)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from wenzi.enhance.preview_history import PreviewHistoryStore, PreviewRecord
 
 
@@ -69,6 +71,24 @@ class TestPreviewHistoryStore:
         assert items[0].asr_text == "text4"
         assert items[1].asr_text == "text3"
         assert items[2].asr_text == "text2"
+        store.shutdown()
+
+    def test_max_size_eviction_cleans_wav_files(self):
+        store = PreviewHistoryStore(max_size=2)
+        r1 = _make_record(asr_text="first")
+        wav_path_1 = r1.wav_path
+        assert wav_path_1 is not None
+        assert os.path.exists(wav_path_1)
+
+        store.add(r1)
+        store.add(_make_record(asr_text="second"))
+        # r1 is still in store
+        assert os.path.exists(wav_path_1)
+
+        store.add(_make_record(asr_text="third"))
+        # r1 was evicted — its temp file should be deleted
+        assert not os.path.exists(wav_path_1)
+        store.shutdown()
 
     def test_clear(self):
         store = PreviewHistoryStore()
@@ -140,18 +160,29 @@ class TestPreviewHistoryStore:
         texts = [store.get(i).asr_text for i in range(store.count())]
         assert "keep_me" in texts
         assert "b" not in texts
+        store.shutdown()
 
-    def test_wav_data_stored(self):
+    def test_wav_data_spilled_to_file(self):
         store = PreviewHistoryStore()
         wav = b"RIFF" + b"\x00" * 1000
         store.add(_make_record(wav_data=wav))
-        assert store.get(0).wav_data is wav
+        rec = store.get(0)
+        # In-memory wav_data should be cleared after spill
+        assert rec.wav_data is None
+        # wav_path should point to a real temp file
+        assert rec.wav_path is not None
+        assert os.path.exists(rec.wav_path)
+        # load_wav_data() should return the original bytes
+        assert rec.load_wav_data() == wav
+        store.shutdown()
 
     def test_clipboard_source(self):
         store = PreviewHistoryStore()
         store.add(_make_record(source="clipboard", wav_data=None))
         assert store.get(0).source == "clipboard"
-        assert store.get(0).wav_data is None
+        assert store.get(0).wav_path is None
+        assert store.get(0).load_wav_data() is None
+        store.shutdown()
 
     def test_default_max_size(self):
         store = PreviewHistoryStore()
@@ -203,6 +234,44 @@ class TestPreviewHistoryStore:
         store = PreviewHistoryStore()
         store.add(_make_record())
         assert store.get(0).hotwords_detail == []
+
+
+class TestPreviewRecordWavLifecycle:
+    def test_cleanup_wav_deletes_file(self):
+        r = _make_record(wav_data=b"RIFF" + b"\x00" * 100)
+        path = r.wav_path
+        assert path is not None
+        assert os.path.exists(path)
+        r.cleanup_wav()
+        assert not os.path.exists(path)
+        assert r.wav_path is None
+
+    def test_cleanup_wav_noop_when_no_file(self):
+        r = _make_record(wav_data=None)
+        r.cleanup_wav()  # should not raise
+        assert r.wav_path is None
+
+    def test_shutdown_cleans_all_temp_files(self):
+        store = PreviewHistoryStore(max_size=5)
+        paths = []
+        for i in range(3):
+            r = _make_record(asr_text=f"t{i}")
+            paths.append(r.wav_path)
+            store.add(r)
+
+        for p in paths:
+            assert os.path.exists(p)
+
+        store.shutdown()
+
+        for p in paths:
+            assert not os.path.exists(p)
+        assert store.count() == 0
+
+    def test_load_wav_data_returns_none_after_cleanup(self):
+        r = _make_record(wav_data=b"RIFF" + b"\x00" * 50)
+        r.cleanup_wav()
+        assert r.load_wav_data() is None
 
 
 class TestPreviewRecordInputContext:

@@ -403,6 +403,10 @@ class ManualVocabularyStore:
         self._cache = None
         self._db.update_fields(entry_id, fields)
 
+    def close(self) -> None:
+        """Close the underlying database connection."""
+        self._db.close()
+
     @property
     def entry_count(self) -> int:
         return self._db.entry_count

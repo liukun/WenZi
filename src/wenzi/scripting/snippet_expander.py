@@ -15,7 +15,7 @@ import ctypes.util
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from wenzi.scripting.sources.snippet_source import SnippetStore
@@ -80,10 +80,7 @@ class SnippetExpander:
         self._store = store
         self._buffer = ""
         self._lock = threading.Lock()
-        self._tap = None
-        self._loop = None
-        self._thread: Optional[threading.Thread] = None
-        self._ctypes_cb = None  # prevent GC of ctypes callback
+        self._runner = None
         self._expanding = False  # Guard against re-entrance during expansion
         self._suppressed = False  # True while our own panels are key
 
@@ -105,53 +102,15 @@ class SnippetExpander:
         """Start listening for keystrokes."""
         from wenzi import _cgeventtap as cg
 
-        def _raw_cb(proxy, event_type, event, refcon):
-            self._callback(proxy, event_type, event, refcon)
-            return 0  # listen-only, return value ignored
-        self._ctypes_cb = cg.CGEventTapCallBack(_raw_cb)  # prevent GC!
-
+        self._runner = cg.CGEventTapRunner()
         mask = cg.CGEventMaskBit(cg.kCGEventKeyDown)
-
-        def _run():
-            self._tap = cg.CGEventTapCreate(
-                cg.kCGSessionEventTap,
-                cg.kCGHeadInsertEventTap,
-                cg.kCGEventTapOptionListenOnly,
-                mask,
-                self._ctypes_cb,
-                None,
-            )
-            if not self._tap:
-                logger.error(
-                    "SnippetExpander: failed to create event tap. "
-                    "Check accessibility permissions."
-                )
-                return
-
-            source = cg.CFMachPortCreateRunLoopSource(None, self._tap, 0)
-            self._loop = cg.CFRunLoopGetCurrent()
-            cg.CFRunLoopAddSource(self._loop, source, cg.kCFRunLoopDefaultMode.value)
-            cg.CGEventTapEnable(self._tap, True)
-            logger.info("SnippetExpander started")
-            cg.CFRunLoopRun()
-
-        self._thread = threading.Thread(target=_run, daemon=True)
-        self._thread.start()
+        self._runner.start(mask, self._callback, option=cg.kCGEventTapOptionListenOnly)
 
     def stop(self) -> None:
         """Stop listening."""
-        from wenzi import _cgeventtap as cg
-
-        if self._tap is not None:
-            cg.CGEventTapEnable(self._tap, False)
-        if self._loop is not None:
-            cg.CFRunLoopStop(self._loop)
-            self._loop = None
-        self._tap = None
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
-            self._thread = None
-        self._ctypes_cb = None
+        if self._runner is not None:
+            self._runner.stop()
+            self._runner = None
         with self._lock:
             self._buffer = ""
         logger.info("SnippetExpander stopped")
@@ -165,8 +124,8 @@ class SnippetExpander:
         try:
             if event_type == cg.kCGEventTapDisabledByTimeout:
                 logger.warning("SnippetExpander tap disabled by timeout, re-enabling")
-                if self._tap is not None:
-                    cg.CGEventTapEnable(self._tap, True)
+                if self._runner is not None and self._runner.tap is not None:
+                    cg.CGEventTapEnable(self._runner.tap, True)
                 return None
 
             if self._expanding or self._suppressed:

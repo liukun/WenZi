@@ -232,34 +232,20 @@ class TestQuartzAllKeysListener:
         # Should be an int (snapshot of current flags), not necessarily 0
         assert isinstance(listener._mod_flags_prev, int)
 
-    def test_stop_disables_tap_before_stopping_runloop(self):
-        """stop() must disable the CGEventTap so it stops intercepting events
-        immediately, preventing queued/swallowed keystrokes."""
+    def test_stop_delegates_to_runner(self):
+        """stop() must delegate to _runner.stop() and clear the reference."""
         from wenzi.hotkey import _QuartzAllKeysListener
-        import wenzi._cgeventtap as cg
 
         listener = _QuartzAllKeysListener(
             on_press=MagicMock(), on_release=MagicMock()
         )
-        fake_tap = MagicMock()
-        fake_loop = MagicMock()
-        listener._tap = fake_tap
-        listener._loop = fake_loop
+        mock_runner = MagicMock()
+        listener._runner = mock_runner
 
-        with (
-            pytest.MonkeyPatch.context() as mp,
-        ):
-            calls = []
-            mp.setattr(cg, "CGEventTapEnable",
-                        lambda tap, en: calls.append(("disable", tap, en)))
-            mp.setattr(cg, "CFRunLoopStop",
-                        lambda loop: calls.append(("stop", loop)))
-            listener.stop()
+        listener.stop()
 
-        assert calls[0] == ("disable", fake_tap, False)
-        assert calls[1] == ("stop", fake_loop)
-        assert listener._tap is None
-        assert listener._loop is None
+        mock_runner.stop.assert_called_once()
+        assert listener._runner is None
 
     def test_tap_timeout_resyncs_modifier_flags(self):
         """When CGEventTap is disabled by timeout, missed modifier releases
@@ -272,7 +258,8 @@ class TestQuartzAllKeysListener:
             on_press=MagicMock(), on_release=on_release
         )
         fake_tap = MagicMock()
-        listener._tap = fake_tap
+        listener._runner = MagicMock()
+        listener._runner.tap = fake_tap
         # Simulate: fn was held (flag was set)
         listener._mod_flags_prev = _FN_FLAG
 
@@ -298,7 +285,8 @@ class TestQuartzAllKeysListener:
             on_press=MagicMock(), on_release=on_release
         )
         fake_tap = MagicMock()
-        listener._tap = fake_tap
+        listener._runner = MagicMock()
+        listener._runner.tap = fake_tap
         listener._mod_flags_prev = _FN_FLAG
 
         with pytest.MonkeyPatch.context() as mp:
@@ -326,29 +314,16 @@ class TestTapHotkeyListener:
         listener = TapHotkeyListener("ctrl+v", MagicMock())
         listener.stop()
 
-    def test_stop_disables_tap_before_stopping_runloop(self):
-        """stop() must disable the CGEventTap to avoid swallowing events."""
-        import wenzi._cgeventtap as cg
-
+    def test_stop_delegates_to_runner(self):
+        """stop() must delegate to _runner.stop() and clear the reference."""
         listener = TapHotkeyListener("ctrl+v", MagicMock())
-        fake_tap = MagicMock()
-        fake_loop = MagicMock()
-        listener._tap = fake_tap
-        listener._loop = fake_loop
+        mock_runner = MagicMock()
+        listener._runner = mock_runner
 
-        with pytest.MonkeyPatch.context() as mp:
-            calls = []
-            mp.setattr(cg, "CGEventTapEnable",
-                        lambda tap, en: calls.append(("disable", tap, en)))
-            mp.setattr(cg, "CFRunLoopStop",
-                        lambda loop: calls.append(("stop", loop)))
-            listener.stop()
+        listener.stop()
 
-        assert calls[0] == ("disable", fake_tap, False)
-        assert calls[1] == ("stop", fake_loop)
-        assert listener._tap is None
-        assert listener._loop is None
-        assert listener._tap is None
+        mock_runner.stop.assert_called_once()
+        assert listener._runner is None
 
 
 class TestMultiHotkeyListener:
@@ -988,6 +963,8 @@ class TestKeyRemapListener:
         import wenzi._cgeventtap as cg
 
         listener = KeyRemapListener()
+        listener._runner = MagicMock()
+        listener._runner.tap = MagicMock()
         listener.add(60, 80, True, 0x020000)  # shift_r → f19
         listener._prev_flags = 0
 
@@ -1028,6 +1005,8 @@ class TestKeyRemapListener:
         import wenzi._cgeventtap as cg
 
         listener = KeyRemapListener()
+        listener._runner = MagicMock()
+        listener._runner.tap = MagicMock()
         listener.add(60, 80, True, 0x020000)
         listener._prev_flags = 0x020000  # Was previously down
 
@@ -1061,6 +1040,8 @@ class TestKeyRemapListener:
         import wenzi._cgeventtap as cg
 
         listener = KeyRemapListener()
+        listener._runner = MagicMock()
+        listener._runner.tap = MagicMock()
         listener.add(60, 80, True, 0x020000)
 
         event = 0xBEEF  # raw pointer placeholder
@@ -1081,6 +1062,8 @@ class TestKeyRemapListener:
         import wenzi._cgeventtap as cg
 
         listener = KeyRemapListener()
+        listener._runner = MagicMock()
+        listener._runner.tap = MagicMock()
         listener.add(105, 53, False, 0)  # f13 → esc
 
         posted_events = []

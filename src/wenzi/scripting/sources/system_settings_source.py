@@ -282,29 +282,38 @@ def _get_icon_png(appex_path: str) -> Optional[bytes]:
             from AppKit import (
                 NSBitmapImageRep,
                 NSCompositingOperationCopy,
-                NSImage,
+                NSDeviceRGBColorSpace,
+                NSGraphicsContext,
                 NSPNGFileType,
                 NSWorkspace,
             )
-            from Foundation import NSMakeRect, NSSize
+            from Foundation import NSMakeRect, NSZeroRect
 
             ws = NSWorkspace.sharedWorkspace()
             icon = ws.iconForFile_(appex_path)
             if icon is None:
                 return None
 
-            size = NSSize(_ICON_SIZE, _ICON_SIZE)
-            target = NSImage.alloc().initWithSize_(size)
-            target.lockFocus()
+            # Render into a bitmap rep (thread-safe, no deprecated lockFocus)
+            sz = _ICON_SIZE
+            rep = NSBitmapImageRep.alloc() \
+                .initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(  # noqa: E501
+                    None, sz, sz, 8, 4, True, False,
+                    NSDeviceRGBColorSpace, 0, 0,
+                )
+            if rep is None:
+                return None
+            ctx = NSGraphicsContext.graphicsContextWithBitmapImageRep_(rep)
+            if ctx is None:
+                return None
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.setCurrentContext_(ctx)
             icon.drawInRect_fromRect_operation_fraction_(
-                NSMakeRect(0, 0, _ICON_SIZE, _ICON_SIZE),
-                NSMakeRect(0, 0, icon.size().width, icon.size().height),
-                NSCompositingOperationCopy,
-                1.0,
+                NSMakeRect(0, 0, sz, sz), NSZeroRect,
+                NSCompositingOperationCopy, 1.0,
             )
-            target.unlockFocus()
+            NSGraphicsContext.restoreGraphicsState()
 
-            rep = NSBitmapImageRep.imageRepWithData_(target.TIFFRepresentation())
             png_data = rep.representationUsingType_properties_(NSPNGFileType, None)
             return bytes(png_data) if png_data else None
         except Exception:

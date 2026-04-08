@@ -64,6 +64,8 @@ class PunctuationRestorer:
         """Release model resources."""
         self._model = None
         self._initialized = False
+        import gc
+        gc.collect()
 
     @staticmethod
     def _get_model_dir(model_name: str, revision: str) -> str:

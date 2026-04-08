@@ -213,7 +213,7 @@ class PreviewController:
                     asr_text=record.asr_text,
                     use_enhance=bool(app._enhancer and app._enhancer.is_active),
                     audio_duration=record.audio_duration,
-                    wav_data=record.wav_data,
+                    wav_data=record.load_wav_data(),
                     initial_history_index=0,
                 )
             except Exception as e:
@@ -245,7 +245,7 @@ class PreviewController:
             self._result_holder["token_usage"] = record.token_usage
 
         # Load WAV data so Play/Save buttons work
-        app._preview_panel._asr_wav_data = record.wav_data
+        app._preview_panel._asr_wav_data = record.load_wav_data()
 
         # Compute asr_info
         asr_info = ""
@@ -258,7 +258,7 @@ class PreviewController:
             enhanced_text=record.enhanced_text,
             final_text=record.final_text,
             enhance_mode=record.enhance_mode,
-            has_audio=record.wav_data is not None,
+            has_audio=record.wav_path is not None,
             asr_info=asr_info,
             system_prompt=record.system_prompt,
             thinking_text=record.thinking_text,

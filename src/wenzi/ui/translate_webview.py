@@ -43,7 +43,14 @@ def _create_resign_delegate_class():
     return _TranslateResignDelegate
 
 
-_ResignDelegate = _create_resign_delegate_class()
+_ResignDelegate = None
+
+
+def _get_resign_delegate_class():
+    global _ResignDelegate
+    if _ResignDelegate is None:
+        _ResignDelegate = _create_resign_delegate_class()
+    return _ResignDelegate
 
 
 class TranslateWebViewPanel:
@@ -110,7 +117,7 @@ class TranslateWebViewPanel:
         self._webview = webview
 
         # Delegate to auto-close on focus loss
-        delegate = _ResignDelegate.alloc().init()
+        delegate = _get_resign_delegate_class().alloc().init()
         delegate._owner = self
         panel.setDelegate_(delegate)
         self._delegate = delegate
@@ -126,7 +133,8 @@ class TranslateWebViewPanel:
     def _cleanup(self) -> None:
         """Close the panel and clear references."""
         if self._webview is not None:
-            self._webview.stopLoading()
+            self._webview.stopLoading_(None)
+            self._webview.loadHTMLString_baseURL_("", None)
             self._webview = None
         if self._panel is not None:
             try:

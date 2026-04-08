@@ -139,6 +139,8 @@ class VocabBuildProgressPanel:
             if self._panel is not None:
                 # Clear delegate before closing to prevent windowWillClose: re-entry
                 self._panel.setDelegate_(None)
+                if self._close_delegate is not None:
+                    self._close_delegate._panel_ref = None
                 self._close_delegate = None
                 self._panel.orderOut_(None)
                 self._panel = None

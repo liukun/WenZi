@@ -548,7 +548,7 @@ class ClipboardMonitor:
                 logger.warning("Clipboard monitor thread did not stop in time")
             self._thread = None
         if self._ocr_executor is not None:
-            self._ocr_executor.shutdown(wait=False)
+            self._ocr_executor.shutdown(wait=False, cancel_futures=True)
             self._ocr_executor = None
         if self._db is not None:
             self._db.close()

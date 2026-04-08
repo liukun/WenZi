@@ -168,6 +168,12 @@ class LogViewerPanel:
         NSApp.setActivationPolicy_(0)  # NSApplicationActivationPolicyRegular
         if self._panel is None:
             self._build_panel()
+        elif self._close_delegate is None:
+            # Rebuild delegate lost during close() so the close button works
+            delegate_cls = _get_panel_close_delegate_class()
+            self._close_delegate = delegate_cls.alloc().init()
+            self._close_delegate._panel_ref = self
+            self._panel.setDelegate_(self._close_delegate)
 
         # Set initial control states
         if self._log_level_popup is not None:

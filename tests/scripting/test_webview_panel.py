@@ -284,7 +284,7 @@ class TestWebViewPanelLifecycle:
         assert p._open is False
 
     def test_close_calls_reject_all_pending(self):
-        """Closing should invoke _reject_all_pending before setting _open=False."""
+        """Closing should invoke _reject_all_pending after setting _open=False."""
         panel = _make_panel()
         open_during_reject = []
 
@@ -299,8 +299,21 @@ class TestWebViewPanelLifecycle:
         with patch.dict("sys.modules", {"AppKit": MagicMock()}):
             panel.close()
 
-        # _reject_all_pending was called while _open was still True
-        assert open_during_reject == [True]
+        # on_close callbacks fire first (while _open is still True),
+        # then _open is set to False, then _reject_all_pending runs.
+        assert open_during_reject == [False]
+
+    def test_on_close_callbacks_see_panel_open(self):
+        """on_close callbacks should fire while _open is still True."""
+        panel = _make_panel()
+        open_during_callback = []
+
+        panel.on_close(lambda: open_during_callback.append(panel._open))
+
+        with patch.dict("sys.modules", {"AppKit": MagicMock()}):
+            panel.close()
+
+        assert open_during_callback == [True]
 
     def test_close_cleans_up_tmp_html(self, tmp_path):
         """Closing should delete the temp HTML file."""

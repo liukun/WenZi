@@ -29,6 +29,14 @@ def _get_ax_executor() -> concurrent.futures.ThreadPoolExecutor:
         _ax_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     return _ax_executor
 
+
+def shutdown_input_context() -> None:
+    """Shut down the accessibility executor."""
+    global _ax_executor
+    if _ax_executor is not None:
+        _ax_executor.shutdown(wait=False, cancel_futures=True)
+        _ax_executor = None
+
 # Pre-compiled regex patterns for domain extraction
 _BROWSER_SUFFIX_RE = re.compile(
     r"\s*[-\u2014\u2013]+\s*"

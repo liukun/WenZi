@@ -33,50 +33,68 @@ def _mock_webkit(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _mock_quartz(monkeypatch):
-    """Mock Quartz CGEventTap for headless testing.
+def _mock_cgeventtap(monkeypatch):
+    """Mock wenzi._cgeventtap for headless testing.
 
-    Captures the CGEventTapCreate callback so tests can simulate key presses.
+    The production code now uses ``CGEventTapRunner`` from ``_cgeventtap``.
+    We mock the module so tests can run without accessibility permissions
+    and verify the callback logic.
     """
-    mock_quartz = MagicMock()
-    mock_quartz.kCGEventKeyDown = 10
-    mock_quartz.kCGEventTapDisabledByTimeout = 0xFFFFFFFE
-    mock_quartz.kCGKeyboardEventKeycode = 9
-    mock_quartz.kCGSessionEventTap = 1
-    mock_quartz.kCGHeadInsertEventTap = 0
-    mock_quartz.kCGEventTapOptionDefault = 0
-    mock_quartz.kCFRunLoopDefaultMode = "kCFRunLoopDefaultMode"
+    mock_cg = MagicMock()
+    # Constants used in the callback
+    mock_cg.kCGEventKeyDown = 10
+    mock_cg.kCGEventTapDisabledByTimeout = 0xFFFFFFFE
+    mock_cg.kCGKeyboardEventKeycode = 9
+    mock_cg.kCGSessionEventTap = 1
+    mock_cg.kCGHeadInsertEventTap = 0
+    mock_cg.kCGEventTapOptionDefault = 0
+    mock_cg.kCFRunLoopDefaultMode = MagicMock(value="kCFRunLoopDefaultMode")
+    mock_cg.CGEventMaskBit.side_effect = lambda t: 1 << t
 
-    _captured = {}
+    _runner_ready = threading.Event()
 
-    def fake_create(session, place, options, mask, callback, refcon):
-        _captured["callback"] = callback
-        return MagicMock()  # fake tap
+    class _MockRunner:
+        """Fake CGEventTapRunner that stores the callback without threads."""
 
-    mock_quartz.CGEventTapCreate.side_effect = fake_create
-    mock_quartz.CGEventMaskBit.return_value = 1 << 10
-    mock_quartz.CFMachPortCreateRunLoopSource.return_value = MagicMock()
-    mock_quartz.CFRunLoopGetMain.return_value = MagicMock()
+        def __init__(self):
+            self.tap = MagicMock()
+            self._callback = None
 
-    monkeypatch.setitem(sys.modules, "Quartz", mock_quartz)
+        def start(self, mask, callback, **kwargs):
+            self._callback = callback
+            _runner_ready.set()
 
-    class _QuartzHelper:
-        quartz = mock_quartz
+        def stop(self):
+            self.tap = None
+            self._callback = None
+
+        def wait_ready(self, timeout=2.0):
+            pass
+
+    mock_cg.CGEventTapRunner = _MockRunner
+
+    monkeypatch.setattr("wenzi._cgeventtap", mock_cg, raising=False)
+    # Also patch the import inside _register_key_tap / _remove_key_tap
+    monkeypatch.setitem(sys.modules, "wenzi._cgeventtap", mock_cg)
+
+    class _CGHelper:
+        cg = mock_cg
 
         @staticmethod
-        def get_callback():
-            return _captured.get("callback")
+        def wait_for_tap(timeout=1.0):
+            """Wait for the runner's start() to be called."""
+            _runner_ready.wait(timeout)
 
         @staticmethod
-        def simulate_key(keycode):
-            """Simulate a keyDown event through the captured CGEventTap callback."""
-            cb = _captured.get("callback")
-            assert cb is not None, "CGEventTap callback not captured"
-            mock_event = MagicMock()
-            mock_quartz.CGEventGetIntegerValueField.return_value = keycode
-            return cb(None, mock_quartz.kCGEventKeyDown, mock_event, None)
+        def simulate_key(panel, keycode):
+            """Simulate a keyDown event through the panel's callback method."""
+            mock_event = 0xCAFE  # raw c_void_p integer
+            mock_cg.CGEventGetIntegerValueField.return_value = keycode
+            return panel._key_tap_callback(
+                None, mock_cg.kCGEventKeyDown, mock_event, None,
+            )
 
-    return _QuartzHelper()
+    return _CGHelper()
 
 
 def _make_panel():
@@ -98,7 +116,7 @@ class TestStreamingOverlayPanel:
         panel = _make_panel()
         assert panel._panel is None
         assert panel._webview is None
-        assert panel._key_tap is None
+        assert panel._tap_runner is None
 
     def test_show_creates_panel(self, _mock_appkit):
         panel = _make_panel()
@@ -126,37 +144,40 @@ class TestStreamingOverlayPanel:
         assert panel._panel is None
         assert panel._webview is None
 
-    def test_show_registers_key_tap(self, _mock_appkit, _mock_quartz):
+    def test_show_registers_key_tap(self, _mock_appkit, _mock_cgeventtap):
         panel = _make_panel()
         panel.show(asr_text="test", cancel_event=threading.Event())
-        _mock_quartz.quartz.CGEventTapCreate.assert_called()
-        assert panel._key_tap is not None
+        _mock_cgeventtap.wait_for_tap()
+        assert panel._tap_runner is not None
+        assert panel._tap_runner._callback is not None
 
-    def test_close_removes_key_tap(self, _mock_appkit, _mock_quartz):
+    def test_close_removes_key_tap(self, _mock_appkit, _mock_cgeventtap):
         panel = _make_panel()
         panel.show(asr_text="test", cancel_event=threading.Event())
+        _mock_cgeventtap.wait_for_tap()
         panel.close()
-        _mock_quartz.quartz.CGEventTapEnable.assert_called()
-        assert panel._key_tap is None
+        assert panel._tap_runner is None
 
-    def test_esc_handler_sets_cancel_event(self, _mock_appkit, _mock_quartz):
+    def test_esc_handler_sets_cancel_event(self, _mock_appkit, _mock_cgeventtap):
         panel = _make_panel()
         cancel_event = threading.Event()
         panel.show(asr_text="test", cancel_event=cancel_event)
+        _mock_cgeventtap.wait_for_tap()
 
-        result = _mock_quartz.simulate_key(53)  # ESC
+        result = _mock_cgeventtap.simulate_key(panel, 53)  # ESC
         assert result is None  # swallowed
         assert cancel_event.is_set()
 
-    def test_esc_handler_calls_on_cancel(self, _mock_appkit, _mock_quartz):
+    def test_esc_handler_calls_on_cancel(self, _mock_appkit, _mock_cgeventtap):
         """ESC should invoke on_cancel callback before closing."""
         panel = _make_panel()
         on_cancel = MagicMock()
         panel.show(
             asr_text="test", cancel_event=threading.Event(), on_cancel=on_cancel
         )
+        _mock_cgeventtap.wait_for_tap()
 
-        _mock_quartz.simulate_key(53)
+        _mock_cgeventtap.simulate_key(panel, 53)
         on_cancel.assert_called_once()
 
     def test_multiple_show_close_cycles(self, _mock_appkit):
@@ -184,38 +205,42 @@ class TestStreamingOverlayPanel:
         panel.close()
         panel.set_status("done")
 
-    def test_enter_handler_calls_on_confirm_asr(self, _mock_appkit, _mock_quartz):
+    def test_enter_handler_calls_on_confirm_asr(self, _mock_appkit, _mock_cgeventtap):
         """Enter should invoke on_confirm_asr callback."""
         panel = _make_panel()
         on_confirm_asr = MagicMock()
         panel.show(asr_text="test", on_confirm_asr=on_confirm_asr)
+        _mock_cgeventtap.wait_for_tap()
 
-        result = _mock_quartz.simulate_key(36)  # Enter/Return
+        result = _mock_cgeventtap.simulate_key(panel, 36)  # Enter/Return
         assert result is None  # swallowed
         on_confirm_asr.assert_called_once()
 
-    def test_enter_does_not_close_overlay(self, _mock_appkit, _mock_quartz):
+    def test_enter_does_not_close_overlay(self, _mock_appkit, _mock_cgeventtap):
         """Enter should NOT close the overlay (caller handles closing)."""
         panel = _make_panel()
         panel.show(asr_text="test", on_confirm_asr=MagicMock())
+        _mock_cgeventtap.wait_for_tap()
 
-        _mock_quartz.simulate_key(36)
+        _mock_cgeventtap.simulate_key(panel, 36)
         assert panel._panel is not None
 
-    def test_enter_passes_through_without_callback(self, _mock_appkit, _mock_quartz):
+    def test_enter_passes_through_without_callback(self, _mock_appkit, _mock_cgeventtap):
         """Enter without on_confirm_asr should pass through."""
         panel = _make_panel()
         panel.show(asr_text="test")
+        _mock_cgeventtap.wait_for_tap()
 
-        result = _mock_quartz.simulate_key(36)
+        result = _mock_cgeventtap.simulate_key(panel, 36)
         assert result is not None  # not swallowed when no callback
 
-    def test_other_keys_not_swallowed(self, _mock_appkit, _mock_quartz):
+    def test_other_keys_not_swallowed(self, _mock_appkit, _mock_cgeventtap):
         """Non-ESC/Enter keys should pass through."""
         panel = _make_panel()
         panel.show(asr_text="test")
+        _mock_cgeventtap.wait_for_tap()
 
-        result = _mock_quartz.simulate_key(0)  # 'A' key
+        result = _mock_cgeventtap.simulate_key(panel, 0)  # 'A' key
         assert result is not None  # not swallowed
 
     def test_show_without_cancel_event(self, _mock_appkit):
@@ -347,14 +372,16 @@ class TestStreamingOverlayPanel:
         # Combined JS should have been executed
         panel._webview.evaluateJavaScript_completionHandler_.assert_called()
 
-    def test_set_cancel_event_registers_tap(self, _mock_appkit, _mock_quartz):
+    def test_set_cancel_event_registers_tap(self, _mock_appkit, _mock_cgeventtap):
         panel = _make_panel()
         panel.show(asr_text="test")
-        panel._key_tap = None  # simulate tap not yet created
+        _mock_cgeventtap.wait_for_tap()
+        panel._tap_runner = None  # simulate tap not yet created
         cancel = threading.Event()
         panel.set_cancel_event(cancel)
+        _mock_cgeventtap.wait_for_tap()
         assert panel._cancel_event is cancel
-        _mock_quartz.quartz.CGEventTapCreate.assert_called()
+        assert panel._tap_runner is not None
 
     def test_set_asr_text_after_close_no_crash(self, _mock_appkit):
         panel = _make_panel()

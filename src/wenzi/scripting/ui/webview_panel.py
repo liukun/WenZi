@@ -394,17 +394,19 @@ class WebViewPanel:
         if not self._open:
             return
 
-        # Fire on_close callbacks
+        # Fire on_close callbacks while the panel is still nominally open,
+        # so callbacks that inspect self._open see True.
         for cb in self._on_close_callbacks:
             try:
                 cb()
             except Exception:
                 logger.exception("Error in on_close callback")
 
-        # Reject all pending JS calls (must happen before _open = False)
-        self._reject_all_pending("Panel closed")
-
+        # Mark closed so no new JS messages are processed during teardown
         self._open = False
+
+        # Reject all pending JS calls
+        self._reject_all_pending("Panel closed")
 
         # Clean up temp HTML file
         if self._tmp_html_path is not None:
@@ -488,6 +490,8 @@ class WebViewPanel:
 
     def _handle_js_message(self, body: Dict[str, Any]) -> None:
         """Route an incoming message from the JS bridge."""
+        if not self._open:
+            return
         msg_type = body.get("type")
         name = body.get("name", "")
         data = body.get("data")

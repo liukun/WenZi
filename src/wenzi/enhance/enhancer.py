@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
@@ -272,7 +273,9 @@ class TextEnhancer:
         # Per-mode incremental history cache for prompt caching optimization.
         # Each enhancement mode maintains its own history cache so that
         # switching modes does not invalidate another mode's cache prefix.
-        self._history_caches: Dict[str, _ModeHistoryCache] = {}
+        # Capped at 16 entries with LRU eviction to prevent unbounded growth.
+        self._history_caches: OrderedDict[str, _ModeHistoryCache] = OrderedDict()
+        self._history_caches_max = 16
         self._history_refresh_threshold: int = history_cfg.get(
             "refresh_threshold", 50
         )
@@ -715,9 +718,17 @@ class TextEnhancer:
     # ------------------------------------------------------------------
 
     def _get_mode_cache(self) -> _ModeHistoryCache:
-        """Return the history cache for the current enhancement mode."""
+        """Return the history cache for the current enhancement mode.
+
+        Uses LRU eviction: accessed entries are moved to the end,
+        and the oldest entry is evicted when the cache exceeds the limit.
+        """
         mode = self._mode
-        if mode not in self._history_caches:
+        if mode in self._history_caches:
+            self._history_caches.move_to_end(mode)
+        else:
+            if len(self._history_caches) >= self._history_caches_max:
+                self._history_caches.popitem(last=False)
             self._history_caches[mode] = _ModeHistoryCache()
         return self._history_caches[mode]
 
