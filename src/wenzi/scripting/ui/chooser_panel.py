@@ -189,7 +189,7 @@ class ChooserPanel:
     registered ChooserSource instances, and executes item actions.
     """
 
-    _INITIAL_WIDTH = 600
+    _INITIAL_WIDTH = 680
     _INITIAL_HEIGHT = 49  # bootstrap; JS updates after page load
     _MAX_TOTAL_RESULTS = 50
     _DEFERRED_ACTION_DELAY = 0.15  # seconds to let previous app regain focus
@@ -265,6 +265,24 @@ class ChooserPanel:
         new_x = old.origin.x + (old.size.width - width) / 2
         new_frame = NSMakeRect(new_x, new_y, width, height)
         self._panel.setFrame_display_(new_frame, True)
+
+    def _drag_panel(self, dx: int, dy: int) -> None:
+        """Move the panel by (dx, dy) screen points (from JS drag)."""
+        if self._panel is None:
+            return
+        from Foundation import NSMakeRect
+
+        old = self._panel.frame()
+        # macOS y-axis is flipped vs screen coords: up is positive
+        new_frame = NSMakeRect(
+            old.origin.x + dx,
+            old.origin.y - dy,
+            old.size.width,
+            old.size.height,
+        )
+        self._panel.setFrame_display_(new_frame, True)
+        # Clear cached screen so next show() always resets position
+        self._last_screen = None
 
     def _position_on_mouse_screen(self) -> None:
         """Position panel centered-top on the screen containing the mouse.
@@ -1314,6 +1332,11 @@ class ChooserPanel:
             index = body.get("index", -1)
             self._toggle_quicklook(is_open, index)
 
+        elif msg_type == "drag":
+            dx = body.get("dx", 0)
+            dy = body.get("dy", 0)
+            self._drag_panel(dx, dy)
+
         elif msg_type == "qlNavigate":
             index = body.get("index", -1)
             self._update_quicklook(index)
@@ -1751,8 +1774,24 @@ class ChooserPanel:
 
         # Round corners
         panel.contentView().setWantsLayer_(True)
-        panel.contentView().layer().setCornerRadius_(12.0)
+        panel.contentView().layer().setCornerRadius_(16.0)
         panel.contentView().layer().setMasksToBounds_(True)
+
+        # Glass blur background (NSVisualEffectView behind WKWebView)
+        from AppKit import NSVisualEffectView
+
+        effect_view = NSVisualEffectView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, initial_width, initial_height)
+        )
+        effect_view.setAutoresizingMask_(0x12)  # Width + Height sizable
+        effect_view.setBlendingMode_(1)  # NSVisualEffectBlendingModeBehindWindow
+        effect_view.setMaterial_(0)  # NSVisualEffectMaterialAppearanceBased — bright glass
+        effect_view.setState_(1)  # NSVisualEffectStateActive (always active)
+        effect_view.setWantsLayer_(True)
+        effect_view.layer().setCornerRadius_(16.0)
+        effect_view.layer().setMasksToBounds_(True)
+        panel.contentView().addSubview_(effect_view)
+        self._effect_view = effect_view
 
         # Position: center-top of mouse screen (like Spotlight)
         self._panel = panel
