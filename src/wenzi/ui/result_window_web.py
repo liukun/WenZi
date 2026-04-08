@@ -516,7 +516,7 @@ class ResultPreviewPanel:
             # WKWebView with message handler
             from wenzi.ui.web_utils import lightweight_webview_config
 
-            config = lightweight_webview_config()
+            config = lightweight_webview_config(shared=False)
             content_controller = WKUserContentController.alloc().init()
             handler_cls = _get_message_handler_class()
             handler = handler_cls.alloc().init()
@@ -1385,7 +1385,7 @@ class ResultPreviewPanel:
             # WKWebView with message handler
             from wenzi.ui.web_utils import lightweight_webview_config
 
-            config = lightweight_webview_config()
+            config = lightweight_webview_config(shared=False)
             content_controller = WKUserContentController.alloc().init()
             handler_cls = _get_message_handler_class()
             handler = handler_cls.alloc().init()
@@ -1656,7 +1656,7 @@ class ResultPreviewPanel:
 
         from wenzi.ui.web_utils import lightweight_webview_config
 
-        config = lightweight_webview_config()
+        config = lightweight_webview_config(shared=False)
         webview = WKWebView.alloc().initWithFrame_configuration_(
             NSMakeRect(0, 0, width, height), config,
         )

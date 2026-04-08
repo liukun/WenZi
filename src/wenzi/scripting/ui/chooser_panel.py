@@ -196,6 +196,7 @@ class ChooserPanel:
     _DEFAULT_ASYNC_DEBOUNCE = 0.15  # seconds
     _DEFAULT_ASYNC_TIMEOUT = 5.0  # seconds
     _UA_USAGE_PREFIX = "_ua"  # Synthetic query prefix for UA mode usage tracking
+    _RECYCLE_DELAY = 60.0  # seconds before recycling idle webview
 
     def __init__(self, usage_tracker=None) -> None:
         self._panel = None
@@ -236,6 +237,7 @@ class ChooserPanel:
         self._pending_async_count: int = 0
         self._loading_visible: bool = False
         self._debounce_state: Dict[str, _DebounceEntry] = {}  # source_name -> pending debounce
+        self._recycle_timer = None  # deferred webview recycle timer
         self._last_screen = None  # last screen the panel was positioned on
 
     # ------------------------------------------------------------------
@@ -561,6 +563,7 @@ class ChooserPanel:
                 and trigger a search immediately after the page loads.
             placeholder: If set, override the search input placeholder text.
         """
+        self._cancel_recycle_timer()
         self._on_close = on_close
         self._pending_initial_query = initial_query
         self._pending_placeholder = placeholder
@@ -651,7 +654,7 @@ class ChooserPanel:
         self._exclusive_source = exclusive_source
         self.show(on_close=on_close, initial_query=initial_query, placeholder=placeholder)
 
-    def close(self) -> None:
+    def close(self, *, _schedule_recycle: bool = True) -> None:
         """Hide the chooser panel, preserving WKWebView for fast re-show.
 
         Breaks ``_panel_ref`` back-references to prevent retain cycles
@@ -754,16 +757,31 @@ class ChooserPanel:
         if callback is not None:
             callback()
 
-    def destroy(self) -> None:
-        """Fully destroy the panel and webview, releasing all resources.
+        if _schedule_recycle:
+            self._schedule_recycle()
 
-        Called during script reload when the HTML/i18n may have changed
-        and the WKWebView must be recreated from scratch.
-        """
-        # Close first to handle hide + state cleanup
-        self.close()
+    # ------------------------------------------------------------------
+    # Deferred webview recycle
+    # ------------------------------------------------------------------
 
-        # Now tear down the retained objects
+    def _schedule_recycle(self) -> None:
+        """Schedule a webview recycle to free WebKit decoded image cache."""
+        self._cancel_recycle_timer()
+        if self._webview is None:
+            return  # nothing to recycle
+        from PyObjCTools import AppHelper
+
+        self._recycle_timer = AppHelper.callLater(
+            self._RECYCLE_DELAY, self._do_recycle,
+        )
+
+    def _cancel_recycle_timer(self) -> None:
+        if self._recycle_timer is not None:
+            self._recycle_timer.cancel()
+            self._recycle_timer = None
+
+    def _teardown_webview(self) -> None:
+        """Release the webview, panel, and associated delegates."""
         if self._webview is not None:
             self._webview.setNavigationDelegate_(None)
             try:
@@ -777,11 +795,47 @@ class ChooserPanel:
             self._panel.orderOut_(None)
         self._panel = None
         self._webview = None
+        self._effect_view = None
         self._message_handler = None
         self._navigation_delegate = None
         self._panel_delegate = None
         self._page_loaded = False
         self._pending_js = []
+
+    def _do_recycle(self) -> None:
+        """Replace old webview with a fresh one to free WebKit image cache.
+
+        The old Web Content process (with accumulated decoded image bitmaps)
+        exits when the WKWebView is deallocated.  A new panel + webview is
+        pre-built so the next :meth:`show` gets a near-instant warm start.
+
+        This method is called by the recycle timer — *not* by user code.
+        """
+        self._recycle_timer = None
+        if self._panel is not None and self._panel.isVisible():
+            return  # user re-opened before timer fired
+
+        self._teardown_webview()
+
+        # Build fresh panel + webview (new Web Content process).
+        # Reset _last_screen so the next show() always repositions —
+        # _build_panel() positions at the current mouse location which
+        # will be stale by the time the user actually opens the chooser.
+        self._build_panel()
+        self._last_screen = None
+        logger.debug("ChooserPanel recycled: old webview destroyed, fresh one built")
+
+    def destroy(self) -> None:
+        """Fully destroy the panel and webview, releasing all resources.
+
+        Called during script reload when the HTML/i18n may have changed
+        and the WKWebView must be recreated from scratch.
+        """
+        # Close first to handle hide + state cleanup (skip recycle —
+        # we're tearing down fully).
+        self.close(_schedule_recycle=False)
+
+        self._teardown_webview()
         self._last_screen = None
 
     def toggle(self, on_close: Optional[Callable] = None) -> None:
@@ -1803,7 +1857,7 @@ class ChooserPanel:
         # WKWebView with message handler
         from wenzi.ui.web_utils import lightweight_webview_config
 
-        wk_config = lightweight_webview_config()
+        wk_config = lightweight_webview_config(shared=False)
         content_controller = WKUserContentController.alloc().init()
 
         handler_cls = _get_message_handler_class()

@@ -121,8 +121,10 @@ def lightweight_webview_config(
     non-persistent data store and therefore share one Web Content process.
     When ``False``, a dedicated non-persistent data store is created so
     the WebView gets its own Web Content process that exits automatically
-    when the WebView is deallocated.  Use ``False`` for rarely-opened
-    panels to avoid long-lived memory retention in the shared process.
+    when the WebView is deallocated.  Prefer ``False`` for most panels —
+    WebKit's process-level decoded image cache grows unboundedly within a
+    shared process and can only be freed by terminating it.  ``True`` is
+    kept for backward compatibility but is no longer recommended.
     """
     from WebKit import WKWebViewConfiguration
 

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [manifest]
@@ -399,12 +399,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277, upload-time = "2023-12-24T09:54:30.421Z" },
 ]
-
-[[package]]
-name = "evdev"
-version = "1.9.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a5/f5/397b61091120a9ca5001041dd7bf76c385b3bfd67a0e5bcb74b852bd22a4/evdev-1.9.3.tar.gz", hash = "sha256:2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9", size = 32723, upload-time = "2026-02-05T21:54:24.987Z" }
 
 [[package]]
 name = "filelock"
@@ -1563,22 +1557,6 @@ crypto = [
 ]
 
 [[package]]
-name = "pynput"
-version = "1.8.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "evdev", marker = "'linux' in sys_platform" },
-    { name = "pyobjc-framework-applicationservices", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
-    { name = "python-xlib", marker = "'linux' in sys_platform" },
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/c3/dccf44c68225046df5324db0cc7d563a560635355b3e5f1d249468268a6f/pynput-1.8.1.tar.gz", hash = "sha256:70d7c8373ee98911004a7c938742242840a5628c004573d84ba849d4601df81e", size = 82289, upload-time = "2025-03-17T17:12:01.481Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/4f/ac3fa906ae8a375a536b12794128c5efacade9eaa917a35dfd27ce0c7400/pynput-1.8.1-py2.py3-none-any.whl", hash = "sha256:42dfcf27404459ca16ca889c8fb8ffe42a9fe54f722fd1a3e130728e59e768d2", size = 91693, upload-time = "2025-03-17T17:12:00.094Z" },
-]
-
-[[package]]
 name = "pyobjc-core"
 version = "12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1810,18 +1788,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/01/979e98d542a70714b0cb2b6728ed0b7c46792b695e3eaec3e20711271ca3/python_multipart-0.0.22.tar.gz", hash = "sha256:7340bef99a7e0032613f56dc36027b959fd3b30a787ed62d310e951f7c3a3a58", size = 37612, upload-time = "2026-01-25T10:15:56.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1b/d0/397f9626e711ff749a95d96b7af99b9c566a9bb5129b8e4c10fc4d100304/python_multipart-0.0.22-py3-none-any.whl", hash = "sha256:2b2cd894c83d21bf49d702499531c7bafd057d730c201782048f7945d82de155", size = 24579, upload-time = "2026-01-25T10:15:54.811Z" },
-]
-
-[[package]]
-name = "python-xlib"
-version = "0.33"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/86/f5/8c0653e5bb54e0cbdfe27bf32d41f27bc4e12faa8742778c17f2a71be2c0/python-xlib-0.33.tar.gz", hash = "sha256:55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32", size = 269068, upload-time = "2022-12-25T18:53:00.824Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/b8/ff33610932e0ee81ae7f1269c890f697d56ff74b9f5b2ee5d9b7fa2c5355/python_xlib-0.33-py2.py3-none-any.whl", hash = "sha256:c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398", size = 182185, upload-time = "2022-12-25T18:52:58.662Z" },
 ]
 
 [[package]]
@@ -2282,15 +2248,6 @@ wheels = [
 ]
 
 [[package]]
-name = "six"
-version = "1.17.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
-]
-
-[[package]]
 name = "sniffio"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2632,14 +2589,13 @@ dependencies = [
     { name = "numpy" },
     { name = "openai-agents" },
     { name = "pint" },
-    { name = "pynput" },
+    { name = "pyobjc-framework-applicationservices" },
     { name = "pyobjc-framework-avfoundation" },
     { name = "pyobjc-framework-cocoa" },
     { name = "pyobjc-framework-security" },
     { name = "pyobjc-framework-speech" },
     { name = "pyobjc-framework-webkit" },
     { name = "pypinyin" },
-    { name = "pyyaml" },
     { name = "simpleeval" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -2668,30 +2624,29 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "certifi", specifier = ">=2024.0" },
-    { name = "cryptography", specifier = ">=43.0" },
+    { name = "certifi", specifier = "==2026.2.25" },
+    { name = "cryptography", specifier = "==46.0.5" },
     { name = "funasr-onnx", marker = "extra == 'local-asr'", specifier = ">=0.4.1" },
     { name = "jieba", marker = "extra == 'local-asr'", specifier = ">=0.42.1" },
     { name = "librosa", marker = "extra == 'local-asr'", specifier = ">=0.11.0" },
     { name = "mlx-whisper", marker = "extra == 'local-asr'", specifier = ">=0.4.3" },
     { name = "modelscope", marker = "extra == 'local-asr'", specifier = ">=1.30.0" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "openai-agents", specifier = ">=0.11.0" },
-    { name = "pint", specifier = ">=0.24" },
-    { name = "pynput", specifier = ">=1.8.0" },
-    { name = "pyobjc-framework-avfoundation", specifier = ">=10.0" },
-    { name = "pyobjc-framework-cocoa", specifier = ">=10.0" },
-    { name = "pyobjc-framework-security", specifier = ">=10.0" },
-    { name = "pyobjc-framework-speech", specifier = ">=10.0" },
-    { name = "pyobjc-framework-webkit", specifier = ">=12.1" },
-    { name = "pypinyin", specifier = ">=0.53" },
-    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "numpy", specifier = "==1.26.4" },
+    { name = "openai-agents", specifier = "==0.11.1" },
+    { name = "pint", specifier = "==0.25.2" },
+    { name = "pyobjc-framework-applicationservices", specifier = "==12.1" },
+    { name = "pyobjc-framework-avfoundation", specifier = "==12.1" },
+    { name = "pyobjc-framework-cocoa", specifier = "==12.1" },
+    { name = "pyobjc-framework-security", specifier = "==12.1" },
+    { name = "pyobjc-framework-speech", specifier = "==12.1" },
+    { name = "pyobjc-framework-webkit", specifier = "==12.1" },
+    { name = "pypinyin", specifier = "==0.55.0" },
     { name = "sherpa-onnx", marker = "extra == 'local-asr'", specifier = ">=1.12.29" },
     { name = "sherpa-onnx-core", marker = "extra == 'local-asr'", specifier = ">=1.12.29" },
-    { name = "simpleeval", specifier = ">=1.0.5" },
-    { name = "sounddevice", specifier = ">=0.5.0" },
-    { name = "soundfile", specifier = ">=0.13.0" },
-    { name = "zhconv", specifier = ">=1.4.3" },
+    { name = "simpleeval", specifier = "==1.0.7" },
+    { name = "sounddevice", specifier = "==0.5.5" },
+    { name = "soundfile", specifier = "==0.13.1" },
+    { name = "zhconv", specifier = "==1.4.3" },
 ]
 provides-extras = ["local-asr"]
 

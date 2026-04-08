@@ -1613,3 +1613,98 @@ class TestTabCompletion:
         # Verify setInputValue was called
         calls = [str(c) for c in panel._eval_js.call_args_list]
         assert any("setInputValue" in c for c in calls)
+
+
+# ------------------------------------------------------------------
+# Deferred webview recycle
+# ------------------------------------------------------------------
+
+
+class TestDeferredRecycle:
+    """Tests for the deferred webview recycle mechanism."""
+
+    def _close_panel(self, panel):
+        """Helper to close a panel with AppHelper mocked."""
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
+            panel.close()
+
+    def test_close_schedules_recycle_timer(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        with patch("PyObjCTools.AppHelper.callLater") as mock_later, \
+             patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
+            panel.close()
+        mock_later.assert_called_once_with(
+            ChooserPanel._RECYCLE_DELAY, panel._do_recycle,
+        )
+        assert panel._recycle_timer is not None
+
+    def test_close_without_webview_skips_recycle(self):
+        panel = _make_panel()
+        panel._webview = None
+        with patch("PyObjCTools.AppHelper.callLater") as mock_later, \
+             patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
+            panel.close()
+        mock_later.assert_not_called()
+        assert panel._recycle_timer is None
+
+    def test_show_cancels_recycle_timer(self):
+        panel = _make_panel()
+        mock_timer = MagicMock()
+        panel._recycle_timer = mock_timer
+        # Directly test the cancellation logic that show() performs
+        # at the very top, without running the full UI path.
+        panel._cancel_recycle_timer()
+        mock_timer.cancel.assert_called_once()
+        assert panel._recycle_timer is None
+
+    def test_destroy_skips_recycle_scheduling(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"), \
+             patch("PyObjCTools.AppHelper.callLater") as mock_later:
+            panel.destroy()
+        # close() inside destroy() should NOT schedule a recycle timer
+        mock_later.assert_not_called()
+        assert panel._recycle_timer is None
+
+    def test_do_recycle_rebuilds_panel(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+        panel._message_handler = MagicMock()
+        panel._navigation_delegate = MagicMock()
+        panel._panel_delegate = MagicMock()
+        old_webview = panel._webview
+        with patch.object(panel, "_build_panel") as mock_build:
+            panel._do_recycle()
+        # Old webview should be released
+        assert panel._webview is None or panel._webview is not old_webview
+        mock_build.assert_called_once()
+
+    def test_do_recycle_resets_last_screen(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+        panel._last_screen = MagicMock()  # simulate stale screen ref
+        with patch.object(panel, "_build_panel"):
+            panel._do_recycle()
+        # _last_screen must be None so next show() repositions correctly
+        assert panel._last_screen is None
+
+    def test_do_recycle_noop_when_visible(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = True
+        with patch.object(panel, "_build_panel") as mock_build:
+            panel._do_recycle()
+        # Should not tear down or rebuild — panel is visible
+        mock_build.assert_not_called()
+        assert panel._webview is not None

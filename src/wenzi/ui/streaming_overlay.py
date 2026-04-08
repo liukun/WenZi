@@ -167,7 +167,7 @@ class StreamingOverlayPanel:
             # WKWebView
             from wenzi.ui.web_utils import lightweight_webview_config
 
-            config = lightweight_webview_config()
+            config = lightweight_webview_config(shared=False)
             webview = WKWebView.alloc().initWithFrame_configuration_(
                 NSMakeRect(0, 0, _PANEL_WIDTH, _PANEL_HEIGHT),
                 config,

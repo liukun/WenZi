@@ -74,6 +74,86 @@ _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 # ---------------------------------------------------------------------------
 
 
+def _parse_scalar(val: str):
+    """Coerce a raw YAML-like scalar string to a Python type."""
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+        return val[1:-1]
+    low = val.lower()
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    if low in ("null", "~", ""):
+        return None
+    try:
+        return int(val)
+    except ValueError:
+        pass
+    try:
+        return float(val)
+    except ValueError:
+        return val
+
+
+def _parse_simple_keyval(text: str) -> dict:
+    """Parse the subset of YAML used by snippet frontmatter.
+
+    Supports top-level ``key: value`` scalars and one level of list-of-dicts
+    (``snippets:`` with ``- key: value`` entries).  Comments are ignored.
+    """
+    result: dict = {}
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped or stripped.startswith("#"):
+            i += 1
+            continue
+        colon = stripped.find(":")
+        if colon == -1:
+            i += 1
+            continue
+        key = stripped[:colon].strip()
+        val_part = stripped[colon + 1:].strip()
+
+        # List-of-dicts: key with no inline value, followed by "  - key: val"
+        if not val_part and key:
+            items: list[dict] = []
+            i += 1
+            while i < len(lines):
+                ln = lines[i]
+                ls = ln.lstrip()
+                if not ls or ls.startswith("#"):
+                    i += 1
+                    continue
+                # Detect indented "- key: val" (new list item)
+                if ls.startswith("- "):
+                    entry: dict = {}
+                    item_str = ls[2:]  # strip "- "
+                    c2 = item_str.find(":")
+                    if c2 != -1:
+                        entry[item_str[:c2].strip()] = _parse_scalar(item_str[c2 + 1:].strip())
+                    items.append(entry)
+                    i += 1
+                    continue
+                # Continuation key of current list item (indented, no "- ")
+                indent = len(ln) - len(ls)
+                if indent >= 2 and items:
+                    c2 = ls.find(":")
+                    if c2 != -1:
+                        items[-1][ls[:c2].strip()] = _parse_scalar(ls[c2 + 1:].strip())
+                    i += 1
+                    continue
+                break  # back to top-level
+            result[key] = items
+            continue
+
+        if key:
+            result[key] = _parse_scalar(val_part)
+        i += 1
+    return result
+
+
 def _parse_frontmatter(text: str) -> Tuple[dict, str]:
     """Parse optional YAML frontmatter from *text*.
 
@@ -94,11 +174,7 @@ def _parse_frontmatter(text: str) -> Tuple[dict, str]:
         body = body[1:]
 
     try:
-        import yaml
-
-        meta = yaml.safe_load(header)
-        if not isinstance(meta, dict):
-            meta = {}
+        meta = _parse_simple_keyval(header)
     except Exception:
         logger.warning("Failed to parse YAML frontmatter, falling back to empty")
         meta = {}
