@@ -4,6 +4,10 @@ All async work (LLM streaming, vocabulary building, provider verification)
 is submitted to this shared loop via :func:`submit`.
 The loop is created lazily on first access and runs until :func:`shutdown`
 is called (typically during app quit).
+
+:func:`call_later` schedules a plain callback after a delay — use it as
+a drop-in replacement for ``threading.Timer`` to avoid spawning a thread
+per timer.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -58,6 +62,45 @@ def submit[T](coro: Coroutine[Any, Any, T]) -> asyncio.Future[T]:
     retrieve the result from a synchronous context.
     """
     return asyncio.run_coroutine_threadsafe(coro, get_loop())
+
+
+class TimerHandle:
+    """Thread-safe handle returned by :func:`call_later`.
+
+    Provides a ``.cancel()`` interface identical to ``threading.Timer``
+    so call sites need minimal changes.
+    """
+
+    __slots__ = ("_handle", "_cancelled")
+
+    def __init__(self) -> None:
+        self._handle: asyncio.TimerHandle | None = None
+        self._cancelled = False
+
+    def cancel(self) -> None:  # noqa: D401
+        """Cancel the pending callback (idempotent, thread-safe under CPython GIL)."""
+        self._cancelled = True
+        h = self._handle
+        if h is not None:
+            h.cancel()
+
+
+def call_later(delay: float, callback: Callable[..., Any], *args: Any) -> TimerHandle:
+    """Schedule *callback* on the shared event loop after *delay* seconds.
+
+    Returns a :class:`TimerHandle` whose ``cancel()`` method is safe to
+    call from any thread.  This replaces ``threading.Timer`` without
+    spawning a new thread for every timer.
+    """
+    loop = get_loop()
+    handle = TimerHandle()
+
+    def _schedule() -> None:
+        if not handle._cancelled:
+            handle._handle = loop.call_later(delay, callback, *args)
+
+    loop.call_soon_threadsafe(_schedule)
+    return handle
 
 
 def shutdown_sync(timeout: float = 5.0) -> None:

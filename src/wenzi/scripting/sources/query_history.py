@@ -14,6 +14,7 @@ import logging
 import os
 import threading
 
+from wenzi.async_loop import TimerHandle, call_later
 from wenzi.config import DEFAULT_CHOOSER_HISTORY_PATH
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class QueryHistory:
         self._loaded = False
         self._lock = threading.Lock()
         self._dirty = False
-        self._flush_timer: threading.Timer | None = None
+        self._flush_timer: TimerHandle | None = None
 
     def _ensure_loaded(self) -> None:
         if self._loaded:
@@ -90,9 +91,7 @@ class QueryHistory:
         with self._lock:
             if self._flush_timer is not None:
                 self._flush_timer.cancel()
-            self._flush_timer = threading.Timer(_FLUSH_DELAY, self._flush)
-            self._flush_timer.daemon = True
-            self._flush_timer.start()
+            self._flush_timer = call_later(_FLUSH_DELAY, self._flush)
 
     def _flush(self) -> None:
         with self._lock:

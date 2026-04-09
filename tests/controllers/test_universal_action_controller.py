@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from wenzi.controllers.universal_action_controller import UniversalActionController
+from wenzi.scripting.sources import ChooserItem
 
 
 class TestBuildActionItems:
@@ -103,3 +104,28 @@ class TestTrigger:
         ctrl = UniversalActionController(app)
         ctrl.trigger()
         mock_get.assert_not_called()
+
+
+class TestSessionSourceLifecycle:
+    def test_show_ua_panel_uses_unique_source_name_per_session(self):
+        app = MagicMock()
+        chooser = app._script_engine._wz.chooser
+        ctrl = UniversalActionController(app)
+        ctrl._build_action_items = MagicMock(
+            return_value=[ChooserItem(title="Define", item_id="ua:cmd:define")]
+        )
+
+        ctrl._show_ua_panel_inner("first")
+        ctrl._show_ua_panel_inner("second")
+
+        registered = [
+            call.args[0].name for call in chooser._panel.register_source.call_args_list
+        ]
+        assert len(registered) == 2
+        assert registered[0] != registered[1]
+
+        exclusive_sources = [
+            call.kwargs["exclusive_source"]
+            for call in chooser.show_universal_action.call_args_list
+        ]
+        assert exclusive_sources == registered

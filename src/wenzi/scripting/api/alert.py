@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-import threading
+
+from wenzi.async_loop import call_later
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +150,7 @@ def _show_alert(text: str, duration: float) -> None:
 
         AppHelper.callAfter(_dismiss_alert, panel)
 
-    _current_close_timer = threading.Timer(duration, _close)
-    _current_close_timer.daemon = True
-    _current_close_timer.start()
+    _current_close_timer = call_later(duration, _close)
 
 
 def _dismiss_alert(panel) -> None:

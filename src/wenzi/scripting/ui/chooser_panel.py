@@ -216,7 +216,9 @@ class ChooserPanel:
         self._usage_tracker = usage_tracker
         self._query_history = None
         self._history_index: int = -1
+        self._cleanup_on_close: Callable | None = None
         self._on_close: Callable | None = None
+        self._session_placeholder: str | None = None
         self._pending_initial_query: str | None = None
         self._pending_placeholder: str | None = None
         self._event_callback: Callable | None = None  # (event, *args)
@@ -356,9 +358,10 @@ class ChooserPanel:
             "setCompact(false)",
             "setModifierHints({},null)",
             "setCreateButton(false)",
+            "setLoading(false)",
         ]
         # Clear or set input value
-        if initial_query:
+        if initial_query is not None:
             parts.append(f"setInputValue({json.dumps(initial_query)})")
             # pending_initial_query is consumed by _on_page_loaded only on
             # first load; for reuse we apply it directly here.
@@ -373,9 +376,8 @@ class ChooserPanel:
         else:
             parts.append("clearContext()")
         # Apply placeholder
-        if placeholder:
-            parts.append(f"setPlaceholder({json.dumps(placeholder)})")
-            self._pending_placeholder = None
+        parts.append(f"setPlaceholder({json.dumps(placeholder or '')})")
+        self._pending_placeholder = None
 
         # Return the measured collapsed height so the completion handler
         # can resize the panel to exactly match a freshly created one.
@@ -422,6 +424,85 @@ class ChooserPanel:
                 self._event_callback(event, *args)
             except Exception:
                 logger.exception("Panel event callback error (%s)", event)
+
+    @staticmethod
+    def _run_close_callback(callback: Callable) -> None:
+        """Execute a user-provided close callback with logging."""
+        try:
+            callback()
+        except Exception:
+            logger.exception("Chooser on_close callback failed")
+
+    def _finish_active_session(self, *, defer_on_close: bool = False) -> None:
+        """Run and clear the current session's cleanup and close callbacks."""
+        cleanup = self._cleanup_on_close
+        self._cleanup_on_close = None
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception:
+                logger.exception("Chooser cleanup_on_close callback failed")
+
+        callback = self._on_close
+        self._on_close = None
+        if callback is not None:
+            if defer_on_close:
+                from PyObjCTools import AppHelper
+
+                AppHelper.callAfter(self._run_close_callback, callback)
+            else:
+                self._run_close_callback(callback)
+
+    def _invalidate_search_session(self) -> None:
+        """Invalidate outstanding search work and clear transient UI state."""
+        self._search_generation += 1
+        self._cancel_all_debounce_timers()
+        self._pending_async_count = 0
+        self._loading_visible = False
+        self._active_source = None
+        self._current_items = []
+        self._last_query = ""
+        self._history_index = -1
+        self._show_preview = False
+        self._compact_results = False
+        self._calc_sticky = False
+        self._pending_js = []
+
+    def _replace_visible_session(
+        self,
+        *,
+        cleanup_on_close: Callable | None,
+        on_close: Callable | None,
+        initial_query: str | None,
+        placeholder: str | None,
+        context_text: str | None,
+        exclusive_source: str | None,
+    ) -> None:
+        """Replace the active visible session without tearing down the panel."""
+        self._finish_active_session(defer_on_close=True)
+        self._invalidate_search_session()
+
+        self._context_text = context_text
+        self._exclusive_source = exclusive_source
+        self._cleanup_on_close = cleanup_on_close
+        self._on_close = on_close
+        self._session_placeholder = placeholder
+        self._pending_initial_query = initial_query
+        self._pending_placeholder = placeholder
+
+        if self._ql_panel is not None:
+            self._ql_panel.close()
+            self._ql_panel = None
+        self._exit_calc_mode()
+
+        self._position_on_mouse_screen()
+        self._panel.setAlphaValue_(0.0)
+        if self._webview is not None and self._page_loaded:
+            self._reset_panel_ui(initial_query, placeholder)
+        elif self._webview is not None:
+            self._reload_chooser_html()
+        else:
+            self._build_panel()
 
     def _maybe_close(self) -> None:
         """Close unless one of our panels (chooser or QL) is still key.
@@ -552,9 +633,30 @@ class ChooserPanel:
 
     def show(
         self,
+        cleanup_on_close: Callable | None = None,
         on_close: Callable | None = None,
         initial_query: str | None = None,
         placeholder: str | None = None,
+    ) -> None:
+        """Show the chooser panel in normal launcher mode."""
+        self._show_internal(
+            cleanup_on_close=cleanup_on_close,
+            on_close=on_close,
+            initial_query=initial_query,
+            placeholder=placeholder,
+            context_text=None,
+            exclusive_source=None,
+        )
+
+    def _show_internal(
+        self,
+        *,
+        cleanup_on_close: Callable | None = None,
+        on_close: Callable | None = None,
+        initial_query: str | None = None,
+        placeholder: str | None = None,
+        context_text: str | None = None,
+        exclusive_source: str | None = None,
     ) -> None:
         """Show the chooser panel. Must run on main thread.
 
@@ -565,23 +667,48 @@ class ChooserPanel:
             placeholder: If set, override the search input placeholder text.
         """
         self._cancel_recycle_timer()
-        self._on_close = on_close
-        self._pending_initial_query = initial_query
-        self._pending_placeholder = placeholder
 
         if self._panel is not None and self._panel.isVisible():
-            # Already visible — apply initial query if provided, else focus
-            if initial_query:
-                self._eval_js(f"setInputValue({json.dumps(initial_query)})")
-            else:
+            same_session = (
+                cleanup_on_close is None
+                and on_close is None
+                and initial_query is None
+                and placeholder == self._session_placeholder
+                and context_text == self._context_text
+                and exclusive_source == self._exclusive_source
+            )
+            if same_session:
                 self._eval_js("focusInput()")
-            self._position_on_mouse_screen()
+                self._position_on_mouse_screen()
+                self._panel.makeKeyAndOrderFront_(None)
+                from AppKit import NSApp
+
+                NSApp.activateIgnoringOtherApps_(True)
+                return
+
+            self._replace_visible_session(
+                cleanup_on_close=cleanup_on_close,
+                on_close=on_close,
+                initial_query=initial_query,
+                placeholder=placeholder,
+                context_text=context_text,
+                exclusive_source=exclusive_source,
+            )
+
             self._panel.makeKeyAndOrderFront_(None)
+
             from AppKit import NSApp
 
             NSApp.activateIgnoringOtherApps_(True)
             return
 
+        self._context_text = context_text
+        self._exclusive_source = exclusive_source
+        self._cleanup_on_close = cleanup_on_close
+        self._on_close = on_close
+        self._session_placeholder = placeholder
+        self._pending_initial_query = initial_query
+        self._pending_placeholder = placeholder
         self._previous_app = get_frontmost_app()
 
         if self._panel is not None and self._page_loaded:
@@ -636,6 +763,7 @@ class ChooserPanel:
         self,
         context_text: str,
         exclusive_source: str | None = None,
+        cleanup_on_close: Callable | None = None,
         on_close: Callable | None = None,
         initial_query: str | None = None,
         placeholder: str | None = None,
@@ -651,9 +779,14 @@ class ChooserPanel:
             initial_query: Pre-fill the search input (for filtering actions).
             placeholder: Override the search input placeholder text.
         """
-        self._context_text = context_text
-        self._exclusive_source = exclusive_source
-        self.show(on_close=on_close, initial_query=initial_query, placeholder=placeholder)
+        self._show_internal(
+            cleanup_on_close=cleanup_on_close,
+            on_close=on_close,
+            initial_query=initial_query,
+            placeholder=placeholder,
+            context_text=context_text,
+            exclusive_source=exclusive_source,
+        )
 
     def close(self, *, _schedule_recycle: bool = True) -> None:
         """Hide the chooser panel, preserving WKWebView for fast re-show.
@@ -668,15 +801,15 @@ class ChooserPanel:
         if self._closing:
             return
         self._closing = True
+        self._invalidate_search_session()
         self._context_text = None
         self._exclusive_source = None
-
-        # Cancel all pending debounce timers
-        self._cancel_all_debounce_timers()
+        self._session_placeholder = None
+        self._pending_initial_query = None
+        self._pending_placeholder = None
 
         if self._snippet_expander is not None:
             self._snippet_expander.resume()
-        self._calc_sticky = False
         self._exit_calc_mode()
 
         if self._ql_panel is not None:
@@ -702,6 +835,7 @@ class ChooserPanel:
                 "setResults([]);setInputValue('');"
                 "setPreviewVisible(false);setCompact(false);"
                 "setModifierHints({},null);setCreateButton(false);"
+                "setLoading(false);"
                 "clearContext()",
                 None,
             )
@@ -730,10 +864,6 @@ class ChooserPanel:
             self._webview.loadHTMLString_baseURL_("", None)
             self._page_loaded = False
 
-        self._current_items = []
-        self._history_index = -1
-        self._show_preview = False
-        self._compact_results = False
         self._closing = False
 
         if self._saved_input_source is not None:
@@ -753,10 +883,7 @@ class ChooserPanel:
 
         self._fire_event("close")
 
-        callback = self._on_close
-        self._on_close = None
-        if callback is not None:
-            callback()
+        self._finish_active_session()
 
         if _schedule_recycle:
             self._schedule_recycle()
@@ -833,6 +960,7 @@ class ChooserPanel:
         Called during script reload when the HTML/i18n may have changed
         and the WKWebView must be recreated from scratch.
         """
+        self._cancel_recycle_timer()
         # Close first to handle hide + state cleanup (skip recycle —
         # we're tearing down fully).
         self.close(_schedule_recycle=False)
@@ -1713,10 +1841,10 @@ class ChooserPanel:
             combined = ";".join(pending)
             self._webview.evaluateJavaScript_completionHandler_(combined, None)
 
-        # Apply custom placeholder
-        if self._pending_placeholder is not None:
-            self._eval_js(f"setPlaceholder({json.dumps(self._pending_placeholder)})")
-            self._pending_placeholder = None
+        # Always sync placeholder so custom placeholder state cannot leak
+        # across visible-session replacements or warm reloads.
+        self._eval_js(f"setPlaceholder({json.dumps(self._pending_placeholder or '')})")
+        self._pending_placeholder = None
 
         # Apply pending initial query (e.g. from source hotkey)
         if self._pending_initial_query is not None:

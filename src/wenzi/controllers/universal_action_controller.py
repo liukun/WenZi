@@ -23,6 +23,7 @@ class UniversalActionController:
     def __init__(self, app: WenZiApp) -> None:
         self._app = app
         self._selected_text: str = ""
+        self._session_seq: int = 0
 
     def trigger(self) -> None:
         """Hotkey callback.  Runs on a background thread (Quartz event tap).
@@ -54,6 +55,8 @@ class UniversalActionController:
         if not items:
             logger.info("Universal Action: no actions available")
             return
+        self._session_seq += 1
+        source_name = f"{_UA_SOURCE_NAME}:{self._session_seq}"
 
         def _search(query: str) -> list[ChooserItem]:
             if not query.strip():
@@ -68,7 +71,7 @@ class UniversalActionController:
             return results
 
         src = ChooserSource(
-            name=_UA_SOURCE_NAME,
+            name=source_name,
             search=_search,
             priority=999,
         )
@@ -79,12 +82,12 @@ class UniversalActionController:
         from wenzi.i18n import t
 
         def _on_close() -> None:
-            chooser._panel.unregister_source(_UA_SOURCE_NAME)
+            chooser._panel.unregister_source(source_name)
 
         chooser.show_universal_action(
             context_text=text,
-            exclusive_source=_UA_SOURCE_NAME,
-            on_close=_on_close,
+            exclusive_source=source_name,
+            cleanup_on_close=_on_close,
             initial_query="",
             placeholder=t("chooser.ua.filter_placeholder"),
         )
