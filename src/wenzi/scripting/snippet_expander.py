@@ -24,8 +24,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Backspace virtual keycode on macOS
+# Virtual keycodes on macOS
 _VK_DELETE = 51
+_VK_V = 9
 
 # Maximum buffer length — keywords longer than this are not supported
 _MAX_BUFFER = 128
@@ -47,6 +48,10 @@ _CLEAR_KEYCODES = {
     126,  # up arrow
 }
 
+
+# Debounce delay: wait this long after keyword match before expanding.
+# If the user keeps typing within this window, expansion is cancelled.
+_EXPANSION_DELAY = 0.2
 
 _carbon = ctypes.cdll.LoadLibrary(ctypes.util.find_library("Carbon"))
 
@@ -86,12 +91,14 @@ class SnippetExpander:
         self._thread: Optional[threading.Thread] = None
         self._expanding = False  # Guard against re-entrance during expansion
         self._suppressed = False  # True while our own panels are key
+        self._pending_timer: Optional[threading.Timer] = None
 
     # -- public API ----------------------------------------------------------
 
     def suppress(self) -> None:
         """Temporarily suppress expansion (e.g. while launcher is open)."""
         self._suppressed = True
+        self._cancel_pending()
         with self._lock:
             self._buffer = ""
 
@@ -153,6 +160,7 @@ class SnippetExpander:
         """Stop listening."""
         import Quartz
 
+        self._cancel_pending()
         if self._loop is not None:
             Quartz.CFRunLoopStop(self._loop)
             self._loop = None
@@ -163,6 +171,13 @@ class SnippetExpander:
         with self._lock:
             self._buffer = ""
         logger.info("SnippetExpander stopped")
+
+    def _cancel_pending(self) -> None:
+        """Cancel a pending debounced expansion, if any."""
+        timer = self._pending_timer
+        if timer is not None:
+            timer.cancel()
+            self._pending_timer = None
 
     # -- internals -----------------------------------------------------------
 
@@ -180,6 +195,9 @@ class SnippetExpander:
 
                 if self._expanding or self._suppressed:
                     return None
+
+                # Any keystroke cancels a pending debounced expansion
+                self._cancel_pending()
 
                 # Extract all data from event, then release the CF ref.
                 # CGEventRef is freed by CFRelease (not autorelease), so
@@ -252,16 +270,20 @@ class SnippetExpander:
                 # Clear the buffer before expanding
                 with self._lock:
                     self._buffer = ""
-                # Run expansion in a separate thread to avoid blocking the tap
-                threading.Thread(
-                    target=self._expand,
+                # Debounce: wait before expanding so continued typing cancels it
+                timer = threading.Timer(
+                    _EXPANSION_DELAY,
+                    self._expand,
                     args=(keyword, content, raw),
-                    daemon=True,
-                ).start()
+                )
+                timer.daemon = True
+                timer.start()
+                self._pending_timer = timer
                 return
 
     def _expand(self, keyword: str, content: str, raw: bool = False) -> None:
         """Delete the keyword text and paste the snippet content."""
+        self._pending_timer = None
         self._expanding = True
         try:
             if raw:
@@ -275,24 +297,15 @@ class SnippetExpander:
 
             # Send backspace keys to delete the keyword
             self._send_backspaces(len(keyword))
-            time.sleep(0.05)
+            time.sleep(0.02)
 
             # Paste the snippet content
             from wenzi.input import _set_pasteboard_concealed
 
             _set_pasteboard_concealed(expanded)
-            time.sleep(0.05)
+            time.sleep(0.02)
 
-            import subprocess
-
-            subprocess.run(
-                [
-                    "osascript", "-e",
-                    'tell application "System Events" to keystroke "v" '
-                    "using command down",
-                ],
-                capture_output=True, timeout=5,
-            )
+            self._send_cmd_v()
         except Exception:
             logger.exception("Failed to expand snippet %r", keyword)
             try:
@@ -319,4 +332,16 @@ class SnippetExpander:
             Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, down)
             up = Quartz.CGEventCreateKeyboardEvent(None, _VK_DELETE, False)
             Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, up)
-            time.sleep(0.01)
+            time.sleep(0.002)
+
+    @staticmethod
+    def _send_cmd_v() -> None:
+        """Send Cmd+V keystroke via Quartz CGEvent."""
+        import Quartz
+
+        down = Quartz.CGEventCreateKeyboardEvent(None, _VK_V, True)
+        Quartz.CGEventSetFlags(down, Quartz.kCGEventFlagMaskCommand)
+        Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, down)
+        up = Quartz.CGEventCreateKeyboardEvent(None, _VK_V, False)
+        Quartz.CGEventSetFlags(up, Quartz.kCGEventFlagMaskCommand)
+        Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, up)
