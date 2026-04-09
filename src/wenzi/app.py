@@ -190,6 +190,8 @@ class WenZiApp(StatusBarApp):
         self._config_dir = resolve_config_dir(config_dir)
         self._data_dir = resolve_data_dir()
         self._cache_dir = resolve_cache_dir()
+        os.makedirs(self._data_dir, exist_ok=True)
+        os.makedirs(self._cache_dir, exist_ok=True)
         self._config_path = os.path.join(self._config_dir, "config.json")
         self._config, config_error = load_config(self._config_path)
         self._config_error = config_error
