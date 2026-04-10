@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import Any
 
 from wenzi.ui.templates import load_template
-from wenzi.ui.web_utils import cleanup_webview_handler
+from wenzi.ui.web_utils import cleanup_webview
 from wenzi.ui.web_utils import time_range_cutoff as _time_range_cutoff
 
 logger = logging.getLogger(__name__)
@@ -162,11 +162,7 @@ class HistoryBrowserPanel:
             self._close_delegate = None
             self._panel.orderOut_(None)
             self._panel = None
-        if self._webview is not None:
-            self._webview.setNavigationDelegate_(None)
-            cleanup_webview_handler(self._webview, "action")
-            self._webview.stopLoading_(None)
-            self._webview.loadHTMLString_baseURL_("", None)
+        cleanup_webview(self._webview)
         self._webview = None
         if self._message_handler is not None:
             self._message_handler._panel_ref = None

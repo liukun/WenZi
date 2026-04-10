@@ -141,3 +141,38 @@ class TestShutdown:
         loop2 = async_loop.get_loop()
         assert loop2 is not loop1
         assert loop2.is_running()
+
+
+class TestCallLater:
+    def test_fires_callback(self):
+        fired = threading.Event()
+        async_loop.call_later(0.01, fired.set)
+        assert fired.wait(timeout=2)
+
+    def test_cancel_prevents_callback(self):
+        fired = threading.Event()
+        handle = async_loop.call_later(0.1, fired.set)
+        handle.cancel()
+        assert not fired.wait(timeout=0.3)
+
+    def test_cancel_is_idempotent(self):
+        handle = async_loop.call_later(10, lambda: None)
+        handle.cancel()
+        handle.cancel()  # should not raise
+
+    def test_passes_args(self):
+        results = []
+        done = threading.Event()
+
+        def cb(a, b):
+            results.append(a + b)
+            done.set()
+
+        async_loop.call_later(0.01, cb, 3, 4)
+        assert done.wait(timeout=2)
+        assert results == [7]
+
+    def test_returns_timer_handle(self):
+        handle = async_loop.call_later(10, lambda: None)
+        assert isinstance(handle, async_loop.TimerHandle)
+        handle.cancel()

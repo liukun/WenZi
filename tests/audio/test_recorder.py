@@ -23,7 +23,6 @@ def _mock_engine(monkeypatch):
     mock_hw_fmt = MagicMock()
     mock_hw_fmt.sampleRate.return_value = 48000.0
     mock_input_node.outputFormatForBus_.return_value = mock_hw_fmt
-    mock_input_node.auAudioUnit.return_value.deviceName.return_value = "TestMic"
     mock_engine.inputNode.return_value = mock_input_node
     mock_engine.startAndReturnError_.return_value = (True, None)
 
@@ -37,6 +36,18 @@ def _mock_engine(monkeypatch):
             addObserverForName_object_queue_usingBlock_=MagicMock(return_value="observer"),
             removeObserver_=MagicMock(),
         ))),
+    )
+    monkeypatch.setattr(
+        "wenzi.audio.recorder.default_input_device_name",
+        lambda: "TestMic",
+    )
+    monkeypatch.setattr(
+        "wenzi.audio.recorder.list_input_devices",
+        lambda: [{"uid": "test-uid", "name": "TestMic"}],
+    )
+    monkeypatch.setattr(
+        "wenzi.audio.recorder._resolve_device_id",
+        lambda uid: None,
     )
     return mock_engine
 
@@ -171,17 +182,17 @@ class TestRecorder:
         r = Recorder()
         r.mark_tainted()  # Should not raise
 
-    def test_device_param_logged_but_ignored(self, monkeypatch, caplog):
+    def test_device_not_found_falls_back_to_default(self, monkeypatch, caplog):
         import logging
 
         _mock_engine(monkeypatch)
 
         r = Recorder(sample_rate=16000, block_ms=20, device="SomeMic")
         r._query_device_name_enabled = False
-        with caplog.at_level(logging.INFO, logger="wenzi.audio.recorder"):
+        with caplog.at_level(logging.WARNING, logger="wenzi.audio.recorder"):
             r.start()
         assert r.is_recording is True
-        assert "ignoring" in caplog.text.lower()
+        assert "not found" in caplog.text.lower()
         r.stop()
 
 

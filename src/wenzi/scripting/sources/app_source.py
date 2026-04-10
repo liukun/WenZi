@@ -26,7 +26,7 @@ from wenzi.scripting.sources import (
 
 logger = logging.getLogger(__name__)
 
-_ICON_SIZE = 32
+_ICON_SIZE = 72  # 72x72 px for Retina display (rendered at 36x36 CSS @2x)
 _DEFAULT_ICON_CACHE_DIR = os.path.expanduser(_CFG_ICON_CACHE_DIR)
 
 # Directories to scan for applications
@@ -108,6 +108,7 @@ def _get_app_icon_png(path: str) -> bytes | None:
                 return None
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.setCurrentContext_(ctx)
+            ctx.setImageInterpolation_(3)  # NSImageInterpolationHigh
             icon.drawInRect_fromRect_operation_fraction_(
                 NSMakeRect(0, 0, sz, sz), NSZeroRect,
                 NSCompositingOperationCopy, 1.0,

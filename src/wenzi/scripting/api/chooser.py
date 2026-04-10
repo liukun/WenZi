@@ -248,6 +248,7 @@ class ChooserAPI:
         self,
         context_text: str,
         exclusive_source: str | None = None,
+        cleanup_on_close: Callable | None = None,
         on_close: Callable | None = None,
         initial_query: str | None = None,
         placeholder: str | None = None,
@@ -271,6 +272,7 @@ class ChooserAPI:
                 self._panel.show_universal_action,
                 context_text=context_text,
                 exclusive_source=exclusive_source,
+                cleanup_on_close=cleanup_on_close,
                 on_close=on_close,
                 initial_query=initial_query,
                 placeholder=placeholder,
@@ -363,12 +365,14 @@ class ChooserAPI:
                     results.append(ci)
             return results
 
-        def _on_close() -> None:
+        def _cleanup_on_close() -> None:
             # Remove our temporary select handler
             handlers = self._event_handlers.get("select", [])
             if _on_select in handlers:
                 handlers.remove(_on_select)
             self._panel.unregister_source(source_name)
+
+        def _on_close() -> None:
             callback(selected[0])
 
         src = ChooserSource(
@@ -384,6 +388,7 @@ class ChooserAPI:
 
             AppHelper.callAfter(
                 self._panel.show,
+                cleanup_on_close=_cleanup_on_close,
                 on_close=_on_close,
                 initial_query=self._PICK_PREFIX + " ",
                 placeholder=placeholder,

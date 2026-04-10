@@ -423,16 +423,9 @@ class WebViewPanel:
             self._tmp_html_path = None
 
         # Break WKWebView retain cycles before removing the panel.
-        # The script message handler creates a strong reference cycle:
-        # WKWebView -> userContentController -> messageHandler -> _panel_ref -> self -> _webview
-        # We must remove the handler and clear back-references to allow deallocation.
-        try:
-            if self._webview is not None:
-                ucc = self._webview.configuration().userContentController()
-                ucc.removeScriptMessageHandlerForName_("wz")
-                ucc.removeAllUserScripts()
-        except Exception:
-            pass
+        from wenzi.ui.web_utils import cleanup_webview
+
+        cleanup_webview(self._webview, handler_name="wz")
         if self._message_handler_obj is not None:
             self._message_handler_obj._panel_ref = None
         if self._close_delegate is not None:

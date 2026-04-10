@@ -8,6 +8,7 @@ import os
 import threading
 from typing import Any
 
+from wenzi.async_loop import TimerHandle, call_later
 from wenzi.config import DEFAULT_SCRIPT_DATA_PATH
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class StoreAPI:
         self._loaded = False
         self._lock = threading.Lock()
         self._dirty = False
-        self._flush_timer: threading.Timer | None = None
+        self._flush_timer: TimerHandle | None = None
 
     def _ensure_loaded(self) -> None:
         if self._loaded:
@@ -99,12 +100,10 @@ class StoreAPI:
         with self._lock:
             if self._flush_timer is not None:
                 self._flush_timer.cancel()
-            self._flush_timer = threading.Timer(_FLUSH_DELAY, self._flush)
-            self._flush_timer.daemon = True
-            self._flush_timer.start()
+            self._flush_timer = call_later(_FLUSH_DELAY, self._flush)
 
     def _flush(self) -> None:
-        """Write data to disk (runs on background timer thread)."""
+        """Write data to disk (runs on the shared asyncio event loop)."""
         with self._lock:
             if not self._dirty:
                 return

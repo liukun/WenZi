@@ -132,10 +132,10 @@ class TranslateWebViewPanel:
 
     def _cleanup(self) -> None:
         """Close the panel and clear references."""
-        if self._webview is not None:
-            self._webview.stopLoading_(None)
-            self._webview.loadHTMLString_baseURL_("", None)
-            self._webview = None
+        from wenzi.ui.web_utils import cleanup_webview
+
+        cleanup_webview(self._webview, handler_name=None)
+        self._webview = None
         if self._panel is not None:
             try:
                 self._panel.close()

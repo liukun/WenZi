@@ -142,21 +142,14 @@ class SettingsWebPanel:
 
     def close(self) -> None:
         """Close the panel and release resources."""
-        if self._webview is not None:
-            # Break WKUserContentController → MessageHandler retain cycle
-            try:
-                cfg = self._webview.configuration()
-                cfg.userContentController().removeScriptMessageHandlerForName_("wz")
-            except Exception:
-                pass
         if self._panel is not None:
             self._panel.setDelegate_(None)
             self._close_delegate = None
             self._panel.orderOut_(None)
             self._panel = None
-        if self._webview is not None:
-            self._webview.stopLoading_(None)
-            self._webview.loadHTMLString_baseURL_("", None)
+        from wenzi.ui.web_utils import cleanup_webview
+
+        cleanup_webview(self._webview, handler_name="wz")
         self._webview = None
         if self._message_handler is not None:
             self._message_handler._panel_ref = None

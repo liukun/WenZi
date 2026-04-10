@@ -11,6 +11,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
+from .async_loop import TimerHandle, call_later
 from .config import DEFAULT_DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class UsageStats:
         self._dirty = False
 
         # Periodic flush timer
-        self._flush_timer: threading.Timer | None = None
+        self._flush_timer: TimerHandle | None = None
         self._stopped = False
 
     def _daily_path(self, day: str) -> str:
@@ -170,9 +171,7 @@ class UsageStats:
         """Schedule the next periodic flush. Must hold _lock."""
         if self._stopped:
             return
-        self._flush_timer = threading.Timer(_FLUSH_INTERVAL, self._periodic_flush)
-        self._flush_timer.daemon = True
-        self._flush_timer.start()
+        self._flush_timer = call_later(_FLUSH_INTERVAL, self._periodic_flush)
 
     def _cancel_flush_timer(self) -> None:
         """Cancel any pending flush timer. Must hold _lock."""

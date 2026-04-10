@@ -7,6 +7,8 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+from wenzi.async_loop import TimerHandle, call_later
+
 if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
@@ -48,7 +50,7 @@ class PreviewController:
 
     def __init__(self, app: WenZiApp) -> None:
         self._app = app
-        self._enhance_debounce_timer: threading.Timer | None = None
+        self._enhance_debounce_timer: TimerHandle | None = None
         self._preview_history = PreviewHistoryStore(max_size=10)
         # Track the history record currently being viewed (None = normal mode)
         self._viewing_history_index: int | None = None
@@ -1145,11 +1147,9 @@ class PreviewController:
             app._enhance_controller.run(asr_text, request_id, self._result_holder,
                                        input_context=self._input_context)
 
-        self._enhance_debounce_timer = threading.Timer(
+        self._enhance_debounce_timer = call_later(
             self._ENHANCE_DEBOUNCE_SECONDS, _fire_enhance,
         )
-        self._enhance_debounce_timer.daemon = True
-        self._enhance_debounce_timer.start()
 
     def on_preview_stt_change(self, index: int) -> None:
         """Handle STT model popup change from the preview panel."""

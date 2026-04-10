@@ -12,6 +12,8 @@ import logging
 import threading
 from collections.abc import Callable
 
+from wenzi.async_loop import TimerHandle, call_later
+
 logger = logging.getLogger(__name__)
 
 # --- Virtual keycode mappings ---
@@ -575,7 +577,7 @@ class MultiHotkeyListener:
         self._record_cb: Callable[[str], None] | None = None
         self._record_unrecognized_cb: Callable[[str], None] | None = None
         self._record_timeout_cb: Callable[[], None] | None = None
-        self._record_timer: threading.Timer | None = None
+        self._record_timer: TimerHandle | None = None
 
         self._has_non_modifier_trigger = False
         for name in key_names:
@@ -634,9 +636,7 @@ class MultiHotkeyListener:
         self._record_cb = on_recorded
         self._record_unrecognized_cb = on_unrecognized
         self._record_timeout_cb = on_timeout
-        self._record_timer = threading.Timer(timeout, self._on_record_timeout)
-        self._record_timer.daemon = True
-        self._record_timer.start()
+        self._record_timer = call_later(timeout, self._on_record_timeout)
         logger.info("Recording mode started (timeout=%.1fs)", timeout)
 
     def cancel_record(self) -> None:

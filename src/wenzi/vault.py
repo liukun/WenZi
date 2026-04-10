@@ -16,6 +16,8 @@ import logging
 import os
 import threading
 
+from wenzi.async_loop import TimerHandle, call_later
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PATH = os.path.expanduser(
@@ -76,7 +78,7 @@ class Vault:
         self._loaded = False
         self._lock = threading.RLock()
         self._dirty = False
-        self._flush_timer: threading.Timer | None = None
+        self._flush_timer: TimerHandle | None = None
         self._master_key: bytes | None = self._init_master_key()
 
     # -- master key ---------------------------------------------------------
@@ -301,9 +303,7 @@ class Vault:
         with self._lock:
             if self._flush_timer is not None:
                 self._flush_timer.cancel()
-            self._flush_timer = threading.Timer(_FLUSH_DELAY, self._flush)
-            self._flush_timer.daemon = True
-            self._flush_timer.start()
+            self._flush_timer = call_later(_FLUSH_DELAY, self._flush)
 
     def _flush(self) -> None:
         """Atomically write vault to disk (tmp + os.replace)."""

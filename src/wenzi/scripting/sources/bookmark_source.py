@@ -16,7 +16,7 @@ from wenzi.scripting.sources import ChooserItem, ChooserSource, fuzzy_match_fiel
 
 logger = logging.getLogger(__name__)
 
-_ICON_SIZE = 32
+_ICON_SIZE = 72  # 72x72 px for Retina display (rendered at 36x36 CSS @2x)
 _DEFAULT_ICON_CACHE_DIR = os.path.expanduser(_CFG_ICON_CACHE_DIR)
 
 
@@ -373,6 +373,7 @@ def _get_browser_icon(browser: str, icon_cache_dir: str = _DEFAULT_ICON_CACHE_DI
         from AppKit import (
             NSBitmapImageRep,
             NSCompositingOperationCopy,
+            NSGraphicsContext,
             NSImage,
             NSPNGFileType,
             NSWorkspace,
@@ -388,6 +389,9 @@ def _get_browser_icon(browser: str, icon_cache_dir: str = _DEFAULT_ICON_CACHE_DI
         size = NSSize(_ICON_SIZE, _ICON_SIZE)
         target = NSImage.alloc().initWithSize_(size)
         target.lockFocus()
+        ctx = NSGraphicsContext.currentContext()
+        if ctx:
+            ctx.setImageInterpolation_(3)  # NSImageInterpolationHigh
         icon.drawInRect_fromRect_operation_fraction_(
             NSMakeRect(0, 0, _ICON_SIZE, _ICON_SIZE),
             NSMakeRect(0, 0, icon.size().width, icon.size().height),

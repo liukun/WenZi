@@ -309,13 +309,15 @@ class TestChooserAPI:
         with patch("PyObjCTools.AppHelper.callAfter") as mock_call:
             api.pick([{"title": "A"}], callback=lambda item: None)
             _, kwargs = mock_call.call_args
+            cleanup_on_close = kwargs.get("cleanup_on_close")
             on_close = kwargs.get("on_close")
 
         # Handler should be registered
         assert len(api._event_handlers.get("select", [])) == 1
-        on_close()
+        cleanup_on_close()
         # Handler should be removed after close
         assert len(api._event_handlers.get("select", [])) == 0
+        assert on_close is not None
 
     def test_on_event_decorator(self):
         api = ChooserAPI()

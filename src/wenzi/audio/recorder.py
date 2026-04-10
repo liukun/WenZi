@@ -11,13 +11,121 @@ import threading
 import time
 import wave
 
-from AVFoundation import AVAudioEngine
+from AVFoundation import AVAudioEngine, AVCaptureDevice, AVMediaTypeAudio
 from Foundation import NSNotificationCenter
 
 logger = logging.getLogger(__name__)
 
 # Notification name (string constant; not always in the PyObjC bindings).
 _ENGINE_CONFIG_CHANGE = "AVAudioEngineConfigurationChangeNotification"
+
+
+def list_input_devices() -> list[dict]:
+    """Return a list of available audio input devices.
+
+    Each dict has keys: ``uid`` (str) and ``name`` (str).
+    The ``uid`` is stable across reboots and suitable for config storage.
+    """
+    try:
+        devices = AVCaptureDevice.devicesWithMediaType_(AVMediaTypeAudio)
+    except Exception:
+        logger.warning("Failed to enumerate audio devices", exc_info=True)
+        return []
+    result: list[dict] = []
+    for d in devices:
+        uid = str(d.uniqueID())
+        name = str(d.localizedName())
+        if uid and name:
+            result.append({"uid": uid, "name": name})
+    return result
+
+
+def default_input_device_name() -> str | None:
+    """Return the localized name of the current system default input device."""
+    try:
+        d = AVCaptureDevice.defaultDeviceWithMediaType_(AVMediaTypeAudio)
+        return str(d.localizedName()) if d else None
+    except Exception:
+        return None
+
+
+def _resolve_device_id(uid: str) -> int | None:
+    """Find the CoreAudio AudioDeviceID for an AVCaptureDevice UID.
+
+    AVAudioEngine's input node uses CoreAudio device IDs internally.
+    We bridge from AVCaptureDevice UID → AudioDeviceID via the
+    ``transportType`` + private ``_audioDeviceID`` selector, falling
+    back to a CoreAudio property lookup.
+    """
+    import ctypes
+    import ctypes.util
+
+    _ca = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreAudio"))
+
+    # AudioObjectPropertyAddress
+    class _Addr(ctypes.Structure):
+        _fields_ = [
+            ("mSelector", ctypes.c_uint32),
+            ("mScope", ctypes.c_uint32),
+            ("mElement", ctypes.c_uint32),
+        ]
+
+    _ca.AudioObjectGetPropertyDataSize.restype = ctypes.c_int32
+    _ca.AudioObjectGetPropertyDataSize.argtypes = [
+        ctypes.c_uint32, ctypes.POINTER(_Addr),
+        ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32),
+    ]
+    _ca.AudioObjectGetPropertyData.restype = ctypes.c_int32
+    _ca.AudioObjectGetPropertyData.argtypes = [
+        ctypes.c_uint32, ctypes.POINTER(_Addr),
+        ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32),
+        ctypes.c_void_p,
+    ]
+
+    _cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation"))
+    _cf.CFStringGetLength.restype = ctypes.c_long
+    _cf.CFStringGetLength.argtypes = [ctypes.c_void_p]
+    _cf.CFStringGetCString.restype = ctypes.c_bool
+    _cf.CFStringGetCString.argtypes = [
+        ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32,
+    ]
+    _cf.CFRelease.restype = None
+    _cf.CFRelease.argtypes = [ctypes.c_void_p]
+
+    kSys = 1  # kAudioObjectSystemObject
+    kDevs = 0x64657623  # 'dev#'
+    kUID = 0x75696420  # 'uid '
+    kGlob = 0x676C6F62  # 'glob'
+    kUTF8 = 0x08000100
+
+    # Get all device IDs
+    addr = _Addr(kDevs, kGlob, 0)
+    size = ctypes.c_uint32(0)
+    if _ca.AudioObjectGetPropertyDataSize(kSys, ctypes.byref(addr), 0, None, ctypes.byref(size)) != 0:
+        return None
+    n = size.value // 4
+    ids = (ctypes.c_uint32 * n)()
+    if _ca.AudioObjectGetPropertyData(kSys, ctypes.byref(addr), 0, None, ctypes.byref(size), ids) != 0:
+        return None
+
+    # Match UID
+    for did in ids:
+        addr2 = _Addr(kUID, kGlob, 0)
+        sz = ctypes.c_uint32(ctypes.sizeof(ctypes.c_void_p))
+        cf_str = ctypes.c_void_p()
+        if _ca.AudioObjectGetPropertyData(did, ctypes.byref(addr2), 0, None, ctypes.byref(sz), ctypes.byref(cf_str)) != 0:
+            continue
+        if not cf_str.value:
+            continue
+        try:
+            length = _cf.CFStringGetLength(cf_str) * 4 + 1
+            buf = ctypes.create_string_buffer(length)
+            if _cf.CFStringGetCString(cf_str, buf, length, kUTF8):
+                if buf.value.decode("utf-8") == uid:
+                    return int(did)
+        finally:
+            _cf.CFRelease(cf_str)
+    return None
 
 
 class Recorder:
@@ -106,17 +214,29 @@ class Recorder:
             self._flush()
             self._total_bytes = 0
 
-        if self.device is not None:
-            logger.info(
-                "device=%r specified but AVAudioEngine uses system default; "
-                "ignoring",
-                self.device,
-            )
-
         # --- Phase 2: create AVAudioEngine and audio graph (lock free) --
         try:
             engine = AVAudioEngine.alloc().init()
             input_node = engine.inputNode()
+
+            # Set input device if specified
+            if self.device is not None:
+                dev_id = _resolve_device_id(self.device)
+                if dev_id is not None:
+                    try:
+                        au = input_node.AUAudioUnit()
+                        au.setDeviceID_error_(dev_id, None)
+                        logger.info("Set input device to uid=%s (id=%d)", self.device, dev_id)
+                    except Exception:
+                        logger.warning(
+                            "Failed to set device uid=%s, using system default",
+                            self.device,
+                            exc_info=True,
+                        )
+                else:
+                    logger.warning(
+                        "Device uid=%s not found, using system default", self.device
+                    )
             hw_fmt = input_node.outputFormatForBus_(0)
             self._hw_sample_rate = hw_fmt.sampleRate()
             self._resample_ratio = self._hw_sample_rate / self.sample_rate
@@ -151,7 +271,7 @@ class Recorder:
         # --- Phase 3: device name query ---------------------------------
         device_name: str | None = None
         if self._query_device_name_enabled:
-            device_name = self._query_device_name(engine)
+            device_name = self._query_device_name()
 
         # --- Phase 4: register for config change notifications ----------
         observer = (
@@ -330,14 +450,13 @@ class Recorder:
                 "current session may have gaps"
             )
 
-    @staticmethod
-    def _query_device_name(engine: AVAudioEngine) -> str | None:
+    def _query_device_name(self) -> str | None:
         """Return the name of the current input device, or None."""
-        try:
-            desc = engine.inputNode().auAudioUnit().deviceName()
-            return str(desc) if desc else None
-        except Exception:
-            return None
+        if self.device:
+            for d in list_input_devices():
+                if d["uid"] == self.device:
+                    return d["name"]
+        return default_input_device_name()
 
     def _flush(self) -> None:
         while not self._queue.empty():

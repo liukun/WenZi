@@ -22,7 +22,7 @@ from wenzi.scripting.sources.app_source import _cache_key as _app_cache_key
 logger = logging.getLogger(__name__)
 
 _MAX_RESULTS = 30
-_ICON_SIZE = 32
+_ICON_SIZE = 72  # 72x72 px for Retina display (rendered at 36x36 CSS @2x)
 _DEFAULT_ICON_CACHE_DIR = os.path.expanduser(_CFG_ICON_CACHE_DIR)
 
 # Common extensions to pre-warm in background on init
@@ -76,6 +76,7 @@ def _resize_icon_to_png(icon, png_path: str, icon_cache_dir: str) -> None:
             return
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.setCurrentContext_(ctx)
+        ctx.setImageInterpolation_(3)  # NSImageInterpolationHigh
         icon.drawInRect_fromRect_operation_fraction_(
             NSMakeRect(0, 0, sz, sz), NSZeroRect,
             NSCompositingOperationCopy, 1.0,

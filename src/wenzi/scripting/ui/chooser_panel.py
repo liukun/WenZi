@@ -197,6 +197,17 @@ class ChooserPanel:
     _DEFAULT_ASYNC_TIMEOUT = 5.0  # seconds
     _UA_USAGE_PREFIX = "_ua"  # Synthetic query prefix for UA mode usage tracking
     _RECYCLE_DELAY = 60.0  # seconds before recycling idle webview
+    _RECYCLE_MODE_DESTROY = "destroy"
+    _RECYCLE_MODE_PREBUILD = "prebuild"
+    _RECYCLE_MODE_PRELOAD_HTML = "preload_html"
+    _RECYCLE_MODE_KEEP_ALIVE = "keep_alive"
+    _VALID_RECYCLE_MODES = frozenset({
+        _RECYCLE_MODE_DESTROY,
+        _RECYCLE_MODE_PREBUILD,
+        _RECYCLE_MODE_PRELOAD_HTML,
+        _RECYCLE_MODE_KEEP_ALIVE,
+    })
+    _DEFAULT_RECYCLE_MODE = _RECYCLE_MODE_PRELOAD_HTML
 
     def __init__(self, usage_tracker=None) -> None:
         self._panel = None
@@ -216,7 +227,9 @@ class ChooserPanel:
         self._usage_tracker = usage_tracker
         self._query_history = None
         self._history_index: int = -1
+        self._cleanup_on_close: Callable | None = None
         self._on_close: Callable | None = None
+        self._session_placeholder: str | None = None
         self._pending_initial_query: str | None = None
         self._pending_placeholder: str | None = None
         self._event_callback: Callable | None = None  # (event, *args)
@@ -238,6 +251,8 @@ class ChooserPanel:
         self._loading_visible: bool = False
         self._debounce_state: dict[str, _DebounceEntry] = {}  # source_name -> pending debounce
         self._recycle_timer = None  # deferred webview recycle timer
+        self._recycle_mode: str = self._DEFAULT_RECYCLE_MODE
+        self._recycle_preloading: bool = False
         self._last_screen = None  # last screen the panel was positioned on
 
     # ------------------------------------------------------------------
@@ -356,9 +371,10 @@ class ChooserPanel:
             "setCompact(false)",
             "setModifierHints({},null)",
             "setCreateButton(false)",
+            "setLoading(false)",
         ]
         # Clear or set input value
-        if initial_query:
+        if initial_query is not None:
             parts.append(f"setInputValue({json.dumps(initial_query)})")
             # pending_initial_query is consumed by _on_page_loaded only on
             # first load; for reuse we apply it directly here.
@@ -373,9 +389,14 @@ class ChooserPanel:
         else:
             parts.append("clearContext()")
         # Apply placeholder
-        if placeholder:
-            parts.append(f"setPlaceholder({json.dumps(placeholder)})")
-            self._pending_placeholder = None
+        parts.append(f"setPlaceholder({json.dumps(placeholder or '')})")
+        # Visible-session replacement must restore text focus so typing
+        # continues to work without requiring a mouse click.
+        parts.append(
+            "searchInput.focus();"
+            "searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length)"
+        )
+        self._pending_placeholder = None
 
         # Return the measured collapsed height so the completion handler
         # can resize the panel to exactly match a freshly created one.
@@ -391,6 +412,25 @@ class ChooserPanel:
         self._webview.evaluateJavaScript_completionHandler_(
             js, _on_reset_done
         )
+
+    @classmethod
+    def normalize_recycle_mode(cls, mode: str | None) -> str:
+        """Return a supported idle recycle mode."""
+        if mode in cls._VALID_RECYCLE_MODES:
+            return mode
+        return cls._DEFAULT_RECYCLE_MODE
+
+    def set_recycle_mode(self, mode: str | None) -> None:
+        """Update how an idle hidden chooser manages its WebView."""
+        self._recycle_mode = self.normalize_recycle_mode(mode)
+
+        # If a hidden chooser is waiting for recycle, reschedule it under the
+        # new policy. Once recycle work has already run, the new mode only
+        # affects future close() cycles.
+        if self._recycle_timer is not None:
+            self._cancel_recycle_timer()
+            if self._panel is not None and not self._panel.isVisible():
+                self._schedule_recycle()
 
     # ------------------------------------------------------------------
     # Source management
@@ -422,6 +462,85 @@ class ChooserPanel:
                 self._event_callback(event, *args)
             except Exception:
                 logger.exception("Panel event callback error (%s)", event)
+
+    @staticmethod
+    def _run_close_callback(callback: Callable) -> None:
+        """Execute a user-provided close callback with logging."""
+        try:
+            callback()
+        except Exception:
+            logger.exception("Chooser on_close callback failed")
+
+    def _finish_active_session(self, *, defer_on_close: bool = False) -> None:
+        """Run and clear the current session's cleanup and close callbacks."""
+        cleanup = self._cleanup_on_close
+        self._cleanup_on_close = None
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception:
+                logger.exception("Chooser cleanup_on_close callback failed")
+
+        callback = self._on_close
+        self._on_close = None
+        if callback is not None:
+            if defer_on_close:
+                from PyObjCTools import AppHelper
+
+                AppHelper.callAfter(self._run_close_callback, callback)
+            else:
+                self._run_close_callback(callback)
+
+    def _invalidate_search_session(self) -> None:
+        """Invalidate outstanding search work and clear transient UI state."""
+        self._search_generation += 1
+        self._cancel_all_debounce_timers()
+        self._pending_async_count = 0
+        self._loading_visible = False
+        self._active_source = None
+        self._current_items = []
+        self._last_query = ""
+        self._history_index = -1
+        self._show_preview = False
+        self._compact_results = False
+        self._calc_sticky = False
+        self._pending_js = []
+
+    def _replace_visible_session(
+        self,
+        *,
+        cleanup_on_close: Callable | None,
+        on_close: Callable | None,
+        initial_query: str | None,
+        placeholder: str | None,
+        context_text: str | None,
+        exclusive_source: str | None,
+    ) -> None:
+        """Replace the active visible session without tearing down the panel."""
+        self._finish_active_session(defer_on_close=True)
+        self._invalidate_search_session()
+
+        self._context_text = context_text
+        self._exclusive_source = exclusive_source
+        self._cleanup_on_close = cleanup_on_close
+        self._on_close = on_close
+        self._session_placeholder = placeholder
+        self._pending_initial_query = initial_query
+        self._pending_placeholder = placeholder
+
+        if self._ql_panel is not None:
+            self._ql_panel.close()
+            self._ql_panel = None
+        self._exit_calc_mode()
+
+        self._position_on_mouse_screen()
+        self._panel.setAlphaValue_(0.0)
+        if self._webview is not None and self._page_loaded:
+            self._reset_panel_ui(initial_query, placeholder)
+        elif self._webview is not None:
+            self._reload_chooser_html()
+        else:
+            self._build_panel()
 
     def _maybe_close(self) -> None:
         """Close unless one of our panels (chooser or QL) is still key.
@@ -552,9 +671,30 @@ class ChooserPanel:
 
     def show(
         self,
+        cleanup_on_close: Callable | None = None,
         on_close: Callable | None = None,
         initial_query: str | None = None,
         placeholder: str | None = None,
+    ) -> None:
+        """Show the chooser panel in normal launcher mode."""
+        self._show_internal(
+            cleanup_on_close=cleanup_on_close,
+            on_close=on_close,
+            initial_query=initial_query,
+            placeholder=placeholder,
+            context_text=None,
+            exclusive_source=None,
+        )
+
+    def _show_internal(
+        self,
+        *,
+        cleanup_on_close: Callable | None = None,
+        on_close: Callable | None = None,
+        initial_query: str | None = None,
+        placeholder: str | None = None,
+        context_text: str | None = None,
+        exclusive_source: str | None = None,
     ) -> None:
         """Show the chooser panel. Must run on main thread.
 
@@ -565,23 +705,48 @@ class ChooserPanel:
             placeholder: If set, override the search input placeholder text.
         """
         self._cancel_recycle_timer()
-        self._on_close = on_close
-        self._pending_initial_query = initial_query
-        self._pending_placeholder = placeholder
 
         if self._panel is not None and self._panel.isVisible():
-            # Already visible — apply initial query if provided, else focus
-            if initial_query:
-                self._eval_js(f"setInputValue({json.dumps(initial_query)})")
-            else:
+            same_session = (
+                cleanup_on_close is None
+                and on_close is None
+                and initial_query is None
+                and placeholder == self._session_placeholder
+                and context_text == self._context_text
+                and exclusive_source == self._exclusive_source
+            )
+            if same_session:
                 self._eval_js("focusInput()")
-            self._position_on_mouse_screen()
+                self._position_on_mouse_screen()
+                self._panel.makeKeyAndOrderFront_(None)
+                from AppKit import NSApp
+
+                NSApp.activateIgnoringOtherApps_(True)
+                return
+
+            self._replace_visible_session(
+                cleanup_on_close=cleanup_on_close,
+                on_close=on_close,
+                initial_query=initial_query,
+                placeholder=placeholder,
+                context_text=context_text,
+                exclusive_source=exclusive_source,
+            )
+
             self._panel.makeKeyAndOrderFront_(None)
+
             from AppKit import NSApp
 
             NSApp.activateIgnoringOtherApps_(True)
             return
 
+        self._context_text = context_text
+        self._exclusive_source = exclusive_source
+        self._cleanup_on_close = cleanup_on_close
+        self._on_close = on_close
+        self._session_placeholder = placeholder
+        self._pending_initial_query = initial_query
+        self._pending_placeholder = placeholder
         self._previous_app = get_frontmost_app()
 
         if self._panel is not None and self._page_loaded:
@@ -602,7 +767,8 @@ class ChooserPanel:
             self._reconnect_panel_refs()
             self._position_on_mouse_screen()
             self._panel.setAlphaValue_(0.0)
-            self._reload_chooser_html()
+            if not self._recycle_preloading:
+                self._reload_chooser_html()
         else:
             # First show — build from scratch
             self._build_panel()
@@ -636,6 +802,7 @@ class ChooserPanel:
         self,
         context_text: str,
         exclusive_source: str | None = None,
+        cleanup_on_close: Callable | None = None,
         on_close: Callable | None = None,
         initial_query: str | None = None,
         placeholder: str | None = None,
@@ -651,9 +818,14 @@ class ChooserPanel:
             initial_query: Pre-fill the search input (for filtering actions).
             placeholder: Override the search input placeholder text.
         """
-        self._context_text = context_text
-        self._exclusive_source = exclusive_source
-        self.show(on_close=on_close, initial_query=initial_query, placeholder=placeholder)
+        self._show_internal(
+            cleanup_on_close=cleanup_on_close,
+            on_close=on_close,
+            initial_query=initial_query,
+            placeholder=placeholder,
+            context_text=context_text,
+            exclusive_source=exclusive_source,
+        )
 
     def close(self, *, _schedule_recycle: bool = True) -> None:
         """Hide the chooser panel, preserving WKWebView for fast re-show.
@@ -668,15 +840,16 @@ class ChooserPanel:
         if self._closing:
             return
         self._closing = True
+        self._invalidate_search_session()
         self._context_text = None
         self._exclusive_source = None
-
-        # Cancel all pending debounce timers
-        self._cancel_all_debounce_timers()
+        self._session_placeholder = None
+        self._pending_initial_query = None
+        self._pending_placeholder = None
+        self._recycle_preloading = False
 
         if self._snippet_expander is not None:
             self._snippet_expander.resume()
-        self._calc_sticky = False
         self._exit_calc_mode()
 
         if self._ql_panel is not None:
@@ -702,6 +875,7 @@ class ChooserPanel:
                 "setResults([]);setInputValue('');"
                 "setPreviewVisible(false);setCompact(false);"
                 "setModifierHints({},null);setCreateButton(false);"
+                "setLoading(false);"
                 "clearContext()",
                 None,
             )
@@ -730,10 +904,6 @@ class ChooserPanel:
             self._webview.loadHTMLString_baseURL_("", None)
             self._page_loaded = False
 
-        self._current_items = []
-        self._history_index = -1
-        self._show_preview = False
-        self._compact_results = False
         self._closing = False
 
         if self._saved_input_source is not None:
@@ -753,10 +923,7 @@ class ChooserPanel:
 
         self._fire_event("close")
 
-        callback = self._on_close
-        self._on_close = None
-        if callback is not None:
-            callback()
+        self._finish_active_session()
 
         if _schedule_recycle:
             self._schedule_recycle()
@@ -768,6 +935,8 @@ class ChooserPanel:
     def _schedule_recycle(self) -> None:
         """Schedule a webview recycle to free WebKit decoded image cache."""
         self._cancel_recycle_timer()
+        if self._recycle_mode == self._RECYCLE_MODE_KEEP_ALIVE:
+            return
         if self._webview is None:
             return  # nothing to recycle
         from PyObjCTools import AppHelper
@@ -783,14 +952,9 @@ class ChooserPanel:
 
     def _teardown_webview(self) -> None:
         """Release the webview, panel, and associated delegates."""
-        if self._webview is not None:
-            self._webview.setNavigationDelegate_(None)
-            try:
-                config = self._webview.configuration()
-                if config:
-                    config.userContentController().removeScriptMessageHandlerForName_("chooser")
-            except Exception:
-                pass
+        from wenzi.ui.web_utils import cleanup_webview
+
+        cleanup_webview(self._webview, handler_name="chooser")
         if self._panel is not None:
             self._panel.setDelegate_(None)
             self._panel.orderOut_(None)
@@ -802,6 +966,7 @@ class ChooserPanel:
         self._panel_delegate = None
         self._page_loaded = False
         self._pending_js = []
+        self._recycle_preloading = False
 
     def _do_recycle(self) -> None:
         """Replace old webview with a fresh one to free WebKit image cache.
@@ -816,16 +981,28 @@ class ChooserPanel:
         if self._panel is not None and self._panel.isVisible():
             return  # user re-opened before timer fired
 
+        if self._recycle_mode == self._RECYCLE_MODE_KEEP_ALIVE:
+            logger.debug("ChooserPanel recycle skipped: keep_alive mode")
+            return
+
         self._teardown_webview()
+        self._last_screen = None
+
+        if self._recycle_mode == self._RECYCLE_MODE_DESTROY:
+            logger.debug("ChooserPanel recycled: old webview destroyed")
+            return
 
         # Build fresh panel + webview (new Web Content process) but skip
-        # HTML loading.  Loading HTML triggers IOSurface compositing layer
-        # allocation (~72 MB at Retina) that persists even while hidden.
-        # The next show() will hit the warm path and call
-        # _reload_chooser_html() on demand.
-        self._build_panel(load_html=False)
-        self._last_screen = None
-        logger.debug("ChooserPanel recycled: old webview destroyed, fresh one built")
+        # HTML loading unless preload_html mode is enabled.  Loading HTML
+        # triggers IOSurface compositing layer allocation that persists even
+        # while hidden, so prebuild remains the default.
+        load_html = self._recycle_mode == self._RECYCLE_MODE_PRELOAD_HTML
+        self._build_panel(load_html=load_html)
+        self._recycle_preloading = load_html
+        logger.debug(
+            "ChooserPanel recycled: old webview destroyed, fresh one built (%s)",
+            self._recycle_mode,
+        )
 
     def destroy(self) -> None:
         """Fully destroy the panel and webview, releasing all resources.
@@ -833,6 +1010,7 @@ class ChooserPanel:
         Called during script reload when the HTML/i18n may have changed
         and the WKWebView must be recreated from scratch.
         """
+        self._cancel_recycle_timer()
         # Close first to handle hide + state cleanup (skip recycle —
         # we're tearing down fully).
         self.close(_schedule_recycle=False)
@@ -1708,15 +1886,17 @@ class ChooserPanel:
 
         pending = self._pending_js[:]
         self._pending_js.clear()
+        was_preloading = self._recycle_preloading
         self._page_loaded = True
+        self._recycle_preloading = False
         if pending and self._webview is not None:
             combined = ";".join(pending)
             self._webview.evaluateJavaScript_completionHandler_(combined, None)
 
-        # Apply custom placeholder
-        if self._pending_placeholder is not None:
-            self._eval_js(f"setPlaceholder({json.dumps(self._pending_placeholder)})")
-            self._pending_placeholder = None
+        # Always sync placeholder so custom placeholder state cannot leak
+        # across visible-session replacements or warm reloads.
+        self._eval_js(f"setPlaceholder({json.dumps(self._pending_placeholder or '')})")
+        self._pending_placeholder = None
 
         # Apply pending initial query (e.g. from source hotkey)
         if self._pending_initial_query is not None:
@@ -1732,8 +1912,19 @@ class ChooserPanel:
 
         # Reveal the panel if it was hidden (alpha=0) during the warm-start
         # path.  This is a no-op on the cold path where alpha is already 1.
+        # For recycle preloads (panel not on screen), shrink to 1×1 instead
+        # to release IOSurface compositing layer buffers while keeping
+        # DOM/JS state alive for a fast hot-path re-show.
         if self._panel is not None:
-            self._panel.setAlphaValue_(1.0)
+            if was_preloading and not self._panel.isVisible():
+                from Foundation import NSMakeRect
+
+                f = self._panel.frame()
+                self._panel.setFrame_display_(
+                    NSMakeRect(f.origin.x, f.origin.y, 1, 1), False,
+                )
+            else:
+                self._panel.setAlphaValue_(1.0)
 
     @staticmethod
     def _ensure_edit_menu() -> None:
@@ -1789,6 +1980,7 @@ class ChooserPanel:
 
         cache_dir = os.path.expanduser(DEFAULT_CACHE_DIR)
         html_path = os.path.join(cache_dir, "_chooser.html")
+        self._recycle_preloading = False
 
         if not os.path.isfile(html_path):
             # HTML file missing (shouldn't happen) — regenerate it in-place.
@@ -1909,6 +2101,7 @@ class ChooserPanel:
         self._page_loaded = False
         self._pending_js = []
         self._current_items = []
+        self._recycle_preloading = False
 
         if not load_html:
             return

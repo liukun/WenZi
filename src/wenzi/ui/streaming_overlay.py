@@ -543,15 +543,11 @@ class StreamingOverlayPanel:
             self._panel.orderOut_(None)
             self._panel = None
 
-        try:
-            if self._webview is not None:
-                self._webview.setNavigationDelegate_(None)
-                self._webview.stopLoading_(None)
-                self._webview.loadHTMLString_baseURL_("", None)
-            if self._nav_delegate is not None:
-                self._nav_delegate._panel_ref = None
-        except Exception:
-            logger.debug("Error clearing delegate refs", exc_info=True)
+        from wenzi.ui.web_utils import cleanup_webview
+
+        cleanup_webview(self._webview, handler_name=None)
+        if self._nav_delegate is not None:
+            self._nav_delegate._panel_ref = None
         self._webview = None
         self._nav_delegate = None
         logger.debug("Streaming overlay closed")

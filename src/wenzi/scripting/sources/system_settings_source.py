@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _URL_SCHEME = "x-apple.systempreferences"
 _DEFAULT_EXTENSIONS_DIR = "/System/Library/ExtensionKit/Extensions"
 _DEFAULT_ICON_CACHE_DIR = os.path.expanduser(_CFG_ICON_CACHE_DIR)
-_ICON_SIZE = 32
+_ICON_SIZE = 72  # 72x72 px for Retina display (rendered at 36x36 CSS @2x)
 
 
 def build_url(
@@ -309,6 +309,7 @@ def _get_icon_png(appex_path: str) -> bytes | None:
                 return None
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.setCurrentContext_(ctx)
+            ctx.setImageInterpolation_(3)  # NSImageInterpolationHigh
             icon.drawInRect_fromRect_operation_fraction_(
                 NSMakeRect(0, 0, sz, sz), NSZeroRect,
                 NSCompositingOperationCopy, 1.0,

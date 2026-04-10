@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from wenzi.app import WenZiApp
 
 from wenzi import get_version, is_version_compatible
+from wenzi.audio.recorder import default_input_device_name, list_input_devices
 from wenzi.config import BUILTIN_REGISTRY_URL, is_keychain_enabled, save_config
 from wenzi.enhance.enhancer import MODE_OFF
 from wenzi.i18n import build_doc_url, t
@@ -331,10 +332,15 @@ class SettingsController:
         ui_cfg = app._config.get("ui", {})
         last_tab = ui_cfg.get("settings_last_tab", "general")
 
+        audio_cfg = app._config.get("audio", {})
+
         fb_cfg = app._config.get("feedback", {})
         return {
             "last_tab": last_tab,
             "hotkeys": hotkeys,
+            "audio_devices": list_input_devices(),
+            "audio_device": audio_cfg.get("device"),
+            "default_device_name": default_input_device_name(),
             "restart_key": fb_cfg.get("restart_key", "cmd"),
             "cancel_key": fb_cfg.get("cancel_key", "space"),
             "sound_enabled": app._sound_manager.enabled,
@@ -432,6 +438,7 @@ class SettingsController:
             "on_launcher_prefix_change": self.launcher_prefix_change,
             "on_launcher_usage_learning_toggle": self.launcher_usage_learning_toggle,
             "on_launcher_switch_english_toggle": self.launcher_switch_english_toggle,
+            "on_launcher_recycle_mode_change": self.launcher_recycle_mode_change,
             "on_launcher_refresh_icons": self.launcher_refresh_icons,
             "on_launcher_source_hotkey_record": self.launcher_source_hotkey_record,
             "on_launcher_source_hotkey_clear": self.launcher_source_hotkey_clear,
@@ -439,6 +446,8 @@ class SettingsController:
             "on_new_snippet_hotkey_clear": self.new_snippet_hotkey_clear,
             "on_launcher_ua_hotkey_record": self.launcher_ua_hotkey_record,
             "on_launcher_ua_hotkey_clear": self.launcher_ua_hotkey_clear,
+            "on_mic_select": self.mic_select,
+            "on_mic_refresh": self.mic_refresh,
             "on_language_change": self.language_change,
             "on_plugins_tab_open": self._on_plugins_tab_open,
             "on_plugin_install_by_id": self._on_plugin_install_by_id,
@@ -783,6 +792,27 @@ class SettingsController:
         fb_cfg = app._config.setdefault("feedback", {})
         fb_cfg["show_device_name"] = enabled
         self._save_and_reload()
+
+    def mic_select(self, uid: str) -> None:
+        """Handle microphone device selection from Settings panel."""
+        app = self._app
+        device = uid if uid else None
+        audio_cfg = app._config.setdefault("audio", {})
+        audio_cfg["device"] = device
+        app._recorder.device = device
+        logger.info("Microphone set to: %s", device or "system default")
+        self._save_and_reload()
+
+    def mic_refresh(self) -> None:
+        """Re-enumerate audio devices and update the Settings panel."""
+        app = self._app
+        audio_cfg = app._config.get("audio", {})
+        devices = list_input_devices()
+        app._settings_panel.update_state({
+            "audio_devices": devices,
+            "audio_device": audio_cfg.get("device"),
+            "default_device_name": default_input_device_name(),
+        })
 
     def hide_status_icon_toggle(self, enabled: bool) -> None:
         """Handle hide status icon toggle from Settings panel."""
@@ -1513,6 +1543,7 @@ class SettingsController:
             "hotkey": chooser_cfg.get("hotkey", ""),
             "usage_learning": chooser_cfg.get("usage_learning", True),
             "switch_english": chooser_cfg.get("switch_to_english", True),
+            "recycle_mode": chooser_cfg.get("recycle_mode", "preload_html"),
             "new_snippet_hotkey": chooser_cfg.get("new_snippet_hotkey", ""),
             "universal_action_hotkey": chooser_cfg.get("universal_action_hotkey", ""),
             "sources": sources,
@@ -1821,6 +1852,24 @@ class SettingsController:
             engine.wz.chooser._get_panel()._switch_english = enabled
 
         logger.info("Launcher switch-to-English set to: %s", enabled)
+
+    def launcher_recycle_mode_change(self, mode: str) -> None:
+        """Handle launcher idle recycle mode changes from Settings."""
+        from wenzi.scripting.ui.chooser_panel import ChooserPanel
+
+        app = self._app
+        chooser_cfg = app._config.setdefault("scripting", {}).setdefault(
+            "chooser", {}
+        )
+        normalized = ChooserPanel.normalize_recycle_mode(mode)
+        chooser_cfg["recycle_mode"] = normalized
+        self._save_and_reload()
+
+        engine = getattr(app, "_script_engine", None)
+        if engine is not None:
+            engine.wz.chooser._get_panel().set_recycle_mode(normalized)
+
+        logger.info("Launcher recycle mode set to: %s", normalized)
 
     # ---------------------------------------------------------------------------
     # Screenshot callbacks

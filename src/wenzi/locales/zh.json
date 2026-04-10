@@ -96,6 +96,9 @@
   "alert.model.switch_failed.retry_message": "重试失败。\n\n错误：{error}\n\n请检查网络连接并重试。",
   "alert.model.cache_retry": "清除缓存并重试",
 
+  "alert.recording.empty": "未捕获到音频",
+  "alert.recording.empty.message": "麦克风未采集到任何音频，请检查麦克风是否被静音或已断开连接。",
+
   "alert.provider.add_asr.title": "添加 ASR 服务商",
   "alert.provider.add_asr.message": "name       — 唯一的服务商名称\nbase_url   — OpenAI 兼容的 ASR 端点\napi_key    — 认证密钥\nmodels     — 每行一个模型（缩进）",
   "alert.provider.add_llm.title": "添加 AI 服务商",
@@ -373,6 +376,14 @@
   "settings.general_tab.reset": "重置",
   "settings.general_tab.config_dir_hint": "更改需要重启应用才能生效",
 
+  "settings.microphone_tab.sidebar": "麦克风",
+  "settings.microphone_tab.title": "麦克风",
+  "settings.microphone_tab.input_device": "输入设备",
+  "settings.microphone_tab.refresh": "刷新",
+  "settings.microphone_tab.device_label": "设备",
+  "settings.microphone_tab.device_desc": "选择用于录音的麦克风",
+  "settings.microphone_tab.system_default": "系统默认",
+
   "settings.stt_tab.title": "语音识别",
   "settings.stt_tab.local_section": "本地",
   "settings.stt_tab.local_desc": "在本设备上运行的语音识别模型",
@@ -446,6 +457,12 @@
   "settings.launcher_tab.usage_learning_desc": "从您的选择中学习，将常用项目排名提高",
   "settings.launcher_tab.switch_english": "打开时切换为英文输入",
   "settings.launcher_tab.switch_english_desc": "打开时自动切换到英文输入法，关闭时恢复之前的输入法",
+  "settings.launcher_tab.recycle_mode": "回收模式",
+  "settings.launcher_tab.recycle_mode_desc": "启动器隐藏 60 秒后的空闲 WebView 策略",
+  "settings.launcher_tab.recycle_mode_destroy": "销毁",
+  "settings.launcher_tab.recycle_mode_prebuild": "预建壳",
+  "settings.launcher_tab.recycle_mode_preload_html": "预加载 HTML",
+  "settings.launcher_tab.recycle_mode_keep_alive": "保持常驻",
   "settings.launcher_tab.maintenance_section": "维护",
   "settings.launcher_tab.refresh_icon_cache": "刷新图标缓存",
   "settings.launcher_tab.refresh_icon_cache_desc": "清除缓存的应用和浏览器图标并重新提取",

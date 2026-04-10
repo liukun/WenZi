@@ -689,6 +689,140 @@ class TestInitialQuery:
         assert len(panel._current_items) == 2
 
 
+class TestVisibleSessionLifecycle:
+    def test_reset_panel_ui_restores_input_focus(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._panel = MagicMock()
+
+        panel._reset_panel_ui("", "Filter actions")
+
+        js, _completion = panel._webview.evaluateJavaScript_completionHandler_.call_args[0]
+        assert "setInputValue(\"\")" in js
+        assert 'setPlaceholder("Filter actions")' in js
+        assert "searchInput.focus()" in js
+        assert "searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length)" in js
+
+    def test_show_visible_same_session_focuses_without_replacing(self):
+        panel = _make_panel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = True
+        panel._position_on_mouse_screen = MagicMock()
+        panel._reset_panel_ui = MagicMock()
+        existing_on_close = MagicMock()
+        panel._on_close = existing_on_close
+
+        with patch("AppKit.NSApp"):
+            panel.show()
+
+        panel._reset_panel_ui.assert_not_called()
+        existing_on_close.assert_not_called()
+        assert panel._eval_js.call_args[0][0] == "focusInput()"
+        assert panel._on_close is existing_on_close
+
+    def test_show_universal_action_replaces_visible_session(self):
+        panel = _make_panel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = True
+        panel._webview = MagicMock()
+        panel._page_loaded = True
+        panel._position_on_mouse_screen = MagicMock()
+        panel._reset_panel_ui = MagicMock()
+        previous_on_close = MagicMock()
+        new_on_close = MagicMock()
+        panel._on_close = previous_on_close
+
+        scheduled = []
+
+        def _capture_call_after(fn, *args, **kwargs):
+            scheduled.append((fn, args, kwargs))
+
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=_capture_call_after), \
+             patch("AppKit.NSApp"):
+            panel.show_universal_action(
+                context_text="selected text",
+                exclusive_source="_ua:2",
+                on_close=new_on_close,
+                initial_query="",
+                placeholder="Filter actions",
+            )
+
+        previous_on_close.assert_not_called()
+        assert scheduled
+        fn, args, kwargs = scheduled[0]
+        assert fn == panel._run_close_callback
+        fn(*args, **kwargs)
+        previous_on_close.assert_called_once()
+        panel._reset_panel_ui.assert_called_once_with("", "Filter actions")
+        assert panel._context_text == "selected text"
+        assert panel._exclusive_source == "_ua:2"
+        assert panel._on_close is new_on_close
+        assert panel._session_placeholder == "Filter actions"
+
+    def test_visible_replacement_defers_user_on_close_but_runs_cleanup(self):
+        panel = _make_panel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = True
+        panel._webview = MagicMock()
+        panel._page_loaded = True
+        panel._position_on_mouse_screen = MagicMock()
+        panel._reset_panel_ui = MagicMock()
+        cleanup = MagicMock()
+        user_on_close = MagicMock()
+        panel._cleanup_on_close = cleanup
+        panel._on_close = user_on_close
+
+        scheduled = []
+
+        def _capture_call_after(fn, *args, **kwargs):
+            scheduled.append((fn, args, kwargs))
+
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=_capture_call_after), \
+             patch("AppKit.NSApp"):
+            panel.show_universal_action(
+                context_text="selected text",
+                exclusive_source="_ua:3",
+                cleanup_on_close=MagicMock(),
+                on_close=MagicMock(),
+                initial_query="",
+                placeholder="Filter actions",
+            )
+
+        cleanup.assert_called_once()
+        user_on_close.assert_not_called()
+        assert scheduled
+        fn, args, kwargs = scheduled[0]
+        assert fn == panel._run_close_callback
+        fn(*args, **kwargs)
+        user_on_close.assert_called_once()
+
+
+class TestAsyncLifecycle:
+    def test_close_invalidates_inflight_async_results(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._pending_async_count = 1
+        panel._loading_visible = True
+        old_generation = panel._search_generation
+        src = _make_source("async")
+
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("PyObjCTools.AppHelper.callLater"), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
+            panel.close()
+
+        panel._merge_async_results(
+            src,
+            [ChooserItem(title="late result", item_id="late")],
+            old_generation,
+        )
+
+        assert panel._current_items == []
+        assert panel._pending_js == []
+        assert panel._pending_async_count == 0
+        assert panel._loading_visible is False
+
+
 class TestQuickLookIntegration:
     def test_shift_preview_open(self):
         """shiftPreview open should create and show QL panel."""
@@ -1651,6 +1785,17 @@ class TestDeferredRecycle:
         mock_later.assert_not_called()
         assert panel._recycle_timer is None
 
+    def test_close_keep_alive_mode_skips_recycle_timer(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel.set_recycle_mode("keep_alive")
+        with patch("PyObjCTools.AppHelper.callLater") as mock_later, \
+             patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
+            panel.close()
+        mock_later.assert_not_called()
+        assert panel._recycle_timer is None
+
     def test_show_cancels_recycle_timer(self):
         panel = _make_panel()
         mock_timer = MagicMock()
@@ -1672,6 +1817,17 @@ class TestDeferredRecycle:
         mock_later.assert_not_called()
         assert panel._recycle_timer is None
 
+    def test_destroy_cancels_existing_recycle_timer(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        timer = MagicMock()
+        panel._recycle_timer = timer
+        with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
+             patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
+            panel.destroy()
+        timer.cancel.assert_called_once()
+        assert panel._recycle_timer is None
+
     def test_do_recycle_rebuilds_panel(self):
         panel = _make_panel()
         panel._webview = MagicMock()
@@ -1685,7 +1841,29 @@ class TestDeferredRecycle:
             panel._do_recycle()
         # Old webview should be released
         assert panel._webview is None or panel._webview is not old_webview
-        mock_build.assert_called_once()
+        mock_build.assert_called_once_with(load_html=True)
+
+    def test_do_recycle_destroy_mode_does_not_rebuild(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+        panel.set_recycle_mode("destroy")
+        with patch.object(panel, "_build_panel") as mock_build:
+            panel._do_recycle()
+        mock_build.assert_not_called()
+        assert panel._webview is None
+
+    def test_do_recycle_preload_html_mode_builds_loaded_panel(self):
+        panel = _make_panel()
+        panel._webview = MagicMock()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+        panel.set_recycle_mode("preload_html")
+        with patch.object(panel, "_build_panel") as mock_build:
+            panel._do_recycle()
+        mock_build.assert_called_once_with(load_html=True)
+        assert panel._recycle_preloading is True
 
     def test_do_recycle_resets_last_screen(self):
         panel = _make_panel()
@@ -1708,3 +1886,21 @@ class TestDeferredRecycle:
         # Should not tear down or rebuild — panel is visible
         mock_build.assert_not_called()
         assert panel._webview is not None
+
+    def test_show_reuses_hidden_preload_without_reloading_html(self):
+        panel = _make_panel()
+        panel._panel = MagicMock()
+        panel._panel.isVisible.return_value = False
+        panel._webview = MagicMock()
+        panel._page_loaded = False
+        panel._recycle_preloading = True
+        panel._reconnect_panel_refs = MagicMock()
+        panel._position_on_mouse_screen = MagicMock()
+        panel._reload_chooser_html = MagicMock()
+
+        with patch("AppKit.NSApp") as mock_nsapp:
+            panel.show()
+
+        panel._reload_chooser_html.assert_not_called()
+        panel._panel.makeKeyAndOrderFront_.assert_called_once_with(None)
+        mock_nsapp.activateIgnoringOtherApps_.assert_called_once_with(True)

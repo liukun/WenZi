@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from wenzi.ui.templates import load_template
-from wenzi.ui.web_utils import cleanup_webview_handler
+from wenzi.ui.web_utils import cleanup_webview
 
 if TYPE_CHECKING:
     from wenzi.enhance.manual_vocabulary import ManualVocabEntry
@@ -1018,11 +1018,7 @@ class ResultPreviewPanel:
             self._close_delegate = None
             self._panel.orderOut_(None)
             self._panel = None
-        if self._webview is not None:
-            self._webview.setNavigationDelegate_(None)
-            cleanup_webview_handler(self._webview, "action")
-            self._webview.stopLoading_(None)
-            self._webview.loadHTMLString_baseURL_("", None)
+        cleanup_webview(self._webview)
         self._webview = None
         if self._message_handler is not None:
             self._message_handler._panel_ref = None
@@ -1044,8 +1040,7 @@ class ResultPreviewPanel:
                     # Release WKWebView canvas/IOSurface memory before closing
                     for subview in (child.contentView().subviews() or []):
                         if hasattr(subview, 'stopLoading_'):
-                            subview.stopLoading_(None)
-                            subview.loadHTMLString_baseURL_("", None)
+                            cleanup_webview(subview, handler_name=None)
                     child.close()
                 except Exception:
                     pass
@@ -1631,12 +1626,10 @@ class ResultPreviewPanel:
 
         if old_panel is not None:
             try:
-                # Stop the old WKWebView and load empty content to release
-                # canvas/IOSurface memory in the shared Web Content process.
+                # Release WKWebView canvas/IOSurface memory before closing.
                 for subview in (old_panel.contentView().subviews() or []):
                     if hasattr(subview, 'stopLoading_'):
-                        subview.stopLoading_(None)
-                        subview.loadHTMLString_baseURL_("", None)
+                        cleanup_webview(subview, handler_name=None)
                 old_panel.close()
             except Exception:
                 pass

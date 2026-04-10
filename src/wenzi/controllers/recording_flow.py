@@ -351,6 +351,10 @@ class RecordingFlow:
             )
 
             if not wav_data:
+                from wenzi.i18n import t
+                from wenzi.scripting.api.alert import alert
+
+                alert(t("alert.recording.empty"), duration=2.0)
                 AppHelper.callAfter(self._reset_to_idle)
                 return
 

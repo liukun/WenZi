@@ -58,17 +58,25 @@ def time_range_cutoff(time_range: str) -> str | None:
     return cutoff.isoformat()
 
 
-def cleanup_webview_handler(webview, handler_name: str = "action") -> None:
-    """Remove a script message handler from a WKWebView, ignoring errors.
+def cleanup_webview(webview, *, handler_name: str | None = "action") -> None:
+    """Release WKWebView resources and break retain cycles.
 
-    Must be called before releasing the webview to prevent delegate leaks.
+    Call before setting the webview reference to ``None``.
+    Pass *handler_name* ``None`` for webviews without a script message handler.
     """
     if webview is None:
         return
     try:
-        webview.configuration().userContentController().removeScriptMessageHandlerForName_(
-            handler_name
-        )
+        ucc = webview.configuration().userContentController()
+        if handler_name is not None:
+            ucc.removeScriptMessageHandlerForName_(handler_name)
+        ucc.removeAllUserScripts()
+    except Exception:
+        pass
+    try:
+        webview.setNavigationDelegate_(None)
+        webview.stopLoading_(None)
+        webview.loadHTMLString_baseURL_("", None)
     except Exception:
         pass
 

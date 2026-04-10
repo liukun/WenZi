@@ -96,6 +96,9 @@
   "alert.model.switch_failed.retry_message": "Retry failed.\n\nError: {error}\n\nPlease check your network connection and try again.",
   "alert.model.cache_retry": "Clear Cache & Retry",
 
+  "alert.recording.empty": "No Audio Captured",
+  "alert.recording.empty.message": "The microphone did not capture any audio. Please check that your microphone is not muted or disconnected.",
+
   "alert.provider.add_asr.title": "Add ASR Provider",
   "alert.provider.add_asr.message": "name       — unique provider name\nbase_url   — OpenAI-compatible ASR endpoint\napi_key    — authentication key\nmodels     — one model per line (indented)",
   "alert.provider.add_llm.title": "Add AI Provider",
@@ -373,6 +376,14 @@
   "settings.general_tab.reset": "Reset",
   "settings.general_tab.config_dir_hint": "Changes require app restart to take effect",
 
+  "settings.microphone_tab.sidebar": "Microphone",
+  "settings.microphone_tab.title": "Microphone",
+  "settings.microphone_tab.input_device": "Input Device",
+  "settings.microphone_tab.refresh": "Refresh",
+  "settings.microphone_tab.device_label": "Device",
+  "settings.microphone_tab.device_desc": "Select which microphone to use for recording",
+  "settings.microphone_tab.system_default": "System Default",
+
   "settings.stt_tab.title": "STT",
   "settings.stt_tab.local_section": "Local",
   "settings.stt_tab.local_desc": "Speech recognition models running on your device",
@@ -446,6 +457,12 @@
   "settings.launcher_tab.usage_learning_desc": "Learn from your selections to rank frequently used items higher",
   "settings.launcher_tab.switch_english": "Switch to English when open",
   "settings.launcher_tab.switch_english_desc": "Auto-switch to English input on open, restore previous IME on close",
+  "settings.launcher_tab.recycle_mode": "Recycle Mode",
+  "settings.launcher_tab.recycle_mode_desc": "Idle strategy after the launcher has been hidden for 60 seconds",
+  "settings.launcher_tab.recycle_mode_destroy": "Destroy",
+  "settings.launcher_tab.recycle_mode_prebuild": "Prebuild",
+  "settings.launcher_tab.recycle_mode_preload_html": "Preload HTML",
+  "settings.launcher_tab.recycle_mode_keep_alive": "Keep Alive",
   "settings.launcher_tab.maintenance_section": "Maintenance",
   "settings.launcher_tab.refresh_icon_cache": "Refresh Icon Cache",
   "settings.launcher_tab.refresh_icon_cache_desc": "Clear cached app and browser icons and re-extract them",
