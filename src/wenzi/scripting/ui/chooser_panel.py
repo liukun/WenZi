@@ -25,16 +25,70 @@ _KeyablePanel = None
 
 
 def _get_keyable_panel_class():
-    """Return an NSPanel subclass that can become key window when borderless."""
+    """Return an NSPanel subclass that can become key window when borderless.
+
+    Also intercepts keyboard events at the panel level so that special keys
+    (Escape, arrows, Enter, Tab) work even when an NSTableView or other
+    non-search-field view has focus.  Regular character input automatically
+    redirects focus back to the search field.
+    """
     global _KeyablePanel
     if _KeyablePanel is not None:
         return _KeyablePanel
 
     from AppKit import NSPanel
 
+    _KEY_ACTIONS = {
+        "cancelOperation:": "_on_escape",
+        "moveUp:": "_on_arrow_up",
+        "moveDown:": "_on_arrow_down",
+        "insertNewline:": "_on_enter",
+        "insertTab:": "_on_tab",
+    }
+
     class ChooserKeyablePanel(NSPanel):
+        _chooser_ref = None
+
         def canBecomeKeyWindow(self):
             return True
+
+        def keyDown_(self, event):
+            """Route keyboard events when focus is not on the search field."""
+            chooser = self._chooser_ref
+            if chooser is None:
+                super().keyDown_(event)
+                return
+
+            # If the search field already has focus, let normal handling run.
+            fr = self.firstResponder()
+            sf = chooser._search_field
+            is_search_focused = fr is not None and sf is not None and (
+                fr is sf or fr is self.fieldEditor_forObject_(False, sf)
+            )
+            if is_search_focused:
+                super().keyDown_(event)
+                return
+
+            # Try to interpret as a special key command first.
+            self.interpretKeyEvents_([event])
+
+        def doCommandBySelector_(self, selector):
+            chooser = self._chooser_ref
+            sel = str(selector)
+            handler_name = _KEY_ACTIONS.get(sel)
+            if chooser is not None and handler_name is not None:
+                getattr(chooser, handler_name)()
+                return
+            super().doCommandBySelector_(selector)
+
+        def insertText_(self, text):
+            chooser = self._chooser_ref
+            if chooser is None or chooser._search_field is None:
+                return
+            self.makeFirstResponder_(chooser._search_field)
+            new_text = chooser._get_search_text() + str(text)
+            chooser._set_search_text(new_text)
+            chooser._on_search_changed(new_text)
 
     _KeyablePanel = ChooserKeyablePanel
     return _KeyablePanel
@@ -360,6 +414,8 @@ class ChooserPanel:
 
     def _reconnect_panel_refs(self) -> None:
         """Restore _panel_ref back-references broken by close()."""
+        if self._panel is not None:
+            self._panel._chooser_ref = self
         if self._search_field_delegate is not None:
             self._search_field_delegate._panel_ref = self
         if self._table_delegate is not None:
@@ -682,6 +738,8 @@ class ChooserPanel:
             self._ql_panel = None
 
         # Break back-references to prevent retain cycles while hidden
+        if self._panel is not None:
+            self._panel._chooser_ref = None
         if self._search_field_delegate is not None:
             self._search_field_delegate._panel_ref = None
         if self._table_delegate is not None:
@@ -1785,6 +1843,7 @@ class ChooserPanel:
             NSBackingStoreBuffered,
             False,
         )
+        panel._chooser_ref = self
         panel.setLevel_(NSStatusWindowLevel + 1)
         panel.setOpaque_(False)
         panel.setHasShadow_(True)
