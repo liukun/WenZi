@@ -22,7 +22,7 @@ _REFRESH_INTERVAL = 0.05
 
 # Waveform visual parameters
 _WAVE_POINTS = 50       # sample points for smooth curve
-_WAVE_WIDTH = 120.0     # horizontal extent
+_WAVE_WIDTH = 150.0     # horizontal extent
 _WAVE_MAX_AMP = 8.0     # max amplitude from centre line
 _WAVE_LINE_W = 2.0      # primary wave stroke width
 _WAVE_LINE_W2 = 1.5     # secondary wave stroke width
@@ -150,7 +150,7 @@ class RecordingIndicatorView:
         NSBezierPath.bezierPathWithOvalInRect_(dot_rect).fill()
 
         # ── Audio waveform (centre-right) ───────────────────────────────
-        wave_cx = 98.0
+        wave_cx = 103.0
         half_w = _WAVE_WIDTH / 2.0
         level = self._level
 
@@ -214,13 +214,13 @@ class RecordingIndicatorView:
                 para.setAlignment_(1)  # NSTextAlignmentCenter
                 para.setLineBreakMode_(4)  # NSLineBreakByTruncatingTail
                 self._subtitle_attrs = {
-                    NSFontAttributeName: NSFont.systemFontOfSize_(9),
-                    NSForegroundColorAttributeName: NSColor.secondaryLabelColor(),
+                    NSFontAttributeName: NSFont.systemFontOfSize_weight_(9, _FONT_WEIGHT_MEDIUM),
+                    NSForegroundColorAttributeName: NSColor.labelColor(),
                     NSParagraphStyleAttributeName: para,
                 }
             if self._subtitle_ns_str is None:
                 self._subtitle_ns_str = NSString.stringWithString_(self._subtitle)
-            label_rect = NSMakeRect(6, 5, width - 12, _LABEL_HEIGHT)
+            label_rect = NSMakeRect(28, 5, 150, _LABEL_HEIGHT)
             self._subtitle_ns_str.drawInRect_withAttributes_(
                 label_rect, self._subtitle_attrs,
             )
