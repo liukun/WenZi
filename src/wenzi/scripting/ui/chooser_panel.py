@@ -36,6 +36,7 @@ def _get_keyable_panel_class():
     if _KeyablePanel is not None:
         return _KeyablePanel
 
+    import objc
     from AppKit import NSPanel
 
     _KEY_ACTIONS = {
@@ -56,7 +57,7 @@ def _get_keyable_panel_class():
             """Route keyboard events when focus is not on the search field."""
             chooser = self._chooser_ref
             if chooser is None:
-                super().keyDown_(event)
+                objc.super(ChooserKeyablePanel, self).keyDown_(event)
                 return
 
             # If the search field already has focus, let normal handling run.
@@ -66,7 +67,7 @@ def _get_keyable_panel_class():
                 fr is sf or fr is self.fieldEditor_forObject_(False, sf)
             )
             if is_search_focused:
-                super().keyDown_(event)
+                objc.super(ChooserKeyablePanel, self).keyDown_(event)
                 return
 
             # Try to interpret as a special key command first.
@@ -79,7 +80,7 @@ def _get_keyable_panel_class():
             if chooser is not None and handler_name is not None:
                 getattr(chooser, handler_name)()
                 return
-            super().doCommandBySelector_(selector)
+            objc.super(ChooserKeyablePanel, self).doCommandBySelector_(selector)
 
         def insertText_(self, text):
             chooser = self._chooser_ref
