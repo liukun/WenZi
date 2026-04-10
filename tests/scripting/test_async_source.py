@@ -173,8 +173,7 @@ class TestDoSearchSyncAsyncSplit:
         with patch.object(chooser_panel, "_launch_async_search"):
             chooser_panel._do_search("test")
 
-        js_calls = [str(c) for c in chooser_panel._eval_js.call_args_list]
-        assert any("setLoading(true)" in c for c in js_calls)
+        assert chooser_panel._loading_visible is True
 
     def test_no_loading_for_sync_only(self, chooser_panel):
         chooser_panel.register_source(
@@ -187,8 +186,6 @@ class TestDoSearchSyncAsyncSplit:
 
         # Loading was never shown — _set_loading(False) is a no-op
         assert chooser_panel._loading_visible is False
-        js_calls = [str(c) for c in chooser_panel._eval_js.call_args_list]
-        assert not any("setLoading(true)" in c for c in js_calls)
 
     def test_empty_query_clears_loading(self, chooser_panel):
         chooser_panel._pending_async_count = 2  # simulate in-flight
@@ -197,8 +194,6 @@ class TestDoSearchSyncAsyncSplit:
 
         assert chooser_panel._pending_async_count == 0
         assert chooser_panel._loading_visible is False
-        js_calls = [str(c) for c in chooser_panel._eval_js.call_args_list]
-        assert any("setLoading(false)" in c for c in js_calls)
 
     def test_prefix_async_source(self, chooser_panel):
         """Prefix-activated async source should launch async search."""
@@ -282,12 +277,11 @@ class TestMergeAsyncResults:
 
         assert chooser_panel._pending_async_count == 0
         assert chooser_panel._loading_visible is False
-        js_calls = [str(c) for c in chooser_panel._eval_js.call_args_list]
-        assert any("setLoading(false)" in c for c in js_calls)
 
     def test_loading_not_cleared_while_others_pending(self, chooser_panel):
         chooser_panel._search_generation = 1
         chooser_panel._pending_async_count = 2
+        chooser_panel._loading_visible = True  # simulate loading was turned on
 
         src = ChooserSource(name="async-src", is_async=True)
         chooser_panel._merge_async_results(
@@ -297,8 +291,8 @@ class TestMergeAsyncResults:
         )
 
         assert chooser_panel._pending_async_count == 1
-        js_calls = [str(c) for c in chooser_panel._eval_js.call_args_list]
-        assert not any("setLoading(false)" in c for c in js_calls)
+        # Loading not cleared yet — still pending
+        assert chooser_panel._loading_visible is True
 
     def test_respects_max_total_results(self, chooser_panel):
         chooser_panel._search_generation = 1
@@ -317,10 +311,11 @@ class TestMergeAsyncResults:
         assert chooser_panel._current_items[-1].title == "a1"
 
     def test_preserve_selection_on_merge(self, chooser_panel):
-        """Merged results should use preserve_selection=True."""
+        """Merged results should preserve selection index."""
         chooser_panel._search_generation = 1
         chooser_panel._pending_async_count = 1
         chooser_panel._current_items = [ChooserItem(title="sync")]
+        chooser_panel._selected_index = 0
 
         src = ChooserSource(name="async-src", is_async=True)
         chooser_panel._merge_async_results(
@@ -329,10 +324,9 @@ class TestMergeAsyncResults:
             generation=1,
         )
 
-        # Check that _push_items_to_js was called with preserve_selection
-        # by inspecting the JS output for the -2 sentinel
-        js_calls = " ".join(str(c) for c in chooser_panel._eval_js.call_args_list)
-        assert ",-2" in js_calls
+        # Selection should be preserved at index 0
+        assert chooser_panel._selected_index == 0
+        assert len(chooser_panel._current_items) == 2
 
 
 # ---------------------------------------------------------------------------

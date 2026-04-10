@@ -58,7 +58,6 @@ class TestMigrateXdgPaths:
 
         (config / "icon_cache").mkdir()
         (config / "icon_cache" / "abc.png").write_text("")
-        (config / "_chooser.html").write_text("")
 
         from wenzi.config import migrate_xdg_paths
 
@@ -68,7 +67,6 @@ class TestMigrateXdgPaths:
             migrate_xdg_paths()
 
         assert (cache / "icon_cache" / "abc.png").exists()
-        assert (cache / "_chooser.html").exists()
 
     def test_no_overwrite_existing(self, tmp_path):
         """Existing files at the destination are not overwritten."""

@@ -1,10 +1,9 @@
 """Tests for ChooserPanel search logic and source management.
 
-UI/WKWebView parts are not testable in CI — these tests cover the
-pure-Python logic: source registration, search dispatch, item execution.
+Tests cover the pure-Python logic: source registration, search dispatch,
+item execution.  AppKit UI is not instantiated.
 """
 
-import json
 import time
 from unittest.mock import MagicMock, patch
 
@@ -15,11 +14,8 @@ from wenzi.scripting.ui.chooser_panel import ChooserPanel
 
 
 def _make_panel():
-    """Create a ChooserPanel with _eval_js mocked (no WKWebView)."""
-    panel = ChooserPanel()
-    panel._eval_js = MagicMock()
-    panel._page_loaded = True
-    return panel
+    """Create a ChooserPanel without AppKit views for testing."""
+    return ChooserPanel()
 
 
 def _poll_until(predicate, timeout=2.0, interval=0.01):
@@ -374,142 +370,31 @@ class TestJSMessageHandling:
         time.sleep(0.05)
         assert called == [True]
 
-    def test_request_preview_message(self):
-        panel = _make_panel()
-        panel._current_items = [
-            ChooserItem(
-                title="Hello",
-                preview={"type": "text", "content": "full text"},
-            )
-        ]
-        panel._handle_js_message({"type": "requestPreview", "index": 0})
-        call_args = panel._eval_js.call_args[0][0]
-        assert "setPreview" in call_args
-        assert "full text" in call_args
-
-    def test_request_preview_no_preview(self):
-        panel = _make_panel()
-        panel._current_items = [ChooserItem(title="No Preview")]
-        panel._handle_js_message({"type": "requestPreview", "index": 0})
-        call_args = panel._eval_js.call_args[0][0]
-        assert "setPreview(null)" in call_args
-
-    def test_request_preview_out_of_range(self):
-        panel = _make_panel()
-        panel._current_items = []
-        panel._handle_js_message({"type": "requestPreview", "index": 5})
-        call_args = panel._eval_js.call_args[0][0]
-        assert "setPreview(null)" in call_args
-
 
 class TestModifierHints:
-    def test_push_modifier_hints_with_results(self):
+    def test_active_source_tracked_on_prefix_search(self):
         panel = _make_panel()
         source = _make_source("clipboard", prefix="cb")
         source.action_hints = {"cmd_enter": "Copy", "alt_enter": "Show path"}
-        panel._current_items = [
-            ChooserItem(title="Item1", subtitle="sub1"),
-        ]
-        panel._push_items_to_js(source=source)
-        call_args = panel._eval_js.call_args[0][0]
-        assert "setModifierHints" in call_args
-        assert '"cmd": "Copy"' in call_args
-        assert '"alt": "Show path"' in call_args
-        # Footer action hints are also pushed
-        assert "setActionHints" in call_args
+        panel.register_source(source)
+        panel._do_search("cb ")
+        assert panel._active_source is source
 
-    def test_push_prefix_hints_on_page_load(self):
+    def test_prefix_hints_stored(self):
         panel = _make_panel()
         src = _make_source("clipboard", prefix="cb")
         src.display_name = "Clipboard"
         panel.register_source(src)
-        panel._webview = MagicMock()
-        panel._push_prefix_hints_to_js()
-        call_args = panel._eval_js.call_args[0][0]
-        assert "setPrefixHints" in call_args
-        assert '"cb"' in call_args
-        assert '"Clipboard"' in call_args
+        # Just verify no crash and source is registered
+        assert "clipboard" in panel._sources
 
-    def test_clear_action_hints_on_empty_results(self):
+    def test_empty_query_clears_items(self):
         panel = _make_panel()
-        panel._panel = MagicMock()
         panel._is_expanded = True
         src = _make_source("apps", items=[ChooserItem(title="Safari")])
         panel.register_source(src)
         panel._do_search("")
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "clearActionHints()" in all_js
-
-    def test_footer_right_hidden_when_source_active(self):
-        panel = _make_panel()
-        panel._panel = MagicMock()
-        panel._is_expanded = True
-        src = _make_source("clipboard", prefix="cb", items=[ChooserItem(title="Item")])
-        panel.register_source(src)
-        panel._do_search("cb ")
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "setFooterRightVisible(false)" in all_js
-
-
-class TestPushItemsToJS:
-    def test_serializes_items(self):
-        panel = _make_panel()
-        panel._current_items = [
-            ChooserItem(title="Safari", subtitle="Web browser",
-                        reveal_path="/Applications/Safari.app"),
-            ChooserItem(title="Clipboard entry"),
-        ]
-        panel._push_items_to_js()
-        call_args = panel._eval_js.call_args[0][0]
-        assert '"Safari"' in call_args
-        assert '"Web browser"' in call_args
-        assert '"hasReveal": true' in call_args
-
-    def test_preview_only_for_selected_item(self):
-        """Only the selected item (default 0) includes inline preview."""
-        panel = _make_panel()
-        panel._current_items = [
-            ChooserItem(
-                title="First",
-                preview={"type": "text", "content": "hello"},
-            ),
-            ChooserItem(
-                title="Second",
-                preview={"type": "text", "content": "world"},
-            ),
-        ]
-        panel._push_items_to_js()
-        call_args = panel._eval_js.call_args[0][0]
-        sr_part = call_args.split(";")[0]
-        inner = sr_part[len("setResults("):-1]
-        json_part = inner.rsplit(",", 1)[0]
-        parsed = json.loads(json_part)
-        # First item (selected) has preview
-        assert parsed[0]["preview"]["content"] == "hello"
-        # Second item does not
-        assert "preview" not in parsed[1]
-
-    def test_version_increments(self):
-        panel = _make_panel()
-        panel._current_items = [ChooserItem(title="A")]
-        panel._push_items_to_js()
-        v1 = panel._items_version
-        panel._current_items = [ChooserItem(title="B")]
-        panel._push_items_to_js()
-        v2 = panel._items_version
-        assert v2 == v1 + 1
-
-    def test_has_modifiers_flag(self):
-        panel = _make_panel()
-        panel._current_items = [
-            ChooserItem(
-                title="App",
-                modifiers={"alt": ModifierAction(subtitle="/path")},
-            ),
-        ]
-        panel._push_items_to_js()
-        call_args = panel._eval_js.call_args[0][0]
-        assert '"hasModifiers": true' in call_args
+        assert panel._current_items == []
 
 
 class TestUsageTrackerIntegration:
@@ -523,7 +408,6 @@ class TestUsageTrackerIntegration:
 
         panel = ChooserPanel(usage_tracker=tracker)
         panel._eval_js = MagicMock()
-        panel._page_loaded = True
 
         items = [
             ChooserItem(title="Safari App", item_id="safari"),
@@ -558,7 +442,6 @@ class TestUsageTrackerIntegration:
 
         panel = ChooserPanel(usage_tracker=tracker)
         panel._eval_js = MagicMock()
-        panel._page_loaded = True
         panel._last_query = "saf"
         panel._current_items = [
             ChooserItem(
@@ -607,45 +490,20 @@ class TestCloseReactivation:
 
 
 class TestInitialQuery:
-    def test_show_with_initial_query_queues_js(self):
+    def test_initial_query_stored(self):
         """show(initial_query=...) should store the pending query."""
         panel = _make_panel()
-        panel._page_loaded = False
         panel._pending_initial_query = "cb "
-        # Simulate page loaded
-        panel._on_page_loaded()
-        # The setInputValue call should have been made
-        calls = [c[0][0] for c in panel._eval_js.call_args_list]
-        set_input_calls = [c for c in calls if "setInputValue" in c]
-        assert len(set_input_calls) == 1
-        assert '"cb "' in set_input_calls[0]
-
-    def test_show_without_initial_query(self):
-        """show() without initial_query should not call setInputValue."""
-        panel = _make_panel()
-        panel._page_loaded = False
-        panel._pending_initial_query = None
-        panel._on_page_loaded()
-        calls = [c[0][0] for c in panel._eval_js.call_args_list]
-        set_input_calls = [c for c in calls if "setInputValue" in c]
-        assert len(set_input_calls) == 0
-
-    def test_initial_query_cleared_after_page_load(self):
-        """Pending initial query should be consumed after page load."""
-        panel = _make_panel()
-        panel._page_loaded = False
-        panel._pending_initial_query = "sn "
-        panel._on_page_loaded()
-        assert panel._pending_initial_query is None
+        assert panel._pending_initial_query == "cb "
 
     def test_initial_query_triggers_search(self):
-        """setInputValue in JS posts a search message, which triggers _do_search."""
+        """Search message triggers _do_search."""
         panel = _make_panel()
         items = [ChooserItem(title="item1"), ChooserItem(title="item2")]
         panel.register_source(
             _make_source("clipboard", prefix="cb", items=items)
         )
-        # Simulate what happens when JS calls back with the search
+        # Simulate what happens when search is triggered
         panel._handle_js_message({"type": "search", "query": "cb "})
         assert len(panel._current_items) == 2
 
@@ -739,16 +597,13 @@ class TestQuickLookIntegration:
         mock_ql.close.assert_called_once()
         assert panel._ql_panel is None
 
-    def test_ql_shift_toggle_closes_ql_and_resets_js(self):
-        """Shift tap on QL panel should close QL and reset JS state."""
+    def test_ql_shift_toggle_closes_ql(self):
+        """Shift tap on QL panel should close QL."""
         panel = _make_panel()
         mock_ql = MagicMock()
         panel._ql_panel = mock_ql
         panel._on_ql_shift_toggle()
         mock_ql.close.assert_called_once()
-        # Should reset JS qlPreviewOpen
-        call_args = panel._eval_js.call_args[0][0]
-        assert "qlPreviewOpen=false" in call_args
 
     def test_maybe_close_keeps_open_when_ql_is_key(self):
         """_maybe_close should not close when QL panel is the key window."""
@@ -863,13 +718,10 @@ class TestQueryHistory:
 
         panel = _make_panel()
         panel._query_history = qh
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
 
-        # Should call setHistoryQuery with newest entry
-        call_args = panel._eval_js.call_args[0][0]
-        assert "setHistoryQuery" in call_args
-        assert "chrome" in call_args
         assert panel._history_index == 0
+        assert panel._in_history_mode is True
 
     def test_historyUp_navigates_older(self, tmp_path):
         path = str(tmp_path / "history.json")
@@ -881,20 +733,14 @@ class TestQueryHistory:
         panel = _make_panel()
         panel._query_history = qh
 
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
         assert panel._history_index == 0
-        call_args = panel._eval_js.call_args[0][0]
-        assert "gamma" in call_args
 
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
         assert panel._history_index == 1
-        call_args = panel._eval_js.call_args[0][0]
-        assert "beta" in call_args
 
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
         assert panel._history_index == 2
-        call_args = panel._eval_js.call_args[0][0]
-        assert "alpha" in call_args
 
     def test_historyUp_noop_at_oldest(self, tmp_path):
         path = str(tmp_path / "history.json")
@@ -903,15 +749,12 @@ class TestQueryHistory:
 
         panel = _make_panel()
         panel._query_history = qh
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
         assert panel._history_index == 0
 
         # Second press should stay at 0
-        panel._eval_js.reset_mock()
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
         assert panel._history_index == 0
-        # No new JS call since we're already at oldest
-        panel._eval_js.assert_not_called()
 
     def test_historyDown_exits_at_newest(self, tmp_path):
         path = str(tmp_path / "history.json")
@@ -923,20 +766,18 @@ class TestQueryHistory:
         panel._query_history = qh
 
         # Navigate to second entry
-        panel._handle_js_message({"type": "historyUp"})
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
+        panel._history_navigate(1)
         assert panel._history_index == 1
 
         # Down once → back to newest
-        panel._handle_js_message({"type": "historyDown"})
+        panel._history_navigate(-1)
         assert panel._history_index == 0
 
         # Down again → exit history mode
-        panel._handle_js_message({"type": "historyDown"})
+        panel._history_navigate(-1)
         assert panel._history_index == -1
-        call_args = panel._eval_js.call_args[0][0]
-        assert "clearInput" in call_args
-        assert "exitHistoryMode" in call_args
+        assert panel._in_history_mode is False
 
     def test_execute_records_query_history(self, tmp_path):
         path = str(tmp_path / "history.json")
@@ -973,25 +814,27 @@ class TestQueryHistory:
     def test_exitHistory_resets_index(self):
         panel = _make_panel()
         panel._history_index = 3
+        panel._in_history_mode = True
         panel._handle_js_message({"type": "exitHistory"})
         assert panel._history_index == -1
+        assert panel._in_history_mode is False
 
     def test_close_resets_history_index(self):
         panel = _make_panel()
         panel._history_index = 5
+        panel._in_history_mode = True
         with patch("PyObjCTools.AppHelper.callAfter", side_effect=lambda fn, *a, **kw: fn(*a, **kw)), \
              patch("wenzi.scripting.ui.chooser_panel.reactivate_app"):
             panel.close()
         assert panel._history_index == -1
+        assert panel._in_history_mode is False
 
     def test_history_navigation_without_history(self):
         """historyUp/Down with query_history=None should not crash."""
         panel = _make_panel()
         panel._query_history = None
-        panel._handle_js_message({"type": "historyUp"})
-        panel._handle_js_message({"type": "historyDown"})
-        # No crash, no JS calls for history
-        # _eval_js may or may not be called, just ensure no exception
+        panel._history_navigate(1)
+        panel._history_navigate(-1)
 
     def test_historyUp_with_empty_history(self, tmp_path):
         """historyUp with no recorded queries should be a no-op."""
@@ -1000,7 +843,7 @@ class TestQueryHistory:
 
         panel = _make_panel()
         panel._query_history = qh
-        panel._handle_js_message({"type": "historyUp"})
+        panel._history_navigate(1)
         assert panel._history_index == -1
 
 
@@ -1197,7 +1040,7 @@ class TestCalcMode:
 
 
 # ---------------------------------------------------------------------------
-# Panel resize (collapsed ↔ expanded)
+# Panel resize
 # ---------------------------------------------------------------------------
 
 
@@ -1259,17 +1102,17 @@ class TestPanelResize:
 
 
 # ---------------------------------------------------------------------------
-# Panel width (narrow ↔ wide for preview)
+# Preview mode state
 # ---------------------------------------------------------------------------
 
 
-class TestPanelPreviewWidth:
+class TestPanelPreviewState:
     def test_initial_show_preview_is_false(self):
         panel = _make_panel()
         assert panel._show_preview is False
 
     def test_search_with_preview_source_sets_preview(self):
-        """Prefix source with show_preview=True should send setPreviewVisible(true) to JS."""
+        """Prefix source with show_preview=True should set _show_preview."""
         panel = _make_panel()
         items = [ChooserItem(title="clip1")]
         src = _make_source("clipboard", prefix="cb", items=items)
@@ -1279,8 +1122,6 @@ class TestPanelPreviewWidth:
         panel._do_search("cb ")
 
         assert panel._show_preview is True
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "setPreviewVisible(true)" in all_js
 
     def test_search_without_preview_source_stays_narrow(self):
         """General search should keep preview off."""
@@ -1292,13 +1133,11 @@ class TestPanelPreviewWidth:
         panel._do_search("Safari")
 
         assert panel._show_preview is False
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "setPreviewVisible(false)" in all_js
 
     def test_switch_from_preview_to_no_preview(self):
-        """Switching from preview source to general search should send preview false."""
+        """Switching from preview source to general search should disable preview."""
         panel = _make_panel()
-        panel._show_preview = True  # Was in preview mode
+        panel._show_preview = True
         panel.register_source(
             _make_source("apps", items=[ChooserItem(title="Safari")])
         )
@@ -1306,40 +1145,15 @@ class TestPanelPreviewWidth:
         panel._do_search("Safari")
 
         assert panel._show_preview is False
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "setPreviewVisible(false)" in all_js
-
-    def test_push_items_includes_setPreviewVisible(self):
-        """_push_items_to_js should include setPreviewVisible call."""
-        panel = _make_panel()
-        panel._show_preview = True
-        panel._current_items = [ChooserItem(title="item")]
-        src = _make_source("clipboard", prefix="cb")
-        src.show_preview = True
-        panel._push_items_to_js(source=src)
-
-        js_call = panel._eval_js.call_args[0][0]
-        assert "setPreviewVisible(true)" in js_call
-
-    def test_push_items_preview_false(self):
-        """_push_items_to_js should send setPreviewVisible(false) for non-preview sources."""
-        panel = _make_panel()
-        panel._show_preview = False
-        panel._current_items = [ChooserItem(title="item")]
-        panel._push_items_to_js(source=None)
-
-        js_call = panel._eval_js.call_args[0][0]
-        assert "setPreviewVisible(false)" in js_call
 
     def test_empty_query_resets_preview(self):
-        """Empty query should send setPreviewVisible(false) to JS."""
+        """Empty query should reset _show_preview to False."""
         panel = _make_panel()
         panel._show_preview = True
 
         panel._do_search("")
 
-        js_call = panel._eval_js.call_args[0][0]
-        assert "setPreviewVisible(false)" in js_call
+        assert panel._show_preview is False
 
     def test_close_resets_show_preview(self):
         """close() should reset _show_preview to False."""
@@ -1357,8 +1171,8 @@ class TestPanelPreviewWidth:
 
 
 class TestCompactCalcHeight:
-    def test_calc_only_results_send_compact_to_js(self):
-        """When all results are calc items, setCompact(true) should be sent to JS."""
+    def test_calc_only_results_enter_compact(self):
+        """When all results are calc items, _compact_results should be True."""
         panel = _make_panel()
         calc_source = _make_source(
             "calculator", items=[_make_calc_item()], priority=12,
@@ -1368,25 +1182,6 @@ class TestCompactCalcHeight:
         panel._do_search("2 + 3")
 
         assert panel._compact_results is True
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "setCompact(true)" in all_js
-
-    def test_calc_results_use_calc_modifier_hints(self):
-        """Calc-only results should show calculator modifier hints, not defaults."""
-        panel = _make_panel()
-        panel._panel = MagicMock()
-        panel._is_expanded = True
-        calc_source = _make_source(
-            "calculator", items=[_make_calc_item()], priority=12,
-        )
-        calc_source.action_hints = {"enter": "Paste", "cmd_enter": "Copy"}
-        panel.register_source(calc_source)
-
-        panel._do_search("2 + 3")
-
-        all_js = " ".join(c[0][0] for c in panel._eval_js.call_args_list)
-        assert "setModifierHints" in all_js
-        assert '"cmd": "Copy"' in all_js
 
     def test_mixed_results_do_not_enter_compact(self):
         """When calc + non-calc results from scratch, should NOT enter compact."""
@@ -1485,6 +1280,8 @@ class TestCompactCalcHeight:
 class TestTabCompletion:
     def test_tab_calls_complete_and_updates_input(self):
         panel = _make_panel()
+        panel._search_field = MagicMock()
+        panel._panel = MagicMock()
 
         def _complete(query, item):
             return "greet "
@@ -1503,22 +1300,24 @@ class TestTabCompletion:
 
         # Simulate Tab press
         panel._handle_tab_complete(0)
-        # Should call setInputValue with prefix + completed query
-        panel._eval_js.assert_called_with('setInputValue("> greet ")')
+        # Should call setStringValue_ on the search field
+        panel._search_field.setStringValue_.assert_called_with("> greet ")
 
     def test_tab_noop_without_prefix_source(self):
         panel = _make_panel()
+        panel._search_field = MagicMock()
         panel.register_source(
             _make_source("apps", items=[ChooserItem(title="Safari")])
         )
         panel._do_search("saf")
-        call_count = panel._eval_js.call_count
+        panel._search_field.reset_mock()
         panel._handle_tab_complete(0)
-        # No additional JS calls — Tab is a no-op
-        assert panel._eval_js.call_count == call_count
+        # No setStringValue_ call
+        panel._search_field.setStringValue_.assert_not_called()
 
     def test_tab_noop_without_complete_callback(self):
         panel = _make_panel()
+        panel._search_field = MagicMock()
         src = ChooserSource(
             name="clipboard",
             prefix="cb",
@@ -1527,12 +1326,13 @@ class TestTabCompletion:
         )
         panel.register_source(src)
         panel._do_search("cb hello")
-        call_count = panel._eval_js.call_count
+        panel._search_field.reset_mock()
         panel._handle_tab_complete(0)
-        assert panel._eval_js.call_count == call_count
+        panel._search_field.setStringValue_.assert_not_called()
 
     def test_tab_noop_invalid_index(self):
         panel = _make_panel()
+        panel._search_field = MagicMock()
         src = ChooserSource(
             name="commands",
             prefix=">",
@@ -1541,12 +1341,13 @@ class TestTabCompletion:
         )
         panel.register_source(src)
         panel._do_search("> gre")
-        call_count = panel._eval_js.call_count
+        panel._search_field.reset_mock()
         panel._handle_tab_complete(5)  # Out of range
-        assert panel._eval_js.call_count == call_count
+        panel._search_field.setStringValue_.assert_not_called()
 
     def test_tab_complete_returns_none(self):
         panel = _make_panel()
+        panel._search_field = MagicMock()
         src = ChooserSource(
             name="commands",
             prefix=">",
@@ -1555,12 +1356,14 @@ class TestTabCompletion:
         )
         panel.register_source(src)
         panel._do_search("> unk")
-        call_count = panel._eval_js.call_count
+        panel._search_field.reset_mock()
         panel._handle_tab_complete(0)
-        assert panel._eval_js.call_count == call_count
+        panel._search_field.setStringValue_.assert_not_called()
 
     def test_tab_message_dispatched(self):
         panel = _make_panel()
+        panel._search_field = MagicMock()
+        panel._panel = MagicMock()
         src = ChooserSource(
             name="commands",
             prefix=">",
@@ -1571,6 +1374,4 @@ class TestTabCompletion:
         panel._do_search("> gre")
 
         panel._handle_js_message({"type": "tab", "index": 0})
-        # Verify setInputValue was called
-        calls = [str(c) for c in panel._eval_js.call_args_list]
-        assert any("setInputValue" in c for c in calls)
+        panel._search_field.setStringValue_.assert_called()

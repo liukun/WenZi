@@ -270,7 +270,7 @@ def migrate_xdg_paths() -> None:
         os.path.join(cache, "icon_cache"),
         "icon cache",
     )
-    _migrate_file(config, cache, "_chooser.html")
+    # _chooser.html no longer used (native AppKit chooser panel)
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {
