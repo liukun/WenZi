@@ -212,7 +212,6 @@ class ChooserPanel:
     def __init__(self, usage_tracker=None) -> None:
         self._panel = None
         self._webview = None
-        self._effect_view = None
         self._message_handler = None
         self._navigation_delegate = None
         self._panel_delegate = None
@@ -256,6 +255,7 @@ class ChooserPanel:
         self._recycle_preloading: bool = False
         self._last_screen = None  # last screen the panel was positioned on
 
+    # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     # Panel resize (driven by JS)
     # ------------------------------------------------------------------
@@ -359,12 +359,9 @@ class ChooserPanel:
         """Reset the webview UI state for a reused panel.
 
         Clears the previous search input, results, context block, and
-        preview/compact modes so the panel appears fresh.
-
-        The panel must be invisible (alpha=0) when this method is called.
-        After the JS reset completes, the panel is resized to the measured
-        collapsed height and revealed (alpha=1) so the user never sees
-        stale content or the wrong dimensions.
+        preview/compact modes so the panel appears fresh.  Results are
+        already cleared in close(), so the panel can be visible during
+        this call — only the collapsed height needs adjusting.
         """
         parts = [
             "setResults([])",
@@ -408,7 +405,6 @@ class ChooserPanel:
                 return
             h = int(result) if result else self._INITIAL_HEIGHT
             self._apply_frame(self._INITIAL_WIDTH, h)
-            self._panel.setAlphaValue_(1.0)
 
         self._webview.evaluateJavaScript_completionHandler_(
             js, _on_reset_done
@@ -751,13 +747,10 @@ class ChooserPanel:
         self._previous_app = get_frontmost_app()
 
         if self._panel is not None and self._page_loaded:
-            # Reuse hidden panel — reconnect refs and reset UI.
-            # Hide the panel visually while JS resets content and layout;
-            # _reset_panel_ui reveals it (alpha=1) once the measured
-            # collapsed height is applied so no stale frame flashes.
+            # Hot path — reuse hidden panel.  Results were already cleared
+            # in close(), so we can show immediately without alpha dance.
             self._reconnect_panel_refs()
             self._position_on_mouse_screen()
-            self._panel.setAlphaValue_(0.0)
             self._reset_panel_ui(initial_query, placeholder)
         elif self._panel is not None and self._webview is not None:
             # Warm path: panel + webview alive but page was unloaded
@@ -773,11 +766,6 @@ class ChooserPanel:
         else:
             # First show — build from scratch
             self._build_panel()
-
-        # Activate the blur backdrop just before showing the panel so macOS
-        # allocates the full-screen IOSurface only while visible.
-        if self._effect_view is not None:
-            self._effect_view.setState_(1)  # NSVisualEffectStateActive
 
         self._panel.makeKeyAndOrderFront_(None)
 
@@ -886,22 +874,9 @@ class ChooserPanel:
                 None,
             )
 
-        # Deactivate VFX + shrink to 1×1 to release the full-screen IOSurface
-        # (~72 MB at retina).  show() repositions and JS resizes back.
-        from wenzi.ui_helpers import release_panel_surfaces
-
         if self._panel is not None:
-            release_panel_surfaces(self._panel)
             self._panel.orderOut_(None)
         self._last_screen = None
-
-        # Load empty HTML to release IOSurface compositing layer buffers.
-        # The WKWebView stays alive for fast re-show; only the rendered
-        # content is discarded.  _page_loaded is set to False so the next
-        # show() will reload the HTML from the cached temp file.
-        if self._webview is not None:
-            self._webview.loadHTMLString_baseURL_("", None)
-            self._page_loaded = False
 
         self._closing = False
 
@@ -959,7 +934,6 @@ class ChooserPanel:
             self._panel.orderOut_(None)
         self._panel = None
         self._webview = None
-        self._effect_view = None
         self._message_handler = None
         self._navigation_delegate = None
         self._panel_delegate = None
@@ -2047,26 +2021,10 @@ class ChooserPanel:
         panel.setDelegate_(delegate)
         self._panel_delegate = delegate
 
-        # Round corners
+        # Round corners — frosted glass is handled by CSS backdrop-filter
         panel.contentView().setWantsLayer_(True)
-        panel.contentView().layer().setCornerRadius_(16.0)
+        panel.contentView().layer().setCornerRadius_(18.0)
         panel.contentView().layer().setMasksToBounds_(True)
-
-        # Glass blur background (NSVisualEffectView behind WKWebView)
-        from AppKit import NSVisualEffectView
-
-        effect_view = NSVisualEffectView.alloc().initWithFrame_(
-            NSMakeRect(0, 0, initial_width, initial_height)
-        )
-        effect_view.setAutoresizingMask_(0x12)  # Width + Height sizable
-        effect_view.setBlendingMode_(0)  # NSVisualEffectBlendingModeBehindWindow
-        effect_view.setMaterial_(15)  # NSVisualEffectMaterialFullScreenUI
-        effect_view.setState_(0)  # NSVisualEffectStateInactive until show()
-        effect_view.setWantsLayer_(True)
-        effect_view.layer().setCornerRadius_(16.0)
-        effect_view.layer().setMasksToBounds_(True)
-        panel.contentView().addSubview_(effect_view)
-        self._effect_view = effect_view
 
         # Position: center-top of mouse screen (like Spotlight)
         self._panel = panel
