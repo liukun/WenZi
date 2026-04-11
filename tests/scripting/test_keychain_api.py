@@ -4,17 +4,14 @@ from unittest.mock import patch
 
 import wenzi.vault as vault_mod
 
-MOCK_MASTER_KEY_B64 = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="
-
 
 class TestKeychainAPIDelegation:
     """KeychainAPI must delegate every call to the shared Vault singleton."""
 
     @patch("wenzi.vault._keychain_set", return_value=True)
-    @patch("wenzi.vault._keychain_get", return_value=MOCK_MASTER_KEY_B64)
-    def test_get_delegates(self, mock_kc_get, mock_kc_set, tmp_path):
+    @patch("wenzi.vault._keychain_get", return_value=None)
+    def test_get_delegates(self, mock_kc_get, mock_kc_set):
         vault_mod._vault = None
-        vault_mod._DEFAULT_PATH = str(tmp_path / "vault.json")
         from wenzi.scripting.api.keychain import KeychainAPI
 
         api = KeychainAPI()
@@ -23,10 +20,9 @@ class TestKeychainAPIDelegation:
         vault_mod._vault = None
 
     @patch("wenzi.vault._keychain_set", return_value=True)
-    @patch("wenzi.vault._keychain_get", return_value=MOCK_MASTER_KEY_B64)
-    def test_delete_delegates(self, mock_kc_get, mock_kc_set, tmp_path):
+    @patch("wenzi.vault._keychain_get", return_value=None)
+    def test_delete_delegates(self, mock_kc_get, mock_kc_set):
         vault_mod._vault = None
-        vault_mod._DEFAULT_PATH = str(tmp_path / "vault.json")
         from wenzi.scripting.api.keychain import KeychainAPI
 
         api = KeychainAPI()
@@ -36,10 +32,9 @@ class TestKeychainAPIDelegation:
         vault_mod._vault = None
 
     @patch("wenzi.vault._keychain_set", return_value=True)
-    @patch("wenzi.vault._keychain_get", return_value=MOCK_MASTER_KEY_B64)
-    def test_keys_delegates(self, mock_kc_get, mock_kc_set, tmp_path):
+    @patch("wenzi.vault._keychain_get", return_value=None)
+    def test_keys_delegates(self, mock_kc_get, mock_kc_set):
         vault_mod._vault = None
-        vault_mod._DEFAULT_PATH = str(tmp_path / "vault.json")
         from wenzi.scripting.api.keychain import KeychainAPI
 
         api = KeychainAPI()
@@ -49,15 +44,12 @@ class TestKeychainAPIDelegation:
         vault_mod._vault = None
 
     @patch("wenzi.vault._keychain_set", return_value=True)
-    @patch("wenzi.vault._keychain_get", return_value=MOCK_MASTER_KEY_B64)
-    def test_flush_sync_delegates(self, mock_kc_get, mock_kc_set, tmp_path):
+    @patch("wenzi.vault._keychain_get", return_value=None)
+    def test_flush_sync_delegates(self, mock_kc_get, mock_kc_set):
         vault_mod._vault = None
-        vault_mod._DEFAULT_PATH = str(tmp_path / "vault.json")
         from wenzi.scripting.api.keychain import KeychainAPI
 
         api = KeychainAPI()
         api.set("token", "val")
-        api.flush_sync()
-        import os
-        assert os.path.isfile(str(tmp_path / "vault.json"))
+        api.flush_sync()  # no-op but should not raise
         vault_mod._vault = None

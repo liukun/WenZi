@@ -2,7 +2,7 @@
 
 ## Secret Storage — `wz.keychain`
 
-Use `wz.keychain` (not `wz.store`) for sensitive data. `wz.store` is plaintext JSON; `wz.keychain` encrypts with AES-256-GCM.
+Use `wz.keychain` (not `wz.store`) for sensitive data. `wz.store` is plaintext JSON; `wz.keychain` stores secrets in the macOS Keychain.
 
 ```python
 wz.keychain.set("raindrop.token", token)   # → bool
@@ -11,7 +11,7 @@ wz.keychain.delete("raindrop.token")
 wz.keychain.keys()
 ```
 
-Architecture: AES-256-GCM master key in macOS Keychain (`scripting.vault.master_key`), encrypted data in `~/.local/share/WenZi/keychain.json`. Auto-generated on first access. When Keychain unavailable: `get()` → None, `set()` → False.
+Architecture: All secrets serialised as a JSON dict and stored in a single macOS Keychain entry under account `secrets`. When Keychain unavailable: `get()` → None, `set()` → False.
 
 **Note:** Separate from core `wenzi.keychain` module (`keychain_get`/`keychain_set`) which stores provider API keys directly in macOS Keychain.
 

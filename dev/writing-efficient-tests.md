@@ -67,6 +67,6 @@ Always override paths with `tmp_path` to prevent tests from touching real user d
 - `ClipboardMonitor()` → `image_dir` defaults to `~/.config/WenZi/clipboard_images`
 - `ClipboardMonitor(persist_path=...)` → real SQLite database
 - `SnippetStore()` → `~/.config/WenZi/snippets`
-- `KeychainAPI()` / `Vault()` → `~/.local/share/WenZi/keychain.json` + real macOS Keychain. Always pass `vault_path=str(tmp_path / "vault.json")` and mock `_keychain_get`/`_keychain_set`
+- `KeychainAPI()` / `Vault()` → reads/writes the real macOS Keychain. Always mock `wenzi.vault._keychain_get`/`_keychain_set`
 
 **Rule:** Check default paths before instantiating in tests. Follow existing patterns in the same file.
