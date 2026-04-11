@@ -281,7 +281,7 @@ class RecordingIndicatorPanel:
     @staticmethod
     def _make_vfx_view(width: int, height: int):
         """Create an NSVisualEffectView with frosted-glass HUD appearance."""
-        from AppKit import NSVisualEffectView
+        from AppKit import NSBezierPath, NSColor, NSImage, NSVisualEffectView
         from Foundation import NSMakeRect
 
         vfx = NSVisualEffectView.alloc().initWithFrame_(
@@ -290,9 +290,21 @@ class RecordingIndicatorPanel:
         vfx.setMaterial_(_VFX_MATERIAL_HUD)
         vfx.setBlendingMode_(_VFX_BLENDING_BEHIND)
         vfx.setState_(_VFX_STATE_ACTIVE)
-        vfx.setWantsLayer_(True)
-        vfx.layer().setCornerRadius_(_BG_CORNER_RADIUS)
-        vfx.layer().setMasksToBounds_(True)
+
+        # Use maskImage instead of layer cornerRadius — the latter leaves
+        # white corners because NSVisualEffectView's private blur sublayers
+        # don't respect CALayer masksToBounds.
+        r = _BG_CORNER_RADIUS
+        mask = NSImage.alloc().initWithSize_((width, height))
+        mask.lockFocus()
+        NSColor.blackColor().setFill()
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(0, 0, width, height), r, r,
+        ).fill()
+        mask.unlockFocus()
+        mask.setCapInsets_((r, r, r, r))
+        vfx.setMaskImage_(mask)
+
         return vfx
 
     def _panel_height(self) -> int:
