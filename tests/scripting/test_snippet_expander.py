@@ -48,15 +48,15 @@ class TestBufferAndMatching:
             _write_snippet(d, "lsof", "/lsof/", "sudo lsof -iTCP -sTCP:LISTEN -n -P")
 
         expander = self._make_expander(setup)
-        expand_mock = MagicMock()
-        with patch.object(expander, "_expand", expand_mock):
-            expander._check_expansion("some text /lsof/")
+        expander._check_expansion("some text /lsof/")
 
-        expand_mock.assert_called_once()
-        args = expand_mock.call_args[0]
+        # Debounced: a pending timer should be set with the correct args
+        assert expander._pending_timer is not None
+        args = expander._pending_timer.args
         assert args[0] == "/lsof/"
         assert "lsof" in args[1]
         assert args[2] is False  # raw defaults to False
+        expander._cancel_pending()
 
     def test_check_expansion_no_match(self):
         def setup(d):
@@ -79,6 +79,20 @@ class TestBufferAndMatching:
             expander._check_expansion("anything")
 
         expand_mock.assert_not_called()
+
+    def test_continued_typing_cancels_expansion(self):
+        def setup(d):
+            _write_snippet(d, "email", "@@e", "user@example.com")
+
+        expander = self._make_expander(setup)
+        expander._check_expansion("hello @@e")
+
+        # A pending timer should be set
+        assert expander._pending_timer is not None
+
+        # Simulate continued typing — cancels the pending expansion
+        expander._cancel_pending()
+        assert expander._pending_timer is None
 
     def test_check_expansion_clears_buffer(self):
         def setup(d):
@@ -107,12 +121,11 @@ class TestBufferAndMatching:
             _write_snippet(d, "ab", ";;ab", "content-ab")
 
         expander = self._make_expander(setup)
-        expand_mock = MagicMock()
-        with patch.object(expander, "_expand", expand_mock):
-            expander._check_expansion("text ;;ab")
+        expander._check_expansion("text ;;ab")
 
         # One of them should match (whichever comes first in iteration)
-        expand_mock.assert_called_once()
+        assert expander._pending_timer is not None
+        expander._cancel_pending()
 
     def test_check_expansion_skips_auto_expand_false(self):
         def setup(d):
@@ -132,11 +145,10 @@ class TestBufferAndMatching:
             _write_snippet(d, "email", "@@e", "e@x.com")
 
         expander = self._make_expander(setup)
-        expand_mock = MagicMock()
-        with patch.object(expander, "_expand", expand_mock):
-            expander._check_expansion("text @@e")
+        expander._check_expansion("text @@e")
 
-        expand_mock.assert_called_once()
+        assert expander._pending_timer is not None
+        expander._cancel_pending()
 
     def test_expanding_flag_prevents_reentrance(self):
         def setup(d):
@@ -169,13 +181,13 @@ class TestExpand:
                 return_value="expanded content",
             ),
             patch("wenzi.input._set_pasteboard_concealed") as mock_paste,
-            patch("subprocess.run") as mock_run,
+            patch.object(expander, "_send_cmd_v") as mock_cmd_v,
         ):
             expander._expand(";;test", "raw content")
 
         mock_bs.assert_called_once_with(len(";;test"))
         mock_paste.assert_called_once_with("expanded content")
-        mock_run.assert_called_once()
+        mock_cmd_v.assert_called_once()
 
     def test_expand_resets_expanding_flag_on_error(self):
         store = _make_store()
@@ -206,7 +218,7 @@ class TestExpand:
                 return_value="2026-03-16",
             ) as mock_ep,
             patch("wenzi.input._set_pasteboard_concealed"),
-            patch("subprocess.run"),
+            patch.object(expander, "_send_cmd_v"),
         ):
             expander._expand(";;d", "{date}")
 
@@ -222,7 +234,7 @@ class TestExpand:
                 "wenzi.scripting.sources.snippet_source._expand_placeholders",
             ) as mock_ep,
             patch("wenzi.input._set_pasteboard_concealed") as mock_paste,
-            patch("subprocess.run"),
+            patch.object(expander, "_send_cmd_v"),
         ):
             expander._expand(";;tpl", "Today is {date}", raw=True)
 
@@ -256,30 +268,26 @@ class TestRandomExpansion:
         expander = self._make_expander(setup)
 
         # Verify expansion picks a variant via random.choice
-        expand_mock = MagicMock()
-        with (
-            patch.object(expander, "_expand", expand_mock),
-            patch("random.choice", return_value="Thank you!"),
-        ):
+        with patch("random.choice", return_value="Thank you!"):
             expander._check_expansion("hello thx ")
 
-        expand_mock.assert_called_once()
-        args = expand_mock.call_args[0]
+        assert expander._pending_timer is not None
+        args = expander._pending_timer.args
         assert args[0] == "thx "
         assert args[1] == "Thank you!"
+        expander._cancel_pending()
 
     def test_non_random_snippet_uses_content(self):
         def setup(d):
             _write_snippet(d, "email", "@@e", "user@example.com")
 
         expander = self._make_expander(setup)
-        expand_mock = MagicMock()
-        with patch.object(expander, "_expand", expand_mock):
-            expander._check_expansion("text @@e")
+        expander._check_expansion("text @@e")
 
-        expand_mock.assert_called_once()
-        args = expand_mock.call_args[0]
+        assert expander._pending_timer is not None
+        args = expander._pending_timer.args
         assert args[1] == "user@example.com"
+        expander._cancel_pending()
 
 
 class TestGetUnicodeString:
@@ -335,7 +343,10 @@ class TestExpandNotification:
                 return_value="content",
             ),
             patch("wenzi.input._set_pasteboard_concealed"),
-            patch("subprocess.run", side_effect=Exception("osascript failed")),
+            patch.object(
+                expander, "_send_cmd_v",
+                side_effect=Exception("CGEvent failed"),
+            ),
             patch("wenzi.statusbar.send_notification") as mock_notify,
         ):
             expander._expand(";;test", "content")
