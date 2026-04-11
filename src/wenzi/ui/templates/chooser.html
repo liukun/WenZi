@@ -57,7 +57,7 @@ body {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     border-left: 0.5px solid var(--border);
-    padding: 16px; overflow: hidden;
+    padding: 16px 4px 16px 16px; overflow: hidden;
     min-height: 0;
 }
 .preview-panel.hidden { display: none; }
@@ -69,7 +69,7 @@ body {
     font-family: "SF Mono", Menlo, Consolas, monospace;
     font-size: 12px; line-height: 1.5;
     white-space: pre-wrap; word-break: break-word;
-    color: var(--text);
+    color: var(--text); padding-right: 8px;
     -webkit-user-select: text; user-select: text;
 }
 .preview-text mark {
@@ -97,7 +97,7 @@ body {
     width: 100%; height: 100%; overflow-y: auto;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
     font-size: 12px; line-height: 1.5;
-    color: var(--text);
+    color: var(--text); padding-right: 8px;
     -webkit-user-select: text; user-select: text;
 }
 .preview-html::-webkit-scrollbar { width: 5px; }
