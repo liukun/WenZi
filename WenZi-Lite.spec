@@ -47,7 +47,6 @@ a = Analysis(
         'wenzi.keychain',
         'wenzi.vault',
         'wenzi._cgeventtap',
-        'wenzi._commoncrypto',
         'wenzi.i18n',
         'wenzi.locales',
         # wenzi.audio

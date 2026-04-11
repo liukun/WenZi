@@ -69,7 +69,7 @@ Known dangerous defaults:
 - `ClipboardMonitor()` → `image_dir` defaults to `~/.config/WenZi/clipboard_images`. Calling `clear()` will delete all real images.
 - `ClipboardMonitor(persist_path=...)` → connects to real SQLite database.
 - `SnippetStore()` → `path` defaults to `~/.config/WenZi/snippets`.
-- `KeychainAPI()` / `Vault()` → `vault_path` defaults to `~/.local/share/WenZi/keychain.json` and reads the real macOS Keychain master key. Always pass `vault_path=str(tmp_path / "vault.json")` and mock `wenzi.vault._keychain_get`/`_keychain_set`.
+- `KeychainAPI()` / `Vault()` → reads/writes the real macOS Keychain. Always mock `wenzi.vault._keychain_get`/`_keychain_set`.
 
 **Rule:** Always check what default paths a class uses before instantiating it in tests. Pass `tmp_path`-based paths for any file/directory parameters. Follow existing test patterns in the same file.
 
@@ -335,7 +335,7 @@ datas=[
 
 ## Plugin Secret Storage — `wz.keychain`
 
-Plugins must use `wz.keychain` (not `wz.store`) for sensitive data like API tokens and credentials. `wz.store` writes plaintext JSON; `wz.keychain` encrypts with AES-256-GCM.
+Plugins must use `wz.keychain` (not `wz.store`) for sensitive data like API tokens and credentials. `wz.store` writes plaintext JSON; `wz.keychain` stores secrets in the macOS Keychain.
 
 ```python
 wz.keychain.set("raindrop.token", token)   # encrypt + store → returns bool
@@ -344,7 +344,7 @@ wz.keychain.delete("raindrop.token")        # remove entry
 wz.keychain.keys()                          # list all keys
 ```
 
-**Architecture:** A single AES-256-GCM master key is stored in macOS Keychain (account `scripting.vault.master_key`). Encrypted secrets are stored in `~/.local/share/WenZi/keychain.json`. The master key is auto-generated on first access.
+**Architecture:** All secrets are serialised as a JSON dictionary and stored in a single macOS Keychain entry under the account name `secrets`.
 
 **Graceful degradation:** When macOS Keychain is unavailable (e.g. headless environments), `get()` returns None, `set()` returns False, `delete()` is a no-op. Plugins should handle None returns.
 
