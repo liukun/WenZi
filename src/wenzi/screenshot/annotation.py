@@ -158,6 +158,15 @@ class AnnotationLayer:
         self._panel.on_close(self._on_panel_closed)
         self._panel.show()
 
+        # screencapture hands focus back to the previous app when it exits.
+        # Re-activate our app so the annotation window comes to front.
+        from AppKit import NSApp
+
+        ns_panel = self._panel._panel
+        if ns_panel is not None:
+            NSApp.activate()
+            ns_panel.makeKeyAndOrderFront_(None)
+
         logger.debug(
             "Annotation layer shown: %dx%d window=%d (image %dx%d, scale %.2f)",
             canvas_w, canvas_h + _TOOLBAR_HEIGHT, window_w, img_w, img_h, scale,
