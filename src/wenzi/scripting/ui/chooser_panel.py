@@ -417,6 +417,8 @@ class ChooserPanel:
             "setPreviewVisible(false)",
             "setCompact(false)",
             "setModifierHints({},null)",
+            f"setPrefixHints({self._prefix_hints_json()})",
+            "clearActionHints()",
             "setCreateButton(false)",
             "setLoading(false)",
         ]
@@ -447,7 +449,7 @@ class ChooserPanel:
 
         # Return the measured collapsed height so the completion handler
         # can resize the panel to exactly match a freshly created one.
-        js = ";".join(parts) + ";document.querySelector('.search-bar').offsetHeight"
+        js = ";".join(parts) + ";_measureCollapsedHeight()"
 
         def _on_reset_done(result: object, error: object) -> None:
             if self._panel is None:
@@ -798,6 +800,11 @@ class ChooserPanel:
             # _reset_panel_ui JS completes so stale results never flash.
             self._reconnect_panel_refs()
             self._activate_glass()
+            # Restore initial size before positioning/measuring — the
+            # panel may have been shrunk to 1×1 by _deactivate_glass and
+            # JS offsetHeight measurements in a 1px viewport are wrong.
+            self._apply_frame(self._INITIAL_WIDTH, self._INITIAL_HEIGHT)
+            self._last_screen = None  # force reposition with restored size
             self._position_on_mouse_screen()
             self._panel.setAlphaValue_(0.0)
             self._reset_panel_ui(initial_query, placeholder)
@@ -1121,7 +1128,7 @@ class ChooserPanel:
                 self._calc_sticky = False
                 self._compact_results = False
                 self._show_preview = False
-                self._eval_js("setResults([]);setPreviewVisible(false);setCompact(false);setModifierHints({},null)")
+                self._eval_js("setResults([]);setPreviewVisible(false);setCompact(false);setModifierHints({},null);clearActionHints()")
                 self._set_loading(False)
                 return
 
@@ -1411,6 +1418,7 @@ class ChooserPanel:
                 }
         ov_json = json.dumps(item_overrides, ensure_ascii=False) if item_overrides else "null"
         parts.append(f"setModifierHints({json.dumps(modifier_map, ensure_ascii=False)},{ov_json})")
+        parts.append(f"setActionHints({json.dumps(hints, ensure_ascii=False)})")
 
         show = "true" if self._show_preview else "false"
         parts.append(f"setPreviewVisible({show})")
@@ -2005,6 +2013,8 @@ class ChooserPanel:
             self._pending_initial_query = None
             self._eval_js(f"setInputValue({json.dumps(query)})")
 
+        self._push_prefix_hints_to_js()
+
         # Universal Action context block
         if self._context_text is not None:
             escaped = json.dumps(self._context_text)
@@ -2020,6 +2030,19 @@ class ChooserPanel:
                 self._deactivate_glass()
             else:
                 self._panel.setAlphaValue_(1.0)
+
+    def _prefix_hints_json(self) -> str:
+        """Return JSON string of prefix hints for JS."""
+        hints = [
+            {"prefix": src.prefix, "label": src.display_name or src.name}
+            for src in self._sources.values()
+            if src.prefix
+        ]
+        return json.dumps(hints, ensure_ascii=False)
+
+    def _push_prefix_hints_to_js(self) -> None:
+        """Send prefix hints to JS so the footer shows them."""
+        self._eval_js(f"setPrefixHints({self._prefix_hints_json()})")
 
     @staticmethod
     def _ensure_edit_menu() -> None:

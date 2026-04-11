@@ -279,6 +279,9 @@
   "chooser.action.preview": "Preview",
   "chooser.action.copy_url": "Copy URL",
 
+  "chooser.footer.navigate": "Navigate",
+  "chooser.footer.close": "Close",
+
   "chooser.source.apps": "Apps",
   "chooser.source.clipboard": "Clipboard",
   "chooser.source.snippets": "Snippets",

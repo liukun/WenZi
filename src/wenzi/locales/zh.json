@@ -279,6 +279,9 @@
   "chooser.action.preview": "预览",
   "chooser.action.copy_url": "复制链接",
 
+  "chooser.footer.navigate": "导航",
+  "chooser.footer.close": "关闭",
+
   "chooser.source.apps": "应用",
   "chooser.source.clipboard": "剪贴板",
   "chooser.source.snippets": "片段",
