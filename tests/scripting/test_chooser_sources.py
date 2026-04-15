@@ -7,6 +7,7 @@ from wenzi.scripting.sources import (
     _word_initials,
     fuzzy_match,
     fuzzy_match_fields,
+    set_pinyin_enabled,
 )
 
 
@@ -297,3 +298,33 @@ class TestPinyinMatch:
         _, full_score = fuzzy_match("xitong", "系统设置")
         _, init_score = fuzzy_match("xtsh", "系统设置")
         assert full_score > init_score
+
+
+class TestPinyinDisabled:
+    """Pinyin matching can be disabled via set_pinyin_enabled."""
+
+    def setup_method(self):
+        set_pinyin_enabled(False)
+
+    def teardown_method(self):
+        set_pinyin_enabled(True)
+
+    def test_pinyin_skipped_when_disabled(self):
+        """Pinyin queries should not match Chinese text when disabled."""
+        matched, _ = fuzzy_match("xitong", "系统设置")
+        assert matched is False
+
+    def test_pinyin_initials_skipped(self):
+        matched, _ = fuzzy_match("xtsz", "系统设置")
+        assert matched is False
+
+    def test_ascii_match_still_works(self):
+        """Non-pinyin strategies remain unaffected."""
+        matched, score = fuzzy_match("saf", "Safari")
+        assert matched is True
+        assert score == 100
+
+    def test_scattered_still_works(self):
+        matched, score = fuzzy_match("sfr", "Safari")
+        assert matched is True
+        assert score == 40

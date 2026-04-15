@@ -171,6 +171,16 @@ def _get_pinyin(text: str) -> tuple[str, str]:
 # Fuzzy matching
 # ---------------------------------------------------------------------------
 
+_pinyin_enabled: bool = True
+
+
+def set_pinyin_enabled(enabled: bool) -> None:
+    """Enable or disable pinyin matching globally."""
+    global _pinyin_enabled
+    _pinyin_enabled = enabled
+    if not enabled:
+        _get_pinyin.cache_clear()
+
 
 def fuzzy_match(query: str, text: str) -> tuple[bool, int]:
     """Match *query* against *text* using multiple strategies.
@@ -210,7 +220,7 @@ def fuzzy_match(query: str, text: str) -> tuple[bool, int]:
         return True, 60
 
     # 4. Pinyin match — ASCII query against Chinese text
-    if _IS_ASCII.match(q) and _HAS_CJK.search(text):
+    if _pinyin_enabled and _IS_ASCII.match(q) and _HAS_CJK.search(text):
         full_py, init_py = _get_pinyin(text)
         if full_py:
             # Full pinyin prefix: "xitong" matches "系统设置"

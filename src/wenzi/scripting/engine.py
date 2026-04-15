@@ -625,6 +625,12 @@ class ScriptEngine:
             panel._usage_tracker = None
             logger.info("Usage learning disabled at runtime")
 
+    @staticmethod
+    def set_pinyin_enabled(enabled: bool) -> None:
+        """Enable or disable pinyin matching at runtime."""
+        from wenzi.scripting.sources import set_pinyin_enabled
+        set_pinyin_enabled(enabled)
+
     def _register_builtin_sources(self) -> None:
         """Register built-in chooser sources."""
         chooser_config = self._config.get("chooser", {})
@@ -650,6 +656,9 @@ class ScriptEngine:
         panel = self._wz.chooser._get_panel()
         panel._switch_english = chooser_config.get("switch_to_english", True)
         panel.set_recycle_mode(chooser_config.get("recycle_mode", "preload_html"))
+
+        # Pinyin matching toggle
+        self.set_pinyin_enabled(chooser_config.get("pinyin", True))
 
         # Usage learning tracker
         if chooser_config.get("usage_learning", True):
