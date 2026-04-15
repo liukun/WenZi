@@ -135,7 +135,7 @@ def _scan_session_jsonl(
     Returns None if the file is unreadable or contains no useful data.
     """
     try:
-        fh = jsonl_path.open("r", encoding="utf-8", errors="replace")
+        fh = jsonl_path.open("rb")
     except OSError:
         return None
 
@@ -157,18 +157,18 @@ def _scan_session_jsonl(
             if not line:
                 continue
 
-            # Count real user messages via string matching (entire file)
-            if '"type":"user"' in line:
+            # Count real user messages via string matching (entire file) — bytes for speed
+            if b'"type":"user"' in line:
                 if (
-                    "tool_result" not in line
-                    and "toolUseResult" not in line
-                    and "<local-command-caveat>" not in line
-                    and "<command-name>" not in line
+                    b"tool_result" not in line
+                    and b"toolUseResult" not in line
+                    and b"<local-command-caveat>" not in line
+                    and b"<command-name>" not in line
                 ):
                     user_msg_count += 1
 
             # Detect custom-title entries (can appear anywhere in the file)
-            if '"type":"custom-title"' in line:
+            if b'"type":"custom-title"' in line:
                 try:
                     ct_obj = json.loads(line)
                     custom_title = ct_obj.get("customTitle", "")
@@ -176,25 +176,24 @@ def _scan_session_jsonl(
                     pass
 
             # Extract plan title as summary via string matching (avoid full JSON parse)
-            if not summary and '"planContent"' in line and '"# ' in line:
-                # Find "# " after "planContent" — handles both "planContent":"# " and "planContent": "# "
-                pc_idx = line.find('"planContent"')
-                heading_idx = line.find('"# ', pc_idx)
+            if not summary and b'"planContent"' in line and b'"# ' in line:
+                pc_idx = line.find(b'"planContent"')
+                heading_idx = line.find(b'"# ', pc_idx)
                 if heading_idx != -1:
                     start = heading_idx + 3  # skip '"# '
                     end = len(line)
-                    for stop in ["\\n", '"']:
+                    for stop in [b"\\n", b'"']:
                         pos = line.find(stop, start)
                         if pos != -1 and pos < end:
                             end = pos
-                    summary = line[start:end].strip()
+                    summary = line[start:end].strip().decode("utf-8", errors="replace")
 
             # Extract metadata from early lines only
             if i >= metadata_lines:
                 continue
 
             try:
-                obj = json.loads(line)
+                obj = json.loads(raw_line.decode("utf-8", errors="replace"))
             except json.JSONDecodeError:
                 continue
             if not isinstance(obj, dict):
@@ -285,7 +284,7 @@ class SessionScanner:
         self._index_supplements: dict[str, tuple[float, dict[str, dict[str, str]]]] = {}
 
         # In-memory TTL cache for scan_all results
-        self._scan_all_ttl = 5.0
+        self._scan_all_ttl = 30.0
         self._scan_all_cached_at: float = 0.0
         self._scan_all_cached_result: list[dict[str, Any]] = []
 

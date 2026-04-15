@@ -19,12 +19,18 @@ SOURCE_CC = "cc"
 # Disk cache instance (lazily created)
 _opencode_cache: Any = None
 
+# In-memory TTL cache for list_opencode_sessions results
+_LIST_OC_TTL = 5.0
+_list_oc_cached_at: float = 0.0
+_list_oc_cached_result: list[dict[str, Any]] = []
+
 
 def _get_cache():
     """Return the disk cache for OpenCode sessions, creating it if needed."""
     global _opencode_cache
     if _opencode_cache is None:
         from wenzi.config import resolve_cache_dir
+
         from .cache import SessionCache
 
         cache_path = Path(resolve_cache_dir()) / "cc_sessions_opencode_cache.json"
@@ -33,12 +39,14 @@ def _get_cache():
 
 
 def clear_cache() -> None:
-    """Clear the OpenCode session disk cache and in-memory project-name cache."""
-    global _opencode_cache
+    """Clear the OpenCode session disk cache and in-memory caches."""
+    global _opencode_cache, _list_oc_cached_at, _list_oc_cached_result
     clear_project_name_cache()
     if _opencode_cache is not None:
         _opencode_cache.clear()
         _opencode_cache = None
+    _list_oc_cached_at = 0.0
+    _list_oc_cached_result = []
 
 
 def _db_path() -> Path:
@@ -124,7 +132,15 @@ def _batch_counts_and_prompts(
 
 
 def list_opencode_sessions() -> list[dict[str, Any]]:
-    """Return OpenCode sessions formatted for the chooser (cached on disk)."""
+    """Return OpenCode sessions formatted for the chooser (cached on disk + memory TTL)."""
+    from time import time
+
+    global _list_oc_cached_at, _list_oc_cached_result
+
+    now = time()
+    if now - _list_oc_cached_at < _LIST_OC_TTL:
+        return _list_oc_cached_result
+
     db = _db_path()
     if not db.exists():
         return []
@@ -146,13 +162,24 @@ def list_opencode_sessions() -> list[dict[str, Any]]:
             """
         )
         rows = cur.fetchall()
-        session_ids = [row["id"] for row in rows]
-        counts, prompts = _batch_counts_and_prompts(conn, session_ids)
+
+        # Separate cache hits from misses so we only run heavy queries for misses
+        missing_rows = []
+        for row in rows:
+            sid = row["id"]
+            mtime = row["time_updated"] / 1000.0
+            cache_key = f"opencode://{sid}"
+            live_keys.add(cache_key)
+            cached = cache.get(cache_key)
+            if not cached or cached[0] != mtime:
+                missing_rows.append(row)
+
+        missing_ids = [row["id"] for row in missing_rows]
+        counts, prompts = _batch_counts_and_prompts(conn, missing_ids)
 
         for row in rows:
             sid = row["id"]
             cache_key = f"opencode://{sid}"
-            live_keys.add(cache_key)
             mtime = row["time_updated"] / 1000.0
 
             cached = cache.get(cache_key)
@@ -183,6 +210,8 @@ def list_opencode_sessions() -> list[dict[str, Any]]:
 
     cache.prune(live_keys)
     cache.save()
+    _list_oc_cached_at = now
+    _list_oc_cached_result = sessions
     return sessions
 
 

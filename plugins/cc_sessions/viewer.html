@@ -983,6 +983,10 @@ function getSubagentModel(toolUseId, fallbackModel) {
   return sub?.model || fallbackModel || "";
 }
 
+function makeSubagentKey(description, type) {
+  return `${description || ""}|${type || ""}`;
+}
+
 async function resolveSubagents(messages, info) {
   window._subagentMap = {};
 
@@ -1015,7 +1019,28 @@ async function resolveSubagents(messages, info) {
 
   if (agentCalls.length === 0) return;
 
-  const idsToCheck = agentCalls.filter(a => a.agentId).map(a => a.agentId);
+  let subagentList = [];
+  if (typeof wz !== "undefined" && wz.call) {
+    try {
+      subagentList = await wz.call("list_subagents", {
+        root_session_path: info.root_session_path,
+      });
+    } catch (err) {
+      console.error("list_subagents failed:", err);
+    }
+  }
+
+  const subagentByKey = new Map();
+  for (const sub of subagentList) {
+    const key = makeSubagentKey(sub.description, sub.agent_type);
+    if (!subagentByKey.has(key)) {
+      subagentByKey.set(key, sub);
+    }
+  }
+
+  const idsToCheck = agentCalls
+    .filter(a => a.agentId && !subagentByKey.has(makeSubagentKey(a.description, a.type)))
+    .map(a => a.agentId);
   let existsMap = {};
   if (idsToCheck.length > 0 && typeof wz !== "undefined" && wz.call) {
     try {
@@ -1029,13 +1054,20 @@ async function resolveSubagents(messages, info) {
   }
 
   for (const ac of agentCalls) {
+    const key = makeSubagentKey(ac.description, ac.type);
+    const matchedSub = subagentByKey.get(key);
+    const agentId = matchedSub ? matchedSub.agent_id : ac.agentId;
     const agentInfo = existsMap[ac.agentId] || {};
+    const model = matchedSub
+      ? matchedSub.model || ac.model || ""
+      : agentInfo.model || ac.model || "";
+    const exists = matchedSub ? true : (ac.agentId ? agentInfo.exists === true : false);
     window._subagentMap[ac.toolUseId] = {
-      agentId: ac.agentId,
+      agentId,
       description: ac.description,
       type: ac.type,
-      model: agentInfo.model || ac.model || "",
-      exists: ac.agentId ? (agentInfo.exists === true) : false,
+      model,
+      exists,
     };
   }
 }

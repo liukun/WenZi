@@ -47,11 +47,16 @@ def _time_ago(iso_timestamp: str) -> str:
         return ""
 
 
-def _resolve_subagent_path(root_session_path: str, agent_id: str) -> str:
-    """Resolve subagent JSONL path from root session path and agent ID."""
+def _get_subagents_dir(root_session_path: str) -> str:
+    """Return the subagents directory for a given root session path."""
     root_dir = os.path.dirname(root_session_path)
     session_id = os.path.splitext(os.path.basename(root_session_path))[0]
-    return os.path.join(root_dir, session_id, "subagents", f"agent-{agent_id}.jsonl")
+    return os.path.join(root_dir, session_id, "subagents")
+
+
+def _resolve_subagent_path(root_session_path: str, agent_id: str) -> str:
+    """Resolve subagent JSONL path from root session path and agent ID."""
+    return os.path.join(_get_subagents_dir(root_session_path), f"agent-{agent_id}.jsonl")
 
 
 def _check_subagent_exists(
@@ -71,6 +76,43 @@ def _check_subagent_exists(
         else:
             result[aid] = {"exists": False, "model": ""}
     return result
+
+
+def _list_subagents(root_session_path: str) -> list[dict]:
+    """List all subagents for a session by reading subagent meta files.
+
+    Returns a list of dicts with keys: agent_id, description, agent_type, model.
+    """
+    subagents_dir = _get_subagents_dir(root_session_path)
+    if not os.path.isdir(subagents_dir):
+        return []
+
+    results = []
+    for entry in os.listdir(subagents_dir):
+        if not entry.startswith("agent-") or not entry.endswith(".meta.json"):
+            continue
+        agent_id = entry.removeprefix("agent-").removesuffix(".meta.json")
+        meta_path = os.path.join(subagents_dir, entry)
+        jsonl_path = os.path.join(subagents_dir, f"agent-{agent_id}.jsonl")
+        if not os.path.isfile(jsonl_path):
+            continue
+        try:
+            with open(meta_path) as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            meta = {}
+        model = meta.get("model", "")
+        if not model:
+            model = _parse_subagent_meta(jsonl_path).get("model", "")
+        results.append(
+            {
+                "agent_id": agent_id,
+                "description": meta.get("description", ""),
+                "agent_type": meta.get("agentType", ""),
+                "model": model,
+            }
+        )
+    return results
 
 
 def _parse_subagent_meta(jsonl_path: str) -> dict:
@@ -187,6 +229,7 @@ def register(wz) -> None:
     def _ensure_opencode_jsonl(session: dict[str, Any], *, force: bool = False) -> Path:
         """Return a temp JSONL path for an OpenCode session, exporting if needed."""
         from wenzi.config import resolve_cache_dir
+
         from .opencode_store import export_opencode_session
 
         cache_dir = Path(resolve_cache_dir()) / "cc_sessions_opencode"
@@ -218,6 +261,11 @@ def register(wz) -> None:
             agent_ids = data.get("agent_ids", [])
             return _check_subagent_exists(root_path, agent_ids)
 
+        @panel.handle("list_subagents")
+        def list_subagents(data):
+            root_path = data.get("root_session_path", "")
+            return _list_subagents(root_path)
+
         @panel.handle("open_subagent")
         def open_subagent(data):
             _open_subagent_viewer(
@@ -229,7 +277,7 @@ def register(wz) -> None:
 
     def _open_viewer(session: dict[str, Any]) -> None:
         """Open the session viewer panel using pull model."""
-        from .opencode_store import SOURCE_OPENCODE, SOURCE_CC
+        from .opencode_store import SOURCE_CC, SOURCE_OPENCODE
 
         source = session.get("source", SOURCE_CC)
         if source == SOURCE_OPENCODE:
