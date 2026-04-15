@@ -344,19 +344,20 @@ class ChooserPanel:
     # ------------------------------------------------------------------
 
     def _activate_glass(self) -> None:
-        """Re-lock glass appearance to the current system theme.
+        """Re-attach the glass view to the panel and lock to the system theme.
 
-        The panel is reused across open/close cycles, so the system theme
-        may have changed since the panel was built.
+        The glass view is detached from the hierarchy on close (see
+        :meth:`_deactivate_glass`) to let Core Animation release the
+        CA Whippet Drawable.  Re-add it here before the panel is shown.
         """
-        if self._glass_view is not None:
+        if self._glass_view is not None and self._panel is not None:
+            cv = self._panel.contentView()
+            if self._glass_view.superview() is None:
+                cv.addSubview_(self._glass_view)
+            self._glass_view.setFrame_(cv.bounds())
             from wenzi.ui_helpers import configure_glass_appearance
 
             configure_glass_appearance(self._glass_view)
-            try:
-                self._glass_view.setState_(1)  # active compositing
-            except Exception:
-                pass
 
     def _reconnect_panel_refs(self) -> None:
         """Restore ``_panel_ref`` back-references broken by :meth:`close`."""
@@ -368,18 +369,23 @@ class ChooserPanel:
             self._panel_delegate._panel_ref = self
 
     def _deactivate_glass(self) -> None:
-        """Deactivate glass compositing and shrink the hidden panel to 1x1
-        to force Core Animation to release the CA Whippet Drawable IOSurface
-        backing store (~63-72 MB at retina).
+        """Detach the glass view from the panel and shrink to 1×1 so Core
+        Animation can release the CA Whippet Drawable IOSurface (~63 MB+
+        at retina).
 
-        Both steps are required: ``setState_(0)`` stops behind-window
-        sampling, and the 1×1 shrink releases the compositor surface.
-        ``orderOut_`` alone does not release these surfaces.
+        Previous attempts (``setState_(0)``, shrink-only,
+        ``release_panel_surfaces``) left the CALayer tree intact —
+        the compositor surface was disconnected from WindowServer but
+        never deallocated.  Removing the glass view from the hierarchy
+        severs the layer reference chain entirely.
+
+        The glass view (and its webview subview) remain alive via
+        ``self._glass_view``; :meth:`_activate_glass` re-adds them.
         """
         self._last_screen = None
         if self._glass_view is not None:
             try:
-                self._glass_view.setState_(0)  # stop compositing
+                self._glass_view.removeFromSuperview()
             except Exception:
                 pass
         if self._panel is not None:

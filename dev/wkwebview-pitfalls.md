@@ -1,20 +1,10 @@
 # WKWebView Pitfalls in PyObjC Statusbar Apps
 
-Lessons learned from migrating the Preview panel to a WKWebView-based implementation.
 These pitfalls apply to any WKWebView-based UI panel in this project.
 
-## 1. JS Call Queue — Page Load Race Condition
+## 1. JS Call Queue — Page Load Race
 
-**Commit:** `a46d3c8`
-
-**Problem:** Fast backends (e.g. FunASR) can return results before WKWebView finishes
-loading the HTML page. Calls to `evaluateJavaScript_completionHandler_` during this
-window are **silently dropped** — no error, no callback, just lost.
-
-**Symptom:** ASR field stuck on "Transcribing..." while downstream AI results are
-already displayed.
-
-**Solution:** Implement a pending JS queue:
+JS calls during page load are **silently dropped**. Gate all JS behind a `_page_loaded` flag with a pending queue:
 
 ```python
 def _eval_js(self, js_code: str) -> None:
@@ -26,22 +16,11 @@ def _eval_js(self, js_code: str) -> None:
     self._webview.evaluateJavaScript_completionHandler_(js_code, None)
 ```
 
-Flush the queue in `webView:didFinishNavigation:` via a `WKNavigationDelegate`.
+Flush in `webView:didFinishNavigation:`.
 
-**Key takeaway:** Never assume the page is ready when `show()` returns. Always
-gate JS execution behind a page-loaded flag.
+## 2. Atomic JS Flush
 
-## 2. Atomic JS Flush — Async Interleaving
-
-**Commit:** `189402c`
-
-**Problem:** Flushing queued JS calls one-by-one via separate `evaluateJavaScript`
-calls is **not safe**. Each call is asynchronous, and WKWebView may interleave other
-callbacks (e.g. message handler responses) between evaluations. This causes DOM state
-inconsistencies — e.g. streaming text leaking into the final-text textarea.
-
-**Solution:** Combine all pending JS into a single string joined by `;` and execute
-as one atomic evaluation:
+Flushing queued JS one-by-one is unsafe — WKWebView may interleave callbacks between evaluations. Combine all pending JS into one `;`-joined string:
 
 ```python
 def _on_page_loaded(self) -> None:
@@ -49,293 +28,108 @@ def _on_page_loaded(self) -> None:
     self._pending_js.clear()
     self._page_loaded = True
     if pending and self._webview is not None:
-        combined = ";".join(pending)
-        self._webview.evaluateJavaScript_completionHandler_(combined, None)
+        self._webview.evaluateJavaScript_completionHandler_(";".join(pending), None)
 ```
 
-**Key takeaway:** One `evaluateJavaScript` call = one atomic unit. Multiple calls
-have no ordering guarantee.
+## 3. Edit Menu — Cmd+C/V/A Not Working
 
-## 3. Edit Menu — ⌘C/⌘V/⌘A Not Working
-
-**Commit:** `a2c35c0`
-
-**Problem:** In a statusbar app (`NSApplicationActivationPolicyAccessory`), there is
-no menu bar and no Edit menu. WKWebView relies on the responder chain's Edit menu
-to handle ⌘C, ⌘V, ⌘A. Without it, these shortcuts are silently swallowed.
-
-**Solution:** Call `_ensure_edit_menu()` (defined in `result_window_web.py`) during
-`_build_panel()` to inject a minimal Edit menu with Cut/Copy/Paste/Select All items.
-
-```python
-from wenzi.ui.result_window_web import _ensure_edit_menu
-_ensure_edit_menu()
-```
-
-**Key takeaway:** Any WKWebView panel with editable fields must call
-`_ensure_edit_menu()` in its build phase.
+Statusbar apps have no Edit menu. WKWebView needs it for keyboard shortcuts. Call `_ensure_edit_menu()` (from `result_window_web.py`) in `_build_panel()`.
 
 ## 4. WKScriptMessageHandler Protocol Binding
 
-**Commit:** `588695e`
-
-**Problem:** Simply subclassing `NSObject` and defining
-`userContentController_didReceiveScriptMessage_` is **not enough**. PyObjC needs
-explicit protocol conformance for WKScriptMessageHandler, otherwise the method is
-never called.
-
-**Solution:** Use `objc.protocolNamed()` and declare the protocol in the class
-definition:
+PyObjC needs explicit protocol conformance — implicit method-name matching doesn't work:
 
 ```python
-import objc
-import WebKit  # noqa: F401 — must import to register the protocol
-
 WKScriptMessageHandler = objc.protocolNamed("WKScriptMessageHandler")
 
-class MyMessageHandler(NSObject, protocols=[WKScriptMessageHandler]):
+class MyHandler(NSObject, protocols=[WKScriptMessageHandler]):
     def userContentController_didReceiveScriptMessage_(self, controller, message):
         ...
 ```
 
-**Key takeaway:** Always explicitly declare WebKit protocols via
-`objc.protocolNamed`. Implicit method-name matching does not work for WebKit
-delegate protocols.
+Must `import WebKit` first to register the protocol.
 
-## 5. NSDictionary ≠ Python dict
+## 5. NSDictionary != Python dict
 
-**Commit:** `588695e`
-
-**Problem:** `message.body()` from WKScriptMessageHandler returns ObjC types
-(`NSDictionary`, `NSNumber`, `NSString`), not Python-native types. Direct Python
-operations like `body.get("key")` may work for strings but fail silently for nested
-structures or booleans (`NSNumber` 1/0 vs Python `True`/`False`).
-
-**Solution:** JSON-roundtrip through `NSJSONSerialization` to convert to Python
-native types:
+`message.body()` returns ObjC types. JSON-roundtrip to get Python natives:
 
 ```python
-from Foundation import NSJSONSerialization
-
 raw = message.body()
 json_data, _ = NSJSONSerialization.dataWithJSONObject_options_error_(raw, 0, None)
 body = json.loads(bytes(json_data))
 ```
 
-**Key takeaway:** Always JSON-roundtrip WKWebView message bodies before processing
-in Python.
-
 ## 6. ObjC Class Name Global Uniqueness
 
-**Context:** CLAUDE.md project rule
-
-**Problem:** Objective-C class names are globally unique across the entire process.
-If two modules both define `class PanelCloseDelegate(NSObject)`, the second import
-crashes with `objc.error: PanelCloseDelegate is overriding existing Objective-C class`.
-
-**Solution:** Prefix all NSObject subclasses with the module/component name:
-
-```
-WebResultPanelCloseDelegate        (result_window_web.py)
-HistoryBrowserWebCloseDelegate     (history_browser_window_web.py)
-```
-
-Also use lazy creation + global cache to avoid re-defining on repeated imports:
+ObjC class names are process-global. Two modules defining `class PanelCloseDelegate(NSObject)` will crash. Prefix with module name: `SettingsPanelCloseDelegate`, etc. Use lazy-cached factory:
 
 ```python
 _MyDelegate = None
-
 def _get_delegate_class():
     global _MyDelegate
     if _MyDelegate is None:
-        class MyUniqueDelegate(NSObject):
-            ...
+        class MyUniqueDelegate(NSObject): ...
         _MyDelegate = MyUniqueDelegate
     return _MyDelegate
 ```
 
-**Key takeaway:** Every NSObject subclass must have a project-wide unique name.
-Use module-prefixed names and lazy-cached factory functions.
-
 ## 7. Statusbar App Window Lifecycle
 
-**Context:** CLAUDE.md project rule
+Menu callbacks briefly activate the app. If `show()` is deferred via `callAfter`, the window never appears. Always show **synchronously**:
 
-**Problem:** In a statusbar app, clicking a menu item briefly activates the app for
-menu tracking. When the callback returns, the app falls back to accessory mode. If
-window `show()` is deferred via `AppHelper.callAfter()`, the window is created but
-never appears on screen.
+**`show()`:** (1) `NSApp.setActivationPolicy_(0)` → (2) build panel → (3) `makeKeyAndOrderFront_` → (4) `activateIgnoringOtherApps_`
 
-**Solution:** Always show windows **synchronously** within the menu callback. Inside
-`show()`, follow this order:
+**`close()`:** (1) `orderOut_` → (2) `NSApp.setActivationPolicy_(1)`
 
-1. `NSApp.setActivationPolicy_(0)` — switch to Regular
-2. Build/configure the panel
-3. `panel.makeKeyAndOrderFront_(None)`
-4. `NSApp.activateIgnoringOtherApps_(True)`
+## 8. No Arbitrary Attributes on AppKit Objects
 
-Inside `close()`:
-1. `panel.orderOut_(None)`
-2. `NSApp.setActivationPolicy_(1)` — back to Accessory
+`btn._my_data = "foo"` raises `AttributeError` at runtime (works with MagicMock in tests). Use `dict` keyed by `id(obj)` instead.
 
-**Key takeaway:** Never defer window display in a statusbar app. The activation
-window is extremely short.
+## 9. innerHTML Inline Handlers Are Dead
 
-## 8. AppKit Objects Don't Support Arbitrary Attributes
-
-**Context:** CLAUDE.md project rule
-
-**Problem:** Real AppKit objects (`NSButton`, `NSTextField`, etc.) do not allow
-setting arbitrary Python attributes. `btn._my_data = "foo"` raises `AttributeError`
-at runtime but works fine with `MagicMock` in tests — a classic test/runtime
-divergence.
-
-**Solution:** Use a Python-side `dict` keyed by `id(obj)`:
-
-```python
-self._btn_meta: Dict[int, Dict] = {}
-self._btn_meta[id(btn)] = {"key": "value"}
-```
-
-**Key takeaway for web panels:** This issue is largely eliminated by moving to
-WKWebView (all UI state lives in JS/DOM), but still applies to any NSObject
-delegate instances.
-
-## 9. innerHTML Inline Event Handlers Are Dead in WKWebView
-
-**Commit:** (fix/settings-bug branch)
-
-**Problem:** Inline event handlers (`onclick`, `onchange`) in HTML inserted via
-`innerHTML` do **not fire** in WKWebView. Static HTML in the template with the same
-handlers works fine.
+Inline `onclick`/`onchange` in HTML inserted via `innerHTML` **don't fire**. Use event delegation on the static container with `data-*` attributes:
 
 ```javascript
-// BROKEN — handler never fires
-html += '<select onchange="postCallback(\\x27on_restart_key_select\\x27, this.value)">';
-container.innerHTML = html;
-
-// WORKS — static HTML in template
-<select onchange="postCallback('on_language_change', this.value)">
-```
-
-The `\\x27` escaping is not the cause — the root issue is that WKWebView does not
-compile inline event handler attributes on DOM elements created via `innerHTML`.
-
-**Solution:** Use **event delegation** on the static container element. Put data in
-`data-*` attributes, bind listeners once on the container:
-
-```javascript
-// HTML generation — data attributes only, no inline handlers
-html += '<select data-action="restart-key">';
-html += '<div class="toggle" data-action="hotkey-toggle" data-key="fn">';
-container.innerHTML = html;
-
-// Event delegation — bind once on static container, survives innerHTML rebuilds
 container.addEventListener('click', function(e) {
-  var toggle = e.target.closest('[data-action="hotkey-toggle"]');
-  if (toggle) {
-    toggle.classList.toggle('on');
-    postCallback('on_hotkey_toggle', toggle.dataset.key,
-                 toggle.classList.contains('on'));
-  }
-});
-
-container.addEventListener('change', function(e) {
-  var sel = e.target;
-  if (sel.dataset.action === 'restart-key') {
-    postCallback('on_restart_key_select', sel.value);
-  }
+  var el = e.target.closest('[data-action="my-action"]');
+  if (el) postCallback('my_action', el.dataset.key);
 });
 ```
 
-This matches the pattern used by `result_window_web.html` and
-`history_browser_window_web.html`, which use `addEventListener` / event delegation
-for all dynamic content.
+## 10. Update CONFIG Before Re-rendering
 
-**Key takeaway:** Never use inline `onclick`/`onchange` in dynamically generated
-HTML. Always use event delegation on the static parent container.
-
-## 10. _updateState Must Update CONFIG Before Re-rendering
-
-**Commit:** (fix/settings-bug branch)
-
-**Problem:** `_updateState()` updated DOM elements by ID (e.g. setting a select
-value), then called `renderHotkeys()` which rebuilt the entire `innerHTML` from
-`CONFIG`. Since `CONFIG` was not updated first, the re-render overwrote the new
-value with the old one.
+If `_updateState()` sets DOM values then calls a render function that rebuilds from `CONFIG`, the render overwrites the DOM. Update `CONFIG` first:
 
 ```javascript
-// BROKEN — render overwrites the DOM update
-if (state.restart_key !== undefined) {
-    document.getElementById('ctl-restart-key').value = state.restart_key;  // set new
-}
-renderHotkeys();  // rebuilds from CONFIG.restart_key (still old!) — overwrites
-
-// FIXED — update CONFIG first, let render use new value
 if (state.restart_key !== undefined) CONFIG.restart_key = state.restart_key;
-renderHotkeys();  // rebuilds from CONFIG.restart_key (now new)
+renderHotkeys();  // now uses new value
 ```
 
-**Key takeaway:** For any value consumed by a render function, update `CONFIG`
-before calling the render. Direct DOM manipulation is pointless if a full re-render
-follows.
+## 11. JS Native Dialogs Don't Work
 
-## 11. JS Native Dialogs Do Not Work (alert / confirm / prompt)
+`alert()`, `confirm()`, `prompt()` are silently no-ops without `WKUIDelegate`. Use custom HTML modals instead.
 
-**Commit:** `be485a8`
+## 12. Audio — Use `wz.playAudio()`, Not `new Audio()`
 
-**Problem:** WKWebView does **not** show JavaScript native dialogs (`alert()`,
-`confirm()`, `prompt()`) by default. These require implementing `WKUIDelegate`
-methods (`webView:runJavaScriptAlertPanelWithMessage:...`,
-`runJavaScriptConfirmPanelWithMessage:...`,
-`runJavaScriptTextInputPanelWithPrompt:...`). Without them:
+`new Audio().play()` triggers macOS Now Playing. Route through native bridge:
+- WebView panels: `wz.playAudio(url)`
+- Chooser preview (no `wz` bridge): `webkit.messageHandlers.chooser.postMessage({type: 'playAudio', url: url})`
 
-- `alert()` — silently does nothing
-- `confirm()` — silently returns `false`
-- `prompt()` — silently returns `null`
-
-This is especially insidious because code like `if (confirm(...))` silently
-skips the guarded action with no visible error.
-
-**Solution:** Use custom HTML/CSS modal dialogs instead of native dialogs:
-
-```javascript
-// BROKEN — confirm() silently returns false in WKWebView
-if (confirm('Delete this item?')) {
-    doDelete();
-}
-
-// FIXED — custom modal with callbacks
-showModal(
-    '<div class="modal-message">Delete this item?</div>',
-    [
-        { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-        { label: 'Delete', cls: 'btn-danger', action: function() {
-            closeModal(); doDelete();
-        }}
-    ]
-);
-```
-
-For text input (replacing `prompt()`), use an inline popover or a modal with
-an `<input>` field — see the version-specific install popover in the plugins
-tab for a reference implementation.
-
-**Key takeaway:** Never use `alert()`, `confirm()`, or `prompt()` in WKWebView
-code. Always use custom HTML modals or popovers.
+ChooserPanel uses `AVAudioPlayer` (not `NSSound`, which interferes with compositing).
 
 ## Checklist for New WKWebView Panels
 
-- [ ] Implement `_eval_js` with `_page_loaded` gate and `_pending_js` queue
-- [ ] Implement `_on_page_loaded` with atomic `;`-joined flush
-- [ ] Add `WKNavigationDelegate` (lazy-cached, unique class name)
-- [ ] Add `WKScriptMessageHandler` with `objc.protocolNamed` (lazy-cached, unique class name)
-- [ ] Add `PanelCloseDelegate` (lazy-cached, unique class name)
-- [ ] Call `_ensure_edit_menu()` if panel has editable fields
-- [ ] JSON-roundtrip all `message.body()` from JS
-- [ ] Show panel synchronously in menu callback (no `callAfter`)
-- [ ] Use `prefers-color-scheme: dark` CSS media query for dark mode
-- [ ] Reset `_page_loaded = False` and clear `_pending_js` in `close()`
-- [ ] Use event delegation for dynamic (`innerHTML`) content — never inline handlers
-- [ ] Never use `alert()` / `confirm()` / `prompt()` — use custom HTML modals/popovers
-- [ ] Update `CONFIG` before calling render functions in `_updateState()`
+- [ ] `_eval_js` with `_page_loaded` gate + `_pending_js` queue
+- [ ] `_on_page_loaded` with atomic `;`-joined flush
+- [ ] `WKNavigationDelegate` (lazy-cached, unique class name)
+- [ ] `WKScriptMessageHandler` with `objc.protocolNamed` (lazy-cached, unique name)
+- [ ] `PanelCloseDelegate` (lazy-cached, unique name)
+- [ ] `_ensure_edit_menu()` if panel has editable fields
+- [ ] JSON-roundtrip all `message.body()`
+- [ ] Show panel synchronously (no `callAfter`)
+- [ ] `prefers-color-scheme: dark` CSS for dark mode
+- [ ] Reset `_page_loaded = False` + clear `_pending_js` in `close()`
+- [ ] Event delegation for `innerHTML` content — never inline handlers
+- [ ] Never use `alert()` / `confirm()` / `prompt()`
+- [ ] Update `CONFIG` before render functions in `_updateState()`
+- [ ] `wz.playAudio()` for audio, never `new Audio()`
