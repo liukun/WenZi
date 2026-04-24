@@ -1123,7 +1123,16 @@ function clearInput() {
 
 function setInputValue(value) {
     searchInput.value = value;
-    searchInput.setSelectionRange(value.length, value.length);
+    var end = value.length;
+    searchInput.setSelectionRange(end, end);
+    // macOS re-selects the text field on window-key transitions; arm a
+    // one-shot reset on window (not searchInput, which a later focus()
+    // call in the same batch would consume prematurely).
+    if (!document.hasFocus()) {
+        window.addEventListener('focus', function() {
+            searchInput.setSelectionRange(end, end);
+        }, { once: true });
+    }
     post('search', { query: value });
 }
 
