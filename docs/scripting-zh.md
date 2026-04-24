@@ -355,6 +355,52 @@ wz.date("%H:%M:%S")   # "14:30:00"
 wz.date("%Y-%m-%d %H:%M")  # "2025-03-15 14:30"
 ```
 
+### `wz.script(name, fn)`
+
+注册一个同步函数，作为 snippet 占位符脚本。函数返回值会被转成字符串，替换到 snippet 文本里。
+
+```python
+import datetime
+
+def workdate():
+    return datetime.date.today().strftime("%Y/%m/%d")
+
+wz.script("workdate", workdate)
+```
+
+snippet 里直接用 `{workdate}` 即可。
+
+**带参数**：参数遵循 Python 字面量语法（字符串/数字/布尔/None/list/dict），不允许标识符或表达式。
+
+```python
+wz.script("greet", lambda name="world": f"hello, {name}")
+# {greet} → "hello, world"
+# {greet("alice")} → "hello, alice"
+# {greet(name="bob")} → "hello, bob"
+```
+
+**链式管道**：`|` 把上一步的返回值作为下一个脚本的第一个位置参数。
+
+```python
+wz.script("upper", lambda s: s.upper())
+# {clipboard|upper} → 把剪贴板内容转成大写
+# {clipboard|upper|greet} → 大写后再传给 greet
+```
+
+**内置脚本**（不要重名）：`clipboard`、`date`、`time`、`datetime`、`unwrap`。
+
+**约束**：
+
+- 必须是同步函数（占位符展开在 CGEventTap 回调中同步执行，不支持 `async def`）。
+- 失败时（未注册的名字、参数解析错误、函数抛异常）占位符原文保留，方便发现 typo，不会静默丢内容。
+- 注册过的脚本会在 `wz.reload()` 时自动清理并重新注册。
+
+> 旧版 WenZi 没有 `wz.script`。如果你的 `init.py` 可能在旧版上跑，建议加防御：
+> ```python
+> if hasattr(wz, "script"):
+>     wz.script("workdate", workdate)
+> ```
+
 ### `wz.reload()`
 
 重新加载所有脚本。停止当前监听器，清除脚本目录下已缓存的模块，重新读取 `init.py`（及其导入的所有子模块），然后重启。所有文件变更都会在重载后生效。

@@ -17,6 +17,7 @@ from .eventtap import keystroke as _keystroke_fn
 from .execute import execute as _execute_fn
 from .notify import notify as _notify_fn
 from .pasteboard import PasteboardAPI
+from .script import ScriptAPI
 from .snippets import SnippetsAPI
 from .store import StoreAPI
 from .timer import TimerAPI
@@ -37,6 +38,7 @@ class _WZNamespace:
         self.snippets = SnippetsAPI()
         self.timer = TimerAPI(registry)
         self.store = StoreAPI()
+        self._script_api = ScriptAPI()
         # HotkeyAPI, ChooserAPI, UIAPI, WindowAPI are created lazily
         self._hotkey_api = None
         self._chooser_api = None
@@ -181,6 +183,17 @@ class _WZNamespace:
     def alert(self, text: str, duration: float = 2.0) -> None:
         """Show a brief floating alert message."""
         _alert_fn(text, duration)
+
+    def script(self, name: str, fn: Callable[..., Any]) -> None:
+        """Register a sync callable as a snippet placeholder script.
+
+        Inside a plugin's ``setup(wz)``, the script is namespaced as
+        ``<plugin>.<name>`` and used in snippets like
+        ``{my-plugin.my-script}`` or ``{clipboard|my-plugin.upper}``.
+
+        See ``dev/plugin-apis.md`` for the full snippet placeholder syntax.
+        """
+        self._script_api.register(name, fn)
 
     def notify(
         self, title: str, message: str = "", sound: str | None = "default",

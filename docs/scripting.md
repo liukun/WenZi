@@ -355,6 +355,52 @@ wz.date("%H:%M:%S")   # "14:30:00"
 wz.date("%Y-%m-%d %H:%M")  # "2025-03-15 14:30"
 ```
 
+### `wz.script(name, fn)`
+
+Register a sync callable as a snippet placeholder script. The return value is coerced to a string and substituted into the snippet text.
+
+```python
+import datetime
+
+def workdate():
+    return datetime.date.today().strftime("%Y/%m/%d")
+
+wz.script("workdate", workdate)
+```
+
+Use it in any snippet as `{workdate}`.
+
+**Arguments** follow Python literal syntax (strings, numbers, bools, `None`, lists, dicts). Identifiers and expressions are rejected.
+
+```python
+wz.script("greet", lambda name="world": f"hello, {name}")
+# {greet} → "hello, world"
+# {greet("alice")} → "hello, alice"
+# {greet(name="bob")} → "hello, bob"
+```
+
+**Pipes** — `|` passes the previous result as the first positional argument of the next script.
+
+```python
+wz.script("upper", lambda s: s.upper())
+# {clipboard|upper} → upper-cased clipboard
+# {clipboard|upper|greet} → uppercase, then pass to greet
+```
+
+**Built-in scripts** (don't reuse these names): `clipboard`, `date`, `time`, `datetime`, `unwrap`.
+
+**Constraints:**
+
+- Must be a sync function. The expander runs in a synchronous CGEventTap callback; `async def` is rejected at registration.
+- On failure (unknown name, parse error, function raised) the placeholder text is left intact so typos surface instead of silently dropping content.
+- Scripts registered via `wz.script` are auto-cleared and re-registered on `wz.reload()`.
+
+> Older WenZi builds don't have `wz.script`. If your `init.py` may run on those, guard the call:
+> ```python
+> if hasattr(wz, "script"):
+>     wz.script("workdate", workdate)
+> ```
+
 ### `wz.reload()`
 
 Reload all scripts. Stops current listeners, purges cached modules from the scripts directory, re-reads `init.py` (and any imported sub-modules), and restarts. All file changes are picked up on reload.

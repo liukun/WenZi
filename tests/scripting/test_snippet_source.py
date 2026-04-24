@@ -4,6 +4,9 @@ import json
 import os
 import tempfile
 
+import pytest
+
+from wenzi.scripting.sources import snippet_source as _snippet_source_mod
 from wenzi.scripting.sources.snippet_source import (
     SnippetSource,
     SnippetStore,
@@ -12,6 +15,7 @@ from wenzi.scripting.sources.snippet_source import (
     _parse_frontmatter,
     _sanitize_filename,
     _split_random_sections,
+    _unwrap_clipboard,
 )
 
 # ---------------------------------------------------------------------------
@@ -818,6 +822,126 @@ class TestExpandPlaceholders:
         assert result == "{unknown}"
 
 
+class TestUnwrapClipboard:
+    def test_empty_string(self):
+        assert _unwrap_clipboard("") == ""
+
+    def test_single_line_no_change(self):
+        assert _unwrap_clipboard("hello") == "hello"
+
+    def test_strips_common_indent_only(self):
+        src = "  hello\n  world"
+        assert _unwrap_clipboard(src) == "hello world"
+
+    def test_first_line_excluded_from_indent_calc(self):
+        src = "hello\n  world"
+        assert _unwrap_clipboard(src) == "hello world"
+
+    def test_dedent_preserves_relative_indent(self):
+        src = "  first\n  second\n    third"
+        assert _unwrap_clipboard(src) == "first second third"
+
+    def test_no_common_indent_when_some_line_has_none(self):
+        src = "- a\n  sub\n- b"
+        assert _unwrap_clipboard(src) == "- a sub\n- b"
+
+    def test_blank_lines_preserved(self):
+        src = "  para one\n  continued\n\n  para two"
+        assert _unwrap_clipboard(src) == "para one continued\n\npara two"
+
+    def test_list_marker_starts_new_line(self):
+        src = "  title\n  - item one\n  continued\n  - item two"
+        assert _unwrap_clipboard(src) == "title\n- item one continued\n- item two"
+
+    def test_numbered_list_marker(self):
+        src = "1. first\n   cont\n2. second"
+        assert _unwrap_clipboard(src) == "1. first cont\n2. second"
+
+    def test_punctuation_does_not_stop_merge(self):
+        src = "第一句。\n第二句"
+        assert _unwrap_clipboard(src) == "第一句。第二句"
+
+    def test_cjk_join_no_space(self):
+        src = "第一行\n第二行"
+        assert _unwrap_clipboard(src) == "第一行第二行"
+
+    def test_ascii_join_with_space(self):
+        src = "hello\nworld"
+        assert _unwrap_clipboard(src) == "hello world"
+
+    def test_mixed_cjk_ascii_join_adds_space(self):
+        src = "默认\nregistry"
+        assert _unwrap_clipboard(src) == "默认 registry"
+
+    def test_real_world_example(self):
+        src = (
+            "  新增\n"
+            "  - verifier/metrics.go — 注册到默认\n"
+            "  registry，直接被 /metrics 暴露。\n"
+            "\n"
+            "  改动 verifier/verifier.go\n"
+            "  - verifier struct 加字段，从参数传入。\n"
+            "  - 新增 reject() 辅助方法：统一 result label 和\n"
+            "  Error 字段。\n"
+        )
+        expected = (
+            "新增\n"
+            "- verifier/metrics.go — 注册到默认 registry，直接被 /metrics 暴露。\n"
+            "\n"
+            "改动 verifier/verifier.go\n"
+            "- verifier struct 加字段，从参数传入。\n"
+            "- 新增 reject() 辅助方法：统一 result label 和 Error 字段。\n"
+        )
+        assert _unwrap_clipboard(src) == expected
+
+    def test_tab_prefixed_lines_skipped_in_indent_calc(self):
+        # Tab-prefixed line is excluded from common-indent calc and passes
+        # through without dedent; still merges into the paragraph.
+        src = "a\n  b\n\tmid\n  c"
+        assert _unwrap_clipboard(src) == "a b \tmid c"
+
+    def test_trailing_newline_preserved(self):
+        assert _unwrap_clipboard("hello\n") == "hello\n"
+        assert _unwrap_clipboard("a\nb\n") == "a b\n"
+
+    def test_only_blank_lines(self):
+        assert _unwrap_clipboard("\n\n\n") == "\n\n\n"
+
+
+class TestClipboardFilter:
+    def test_unknown_filter_left_literal(self, monkeypatch):
+        monkeypatch.setattr(
+            _snippet_source_mod, "_get_clipboard_text", lambda: "xyz"
+        )
+        assert _expand_placeholders("{clipboard|foo}") == "{clipboard|foo}"
+
+    def test_raw_clipboard(self, monkeypatch):
+        monkeypatch.setattr(
+            _snippet_source_mod, "_get_clipboard_text", lambda: "  raw text"
+        )
+        assert _expand_placeholders("{clipboard}") == "  raw text"
+
+    def test_unwrap_filter(self, monkeypatch):
+        monkeypatch.setattr(
+            _snippet_source_mod,
+            "_get_clipboard_text",
+            lambda: "  hello\n  world",
+        )
+        assert _expand_placeholders("{clipboard|unwrap}") == "hello world"
+
+    def test_escaped_unwrap_placeholder(self, monkeypatch):
+        # Should not trigger clipboard read.
+        called = []
+        monkeypatch.setattr(
+            _snippet_source_mod,
+            "_get_clipboard_text",
+            lambda: called.append(1) or "",
+        )
+        result = _expand_placeholders("{{clipboard|unwrap}}")
+        assert result == "{clipboard|unwrap}"
+        assert called == []
+
+
 # ---------------------------------------------------------------------------
 # SnippetSource search tests
 # ---------------------------------------------------------------------------
@@ -1490,3 +1614,102 @@ class TestSnippetSourceRandom:
         source = self._make_source(setup)
         results = source.search("")
         assert "variants" not in results[0].title
+
+
+@pytest.mark.usefixtures("isolate_script_registry")
+class TestPlaceholderScriptIntegration:
+    """End-to-end: register scripts and expand them via _expand_placeholders."""
+
+    def test_plugin_namespaced_script(self):
+        from wenzi.scripting import script_registry as sr
+
+        sr.register("my-plugin.greet", lambda: "hi")
+        assert _expand_placeholders("{my-plugin.greet}") == "hi"
+
+    def test_script_with_positional_arg(self):
+        from wenzi.scripting import script_registry as sr
+
+        sr.register("test.echo", lambda x: str(x))
+        assert _expand_placeholders('{test.echo("ping")}') == "ping"
+
+    def test_script_with_kwargs(self):
+        from wenzi.scripting import script_registry as sr
+
+        sr.register("test.tag", lambda level="info": f"[{level}]")
+        assert _expand_placeholders('{test.tag(level="warn")}') == "[warn]"
+
+    def test_pipe_passes_value_as_first_arg(self, monkeypatch):
+        from wenzi.scripting import script_registry as sr
+
+        monkeypatch.setattr(
+            _snippet_source_mod, "_get_clipboard_text", lambda: "abc"
+        )
+        sr.register("test.upper", lambda s: s.upper())
+        assert _expand_placeholders("{clipboard|test.upper}") == "ABC"
+
+    def test_pipe_with_extra_args(self, monkeypatch):
+        from wenzi.scripting import script_registry as sr
+
+        monkeypatch.setattr(
+            _snippet_source_mod, "_get_clipboard_text", lambda: "hello"
+        )
+        sr.register("test.replace", lambda s, a, b: s.replace(a, b))
+        assert (
+            _expand_placeholders('{clipboard|test.replace("l", "L")}')
+            == "heLLo"
+        )
+
+    def test_long_chain(self, monkeypatch):
+        from wenzi.scripting import script_registry as sr
+
+        monkeypatch.setattr(
+            _snippet_source_mod, "_get_clipboard_text", lambda: "ab"
+        )
+        sr.register("test.up", lambda s: s.upper())
+        sr.register("test.x2", lambda s: s + s)
+        assert _expand_placeholders("{clipboard|test.up|test.x2}") == "ABAB"
+
+    def test_unknown_script_left_literal(self):
+        assert (
+            _expand_placeholders("{not.a.real.script}")
+            == "{not.a.real.script}"
+        )
+
+    def test_script_exception_left_literal(self):
+        from wenzi.scripting import script_registry as sr
+
+        def boom():
+            raise RuntimeError("nope")
+
+        sr.register("test.boom", boom)
+        assert (
+            _expand_placeholders("before {test.boom} after")
+            == "before {test.boom} after"
+        )
+
+    def test_invalid_arg_syntax_left_literal(self):
+        from wenzi.scripting import script_registry as sr
+
+        sr.register("test.fn", lambda x=1: str(x))
+        # bare identifier as arg is not a literal -> ValueError -> kept literal
+        assert (
+            _expand_placeholders("{test.fn(bar)}") == "{test.fn(bar)}"
+        )
+
+    def test_escaped_brace_blocks_dispatch(self):
+        from wenzi.scripting import script_registry as sr
+
+        sr.register("test.hi", lambda: "X")
+        assert _expand_placeholders("{{test.hi}}") == "{test.hi}"
+
+    def test_multiple_placeholders_independent_failures(self, monkeypatch):
+        from wenzi.scripting import script_registry as sr
+
+        monkeypatch.setattr(
+            _snippet_source_mod, "_get_clipboard_text", lambda: "OK"
+        )
+        sr.register("test.identity", lambda s: s)
+        result = _expand_placeholders(
+            "{clipboard|test.identity} / {bogus} / {clipboard}"
+        )
+        assert result == "OK / {bogus} / OK"

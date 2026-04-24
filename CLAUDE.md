@@ -37,7 +37,7 @@ No backwards-compatibility code. APIs like `NSGlassEffectView` used unconditiona
 
 **Testing:** Override real paths with `tmp_path` → [writing-efficient-tests.md](dev/writing-efficient-tests.md)
 
-**Plugins:** `wz.keychain` for secrets (not `wz.store`), `wz.menu` for menus → [plugin-apis.md](dev/plugin-apis.md)
+**Plugins:** `wz.keychain` for secrets (not `wz.store`), `wz.menu` for menus, `wz.script` for snippet placeholders → [plugin-apis.md](dev/plugin-apis.md)
 
 **LLM:** All `chat.completions.create` calls must set `max_tokens`:
 
@@ -77,7 +77,7 @@ uv run pytest tests/ -v --cov=wenzi
 | [cgeventtap.md](dev/cgeventtap.md) | CGEventTap ctypes bindings |
 | [chooser-lifecycle.md](dev/chooser-lifecycle.md) | Chooser panel hide/reuse, recycle mechanism |
 | [screenshot.md](dev/screenshot.md) | Screenshot capture + annotation editor |
-| [plugin-apis.md](dev/plugin-apis.md) | Plugin secrets (`wz.keychain`) and menus (`wz.menu`) |
+| [plugin-apis.md](dev/plugin-apis.md) | Plugin secrets (`wz.keychain`), menus (`wz.menu`), snippet scripts (`wz.script`) |
 | [vocab-hit-tracking.md](dev/vocab-hit-tracking.md) | Vocabulary four-dimension hit tracking |
 | [asyncio-migration-plan.md](dev/asyncio-migration-plan.md) | Asyncio migration plan (in progress) |
 | [minimax-api-behavior.md](dev/minimax-api-behavior.md) | MiniMax API behavior notes |

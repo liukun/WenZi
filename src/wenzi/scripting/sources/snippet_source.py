@@ -298,46 +298,167 @@ def _delete_and_notify(store, name: str, category: str) -> None:
 
 
 
+_LIST_MARKER_RE = re.compile(r"^(?:[-*+#>]|\d+[.)])(?:\s|$)")
+_PLACEHOLDER_RE = re.compile(r"\{([^{}]+)\}")
+_LBRACE_SENTINEL = "\x00LBRACE\x00"
+_RBRACE_SENTINEL = "\x00RBRACE\x00"
+
+
+def _is_ascii_printable(ch: str) -> bool:
+    """True for ASCII printable chars (0x21–0x7E, i.e. excluding space/ctrl)."""
+    return len(ch) == 1 and 0x21 <= ord(ch) <= 0x7E
+
+
+def _join_separator(left: str, right: str) -> str:
+    """Space when either adjacent char is ASCII printable, else empty."""
+    left_ch = left[-1] if left else ""
+    right_ch = right[0] if right else ""
+    if _is_ascii_printable(left_ch) or _is_ascii_printable(right_ch):
+        return " "
+    return ""
+
+
+def _unwrap_clipboard(text: str) -> str:
+    """Strip common indent and merge soft-wrapped lines; preserve blank lines.
+
+    1. Compute ``common_indent`` as the minimum leading-space count among
+       non-blank lines from line 2 onwards (first line excluded; tab-prefixed
+       lines skipped). Strip exactly that many leading spaces from every
+       line (including the first) that has at least that many.
+    2. Merge consecutive non-blank lines unless the current line starts with
+       a list/heading marker (``-``, ``*``, ``+``, ``#``, ``>``, or
+       ``\\d+[.)]``). Blank lines always act as paragraph breaks.
+    3. Join separator is a single space when either adjacent character is
+       ASCII printable, empty otherwise (keeps CJK-CJK joins tight).
+    """
+    if not text:
+        return text
+
+    trailing_nl = text.endswith("\n")
+    lines = text.splitlines()
+    if not lines:
+        return text
+
+    indents: list[int] = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        all_lead = len(line) - len(line.lstrip())
+        space_lead = len(line) - len(line.lstrip(" "))
+        if all_lead != space_lead:
+            continue
+        indents.append(space_lead)
+    common_indent = min(indents) if indents else 0
+
+    out: list[str] = []
+    for raw in lines:
+        if common_indent > 0 and (len(raw) - len(raw.lstrip(" "))) >= common_indent:
+            line = raw[common_indent:]
+        else:
+            line = raw
+        if not line.strip():
+            out.append("")
+            continue
+        content = line.lstrip(" ")
+        prev = out[-1] if out else None
+        start_new = (
+            prev is None
+            or not prev.strip()
+            or _LIST_MARKER_RE.match(content) is not None
+        )
+        if start_new:
+            out.append(line)
+        else:
+            left = prev.rstrip()
+            out[-1] = left + _join_separator(left, content) + content
+
+    result = "\n".join(out)
+    if trailing_nl:
+        result += "\n"
+    return result
+
+
+def _get_clipboard_text() -> str:
+    """Read plain-text clipboard contents. Returns '' on failure."""
+    try:
+        from wenzi.input import get_clipboard_text
+
+        return get_clipboard_text() or ""
+    except Exception:
+        return ""
+
+
+def _builtin_clipboard() -> str:
+    return _get_clipboard_text()
+
+
+# Each entry maps a built-in name to a (no-arg) callable returning a string.
+# Module-level registration is idempotent so plugin reloads don't double-register.
+from wenzi.scripting import script_registry as _script_registry  # noqa: E402
+
+_DATE_FORMATS = {
+    "date": "%Y-%m-%d",
+    "time": "%H:%M:%S",
+    "datetime": "%Y-%m-%d %H:%M:%S",
+}
+
+
+def _make_date_builtin(fmt: str):
+    import datetime
+
+    return lambda: datetime.datetime.now().strftime(fmt)
+
+
+_script_registry._register_builtin("clipboard", _builtin_clipboard)
+_script_registry._register_builtin("unwrap", _unwrap_clipboard)
+for _name, _fmt in _DATE_FORMATS.items():
+    _script_registry._register_builtin(_name, _make_date_builtin(_fmt))
+del _name, _fmt
+
+
 def _expand_placeholders(content: str) -> str:
     """Replace dynamic placeholders in snippet content.
 
-    Supported placeholders:
-      {date}      — current date (YYYY-MM-DD)
-      {time}      — current time (HH:MM:SS)
-      {datetime}  — current date and time
-      {clipboard} — current clipboard text
+    Placeholders use ``{name}`` to invoke a registered script with no input,
+    or ``{name|other}`` to pipe the first script's output as the first
+    positional argument to the next.  Arguments use Python literal syntax:
+    ``{date("%Y/%m/%d")}``, ``{clipboard|replace("foo", "bar")}``.
 
-    Use doubled braces to output a literal brace/placeholder:
-      ``{{date}}`` → ``{date}`` (not expanded)
-      ``{{``       → ``{``
-      ``}}``       → ``}``
+    Built-in scripts: ``clipboard``, ``date``, ``time``, ``datetime``,
+    ``unwrap``.  Plugins register additional scripts via ``wz.script``;
+    plugin scripts are namespaced as ``<plugin>.<name>``.
+
+    Use doubled braces to emit a literal brace:
+      ``{{date}}``  → ``{date}`` (not expanded)
+      ``{{``        → ``{``
+      ``}}``        → ``}``
+
+    Unknown names, parse errors, and exceptions raised by scripts leave the
+    placeholder text intact so typos surface instead of silently dropping
+    content.
     """
-    import datetime
+    if "{" not in content:
+        return content
+    result = content.replace("{{", _LBRACE_SENTINEL)
+    result = result.replace("}}", _RBRACE_SENTINEL)
 
-    # Protect escaped braces with sentinels before expanding placeholders
-    _LBRACE = "\x00LBRACE\x00"
-    _RBRACE = "\x00RBRACE\x00"
-    result = content.replace("{{", _LBRACE)
-    result = result.replace("}}", _RBRACE)
-
-    now = datetime.datetime.now()
-    result = result.replace("{date}", now.strftime("%Y-%m-%d"))
-    result = result.replace("{time}", now.strftime("%H:%M:%S"))
-    result = result.replace("{datetime}", now.strftime("%Y-%m-%d %H:%M:%S"))
-
-    if "{clipboard}" in result:
+    def _sub(m: re.Match[str]) -> str:
         try:
-            from AppKit import NSPasteboard
-
-            pb = NSPasteboard.generalPasteboard()
-            text = pb.stringForType_("public.utf8-plain-text")
-            result = result.replace("{clipboard}", text or "")
+            return _script_registry.dispatch(m.group(1))
+        except KeyError as e:
+            logger.warning("Unknown script in placeholder %s: %s", m.group(0), e)
+            return m.group(0)
+        except (ValueError, SyntaxError) as e:
+            logger.warning("Invalid placeholder %s: %s", m.group(0), e)
+            return m.group(0)
         except Exception:
-            result = result.replace("{clipboard}", "")
+            logger.exception("Script error in placeholder %s", m.group(0))
+            return m.group(0)
 
-    # Restore escaped braces
-    result = result.replace(_LBRACE, "{")
-    result = result.replace(_RBRACE, "}")
+    result = _PLACEHOLDER_RE.sub(_sub, result)
+
+    result = result.replace(_LBRACE_SENTINEL, "{")
+    result = result.replace(_RBRACE_SENTINEL, "}")
 
     return result
 

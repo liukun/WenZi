@@ -282,6 +282,7 @@ class ScriptEngine:
             # Keep menubar items alive for reuse (avoids NSStatusBar flicker)
             if self._wz._menubar_api is not None:
                 self._wz._menubar_api.prepare_reload()
+            self._wz._script_api._clear_owned()
             self._register_builtin_sources()
             self._load_plugins()
             self._load_scripts()
@@ -1074,7 +1075,9 @@ class ScriptEngine:
             try:
                 mod = importlib.import_module(entry)
                 if hasattr(mod, "setup") and callable(mod.setup):
-                    mod.setup(self._wz)
+                    plugin_id = meta.id or entry
+                    with self._wz._script_api._plugin_context(plugin_id):
+                        mod.setup(self._wz)
                     parts = [f"Plugin loaded: {meta.name}"]
                     if meta.version:
                         parts.append(f"v{meta.version}")
