@@ -389,6 +389,10 @@ class HotkeyAPI:
 
     def _execute_mapping(self, mapping: LeaderMapping) -> None:
         """Execute a leader mapping action in a background thread."""
+        if mapping.display_label:
+            from wenzi.scripting.api.alert import alert
+
+            alert(mapping.display_label, duration=1.0)
         try:
             if mapping.app:
                 from wenzi.scripting.api.app import AppAPI

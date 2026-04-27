@@ -23,6 +23,7 @@ _TITLE_HEIGHT = 22
 _ROW_HEIGHT = 26
 _BADGE_SIZE = 19
 _BADGE_CORNER = 5
+_BADGE_H_PAD = 10  # extra horizontal padding for auto-width badges (multi-char keys)
 _GAP_AFTER_TITLE = 6
 _CORNER_RADIUS = 14
 _FADE_IN = 0.15
@@ -110,59 +111,75 @@ class LeaderAlertPanel:
         container.setAutoresizingMask_(0x12)  # Width + Height sizable
         glass.setContentView_(container)
 
-        # --- Title ---
+        # --- Fonts / colors (shared by title badge and mapping rows) ---
         title_font = NSFont.systemFontOfSize_weight_(15.0, NSFontWeightSemibold)
+        key_font = NSFont.monospacedSystemFontOfSize_weight_(12.0, NSFontWeightMedium)
+        desc_font = NSFont.systemFontOfSize_weight_(14.0, 0.0)
+        badge_bg_cg = NSColor.colorWithSRGBRed_green_blue_alpha_(
+            0.5, 0.5, 0.5, 0.15
+        ).CGColor()
+
+        def _make_badge(text: str, x: float, y: float, width: float | None = None):
+            """Build a key-style badge (rounded rect + centered monospace label).
+
+            *width* ``None`` auto-sizes to the label with horizontal padding.
+            """
+            label = NSTextField.labelWithString_(text)
+            label.setFont_(key_font)
+            label.setAlignment_(NSTextAlignmentCenter)
+            label.setTextColor_(NSColor.labelColor())
+            label.setBackgroundColor_(NSColor.clearColor())
+            label.setBezeled_(False)
+            label.setEditable_(False)
+            label.setSelectable_(False)
+            if width is None:
+                label.sizeToFit()
+                width = max(_BADGE_SIZE, int(label.frame().size.width) + _BADGE_H_PAD)
+            badge_view = NSView.alloc().initWithFrame_(
+                NSMakeRect(x, y, width, _BADGE_SIZE)
+            )
+            badge_view.setWantsLayer_(True)
+            badge_view.layer().setBackgroundColor_(badge_bg_cg)
+            badge_view.layer().setCornerRadius_(_BADGE_CORNER)
+            label.setFrame_(NSMakeRect(0, 0, width, _BADGE_SIZE))
+            badge_view.addSubview_(label)
+            return badge_view
+
+        # --- Title row: "Leader" + trigger-key badge (same style as sub-keys) ---
         y_cursor = panel_height - _PADDING - _TITLE_HEIGHT
-        title = NSTextField.labelWithString_(t("leader_alert.title", key=trigger_key))
-        title.setFrame_(
-            NSMakeRect(_PADDING, y_cursor, _PANEL_WIDTH - _PADDING * 2, _TITLE_HEIGHT)
-        )
+
+        title = NSTextField.labelWithString_(t("leader_alert.title"))
         title.setFont_(title_font)
         title.setTextColor_(NSColor.secondaryLabelColor())
         title.setBackgroundColor_(NSColor.clearColor())
         title.setBezeled_(False)
         title.setEditable_(False)
         title.setSelectable_(False)
+        title.sizeToFit()
+        title_w = title.frame().size.width
+        title.setFrame_(NSMakeRect(_PADDING, y_cursor, title_w, _TITLE_HEIGHT))
         container.addSubview_(title)
+
+        trigger_y = y_cursor + (_TITLE_HEIGHT - _BADGE_SIZE) / 2
+        container.addSubview_(
+            _make_badge(trigger_key.upper(), _PADDING + title_w + 6, trigger_y)
+        )
+
         y_cursor -= _GAP_AFTER_TITLE
 
         # --- Mapping rows ---
-        key_font = NSFont.monospacedSystemFontOfSize_weight_(12.0, NSFontWeightMedium)
-        desc_font = NSFont.systemFontOfSize_weight_(14.0, 0.0)
-        badge_bg_cg = NSColor.colorWithSRGBRed_green_blue_alpha_(
-            0.5, 0.5, 0.5, 0.15
-        ).CGColor()
-        badge_x = _PADDING
         desc_x = _PADDING + _BADGE_SIZE + 10
         desc_width = _PANEL_WIDTH - desc_x - _PADDING
 
         for m in mappings:
             row_y = y_cursor - _ROW_HEIGHT
             badge_y = row_y + (_ROW_HEIGHT - _BADGE_SIZE) / 2
-
-            # Badge background (rounded rect)
-            badge = NSView.alloc().initWithFrame_(
-                NSMakeRect(badge_x, badge_y, _BADGE_SIZE, _BADGE_SIZE)
+            container.addSubview_(
+                _make_badge(m.key.upper(), _PADDING, badge_y, _BADGE_SIZE)
             )
-            badge.setWantsLayer_(True)
-            badge.layer().setBackgroundColor_(badge_bg_cg)
-            badge.layer().setCornerRadius_(_BADGE_CORNER)
-            container.addSubview_(badge)
-
-            # Badge key letter
-            key_label = NSTextField.labelWithString_(m.key.upper())
-            key_label.setFrame_(NSMakeRect(0, 0, _BADGE_SIZE, _BADGE_SIZE))
-            key_label.setFont_(key_font)
-            key_label.setAlignment_(NSTextAlignmentCenter)
-            key_label.setTextColor_(NSColor.labelColor())
-            key_label.setBackgroundColor_(NSColor.clearColor())
-            key_label.setBezeled_(False)
-            key_label.setEditable_(False)
-            key_label.setSelectable_(False)
-            badge.addSubview_(key_label)
 
             # Description
-            desc_text = m.desc or m.app or m.exec_cmd or t("leader_alert.default_action")
+            desc_text = m.display_label or t("leader_alert.default_action")
             desc_label = NSTextField.labelWithString_(desc_text)
             desc_label.setFrame_(NSMakeRect(desc_x, row_y, desc_width, _ROW_HEIGHT))
             desc_label.setFont_(desc_font)

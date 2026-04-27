@@ -255,7 +255,7 @@
   "snippet_editor.error.save_failed": "保存片段失败",
   "snippet_editor.hud.saved": "已保存\n{path}",
 
-  "leader_alert.title": "Leader: {key}",
+  "leader_alert.title": "Leader",
   "leader_alert.default_action": "操作",
 
   "chooser.action.open": "打开",

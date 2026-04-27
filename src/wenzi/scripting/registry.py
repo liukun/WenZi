@@ -23,6 +23,11 @@ class LeaderMapping:
     func: Callable | None = None
     exec_cmd: str | None = None
 
+    @property
+    def display_label(self) -> str:
+        """Priority desc → app → exec_cmd; empty string if none set."""
+        return self.desc or self.app or self.exec_cmd or ""
+
 
 @dataclass
 class LeaderConfig:

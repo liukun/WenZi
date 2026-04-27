@@ -255,7 +255,7 @@
   "snippet_editor.error.save_failed": "Failed to save snippet",
   "snippet_editor.hud.saved": "Saved\n{path}",
 
-  "leader_alert.title": "Leader: {key}",
+  "leader_alert.title": "Leader",
   "leader_alert.default_action": "action",
 
   "chooser.action.open": "Open",

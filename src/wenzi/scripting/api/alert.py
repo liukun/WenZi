@@ -150,12 +150,13 @@ def _show_alert(text: str, duration: float) -> None:
     glass.addSubview_(label)
     glass.addSubview_(outline)
 
-    # Position: center-top of main screen
+    # Position: horizontally centered, panel center at the upper golden
+    # section (~38.2% from top, i.e. 0.618 from bottom in NSScreen coords)
     screen = NSScreen.mainScreen()
     if screen:
         sf = screen.visibleFrame()
         x = sf.origin.x + (sf.size.width - panel_width) / 2
-        y = sf.origin.y + sf.size.height - panel_height - 100
+        y = sf.origin.y + sf.size.height * 0.618 - panel_height / 2
         panel.setFrameOrigin_((x, y))
 
     panel.setAlphaValue_(0.0)
