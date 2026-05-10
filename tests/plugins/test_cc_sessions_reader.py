@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cc_sessions.reader import read_session_detail
+from cc_sessions.reader import read_last_assistant_block, read_session_detail
 
 
 class TestReadSessionDetail:
@@ -135,3 +135,87 @@ class TestReadSessionDetail:
         assert len(detail["turns"]) == 2
         assert detail["turns"][0] == {"role": "user", "text": "The real question"}
         assert detail["turns"][1] == {"role": "assistant", "text": "The answer"}
+
+
+class TestReadLastAssistantBlock:
+    """Test read_last_assistant_block function."""
+
+    def _write_jsonl(self, path: Path, lines: list[dict]) -> Path:
+        path.write_text("\n".join(json.dumps(item) for item in lines) + "\n")
+        return path
+
+    def test_returns_last_assistant_text(self, tmp_path: Path):
+        jsonl = self._write_jsonl(tmp_path / "s.jsonl", [
+            {"type": "user", "message": {"role": "user", "content": "Hi"}},
+            {"type": "assistant", "message": {"role": "assistant",
+                "content": [{"type": "text", "text": "First reply"}]}},
+            {"type": "user", "message": {"role": "user", "content": "More?"}},
+            {"type": "assistant", "message": {"role": "assistant",
+                "content": [{"type": "text", "text": "Final reply"}]}},
+        ])
+        assert read_last_assistant_block(jsonl) == "Final reply"
+
+    def test_merges_consecutive_assistant_with_tool_results(self, tmp_path: Path):
+        """Consecutive assistant msgs (with tool_result-only user between) merge."""
+        jsonl = self._write_jsonl(tmp_path / "s.jsonl", [
+            {"type": "user", "message": {"role": "user", "content": "go"}},
+            {"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Calling tool"},
+                {"type": "tool_use", "id": "t1", "name": "ls", "input": {}},
+            ]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+            ]}},
+            {"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Done."},
+            ]}},
+        ])
+        assert read_last_assistant_block(jsonl) == "Calling tool\n\nDone."
+
+    def test_returns_none_when_ending_with_real_user_msg(self, tmp_path: Path):
+        jsonl = self._write_jsonl(tmp_path / "s.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "content": [{"type": "text", "text": "Hi"}]}},
+            {"type": "user", "message": {"role": "user", "content": "Question?"}},
+        ])
+        assert read_last_assistant_block(jsonl) is None
+
+    def test_joins_multiple_text_parts_with_double_newline(self, tmp_path: Path):
+        jsonl = self._write_jsonl(tmp_path / "s.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Para A"},
+                {"type": "text", "text": "Para B"},
+            ]}},
+        ])
+        assert read_last_assistant_block(jsonl) == "Para A\n\nPara B"
+
+    def test_skips_sidechain_messages(self, tmp_path: Path):
+        """Subagent (sidechain) messages must not contribute to the last block."""
+        jsonl = self._write_jsonl(tmp_path / "s.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "content": [{"type": "text", "text": "Main reply"}]}},
+            {"type": "assistant", "isSidechain": True, "message": {"role": "assistant",
+                "content": [{"type": "text", "text": "Subagent inner"}]}},
+        ])
+        assert read_last_assistant_block(jsonl) == "Main reply"
+
+    def test_returns_none_for_empty_or_missing_file(self, tmp_path: Path):
+        empty = self._write_jsonl(tmp_path / "empty.jsonl", [])
+        assert read_last_assistant_block(empty) is None
+        assert read_last_assistant_block(tmp_path / "nope.jsonl") is None
+
+    def test_skips_system_reminder_only_user_msgs(self, tmp_path: Path):
+        """user msg that is tool_result + only system-reminder text is treated as tool-result-only."""
+        jsonl = self._write_jsonl(tmp_path / "s.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Step 1"},
+            ]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+                {"type": "text", "text": "<system-reminder>note</system-reminder>"},
+            ]}},
+            {"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Step 2"},
+            ]}},
+        ])
+        assert read_last_assistant_block(jsonl) == "Step 1\n\nStep 2"

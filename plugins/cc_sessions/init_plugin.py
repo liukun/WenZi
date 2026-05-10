@@ -216,6 +216,52 @@ def register(wz) -> None:
         action=_clear_cache,
     )
 
+    last_reply_cache: dict[tuple[Path, float], str] = {}
+
+    def _resolve_last_reply_text() -> str:
+        from .opencode_store import SOURCE_OPENCODE
+        from .reader import read_last_assistant_block
+
+        sessions = scanner.scan_all()
+        if not sessions:
+            return ""
+        latest = sessions[0]
+        if latest.get("source") == SOURCE_OPENCODE:
+            jsonl_path = _ensure_opencode_jsonl(latest)
+        else:
+            jsonl_path = Path(latest["file_path"])
+        try:
+            mtime = jsonl_path.stat().st_mtime
+        except OSError:
+            return ""
+        cache_key = (jsonl_path, mtime)
+        cached = last_reply_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        text = read_last_assistant_block(jsonl_path) or ""
+        last_reply_cache.clear()
+        last_reply_cache[cache_key] = text
+        return text
+
+    def _copy_last_reply(_args: str) -> None:
+        from wenzi.scripting.sources import copy_to_clipboard
+
+        text = _resolve_last_reply_text()
+        if not text:
+            wz.alert("No assistant reply in last session")
+            return
+        copy_to_clipboard(text)
+        wz.alert(f"Copied last reply ({len(text)} chars)")
+
+    wz.chooser.register_command(
+        name="cc-sessions:copy-last-reply",
+        title="CC Sessions: Copy Last Reply",
+        subtitle="Copy the last assistant message from the most recent session",
+        action=_copy_last_reply,
+    )
+
+    wz.script("last-reply", _resolve_last_reply_text)
+
     from .identicon import generate as generate_identicon
 
     plugin_dir = os.path.dirname(os.path.abspath(__file__))

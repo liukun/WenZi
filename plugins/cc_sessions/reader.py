@@ -99,14 +99,78 @@ def _extract_user_text(content: Any) -> str:
     return ""
 
 
-def _extract_assistant_text(content: Any) -> str:
+def _extract_assistant_text(content: Any, joiner: str = " ") -> str:
     """Extract text from assistant message content, skipping thinking/tool_use."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
-        for p in content:
-            if isinstance(p, dict) and p.get("type") == "text":
-                parts.append(p.get("text", ""))
-        return " ".join(t for t in parts if t)
+        parts = [
+            p.get("text", "")
+            for p in content
+            if isinstance(p, dict) and p.get("type") == "text"
+        ]
+        return joiner.join(t for t in parts if t)
     return ""
+
+
+def read_last_assistant_block(jsonl_path: Path) -> str | None:
+    """Return the last copyable assistant block from a session JSONL.
+
+    Mirrors the viewer's grouping: filters to ``user``/``assistant`` non-sidechain
+    messages, then keeps the trailing run of consecutive assistant messages
+    (with tool_result-only user messages allowed between them). All
+    ``type=="text"`` parts are joined with ``"\\n\\n"`` and trimmed. Returns
+    ``None`` when no assistant text is found at the end of the session.
+    """
+    try:
+        fh = jsonl_path.open("r", encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    current_block: list[str] = []
+    with fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            msg_type = obj.get("type")
+            if msg_type not in ("user", "assistant"):
+                continue
+            if obj.get("isSidechain"):
+                continue
+            if msg_type == "assistant":
+                content = (obj.get("message") or {}).get("content", "")
+                text = _extract_assistant_text(content, joiner="\n\n")
+                if text:
+                    current_block.append(text)
+            elif not _is_tool_result_only(obj):
+                current_block = []
+
+    combined = "\n\n".join(current_block).strip()
+    return combined or None
+
+
+def _is_tool_result_only(msg: dict[str, Any]) -> bool:
+    """Mirror viewer.html _isToolResultOnly: pure tool_result user msg, no real text."""
+    content = (msg.get("message") or {}).get("content")
+    if content is None:
+        content = msg.get("content")
+    if not isinstance(content, list):
+        return False
+    has_real_text = any(
+        isinstance(p, dict)
+        and p.get("type") == "text"
+        and (p.get("text") or "").strip()
+        and not (p.get("text") or "").startswith("<system-reminder>")
+        for p in content
+    )
+    has_tool_result = any(
+        isinstance(p, dict) and p.get("type") == "tool_result" for p in content
+    )
+    return has_tool_result and not has_real_text
