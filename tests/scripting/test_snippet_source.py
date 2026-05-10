@@ -821,6 +821,34 @@ class TestExpandPlaceholders:
         result = _expand_placeholders("{{unknown}}")
         assert result == "{unknown}"
 
+    def test_date_with_positional_format(self):
+        import datetime
+
+        result = _expand_placeholders('{date("%Y/%m/%d")}')
+        expected = datetime.datetime.now().strftime("%Y/%m/%d")
+        assert result == expected
+
+    def test_date_with_keyword_format(self):
+        import datetime
+
+        result = _expand_placeholders('{date(fmt="%m-%d")}')
+        expected = datetime.datetime.now().strftime("%m-%d")
+        assert result == expected
+
+    def test_time_with_format(self):
+        import datetime
+
+        result = _expand_placeholders('{time("%H%M")}')
+        expected = datetime.datetime.now().strftime("%H%M")
+        assert result == expected
+
+    def test_datetime_with_format(self):
+        import datetime
+
+        result = _expand_placeholders('{datetime("%Y-%m-%dT%H:%M:%S")}')
+        expected = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        assert result == expected
+
 
 class TestUnwrapClipboard:
     def test_empty_string(self):

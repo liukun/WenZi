@@ -25,6 +25,16 @@ Inside `setup(wz)`, the registered name is auto-prefixed with the plugin id:
 collide with each other or with built-ins (`clipboard`, `date`, `time`,
 `datetime`, `unwrap`).
 
+`date`, `time`, and `datetime` each take an optional `strftime` format
+(positional or `fmt=...`):
+
+```
+{date}                        → 2026-04-30           (default %Y-%m-%d)
+{date("%Y/%m/%d")}            → 2026/04/30
+{time("%I:%M %p")}            → 07:48 PM
+{datetime(fmt="%Y%m%dT%H%M")} → 20260430T1948
+```
+
 ### Placeholder syntax
 
 | Form | Meaning |

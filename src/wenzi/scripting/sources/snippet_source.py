@@ -403,10 +403,13 @@ _DATE_FORMATS = {
 }
 
 
-def _make_date_builtin(fmt: str):
+def _make_date_builtin(default_fmt: str):
     import datetime
 
-    return lambda: datetime.datetime.now().strftime(fmt)
+    def _date_fn(fmt: str = default_fmt) -> str:
+        return datetime.datetime.now().strftime(fmt)
+
+    return _date_fn
 
 
 _script_registry._register_builtin("clipboard", _builtin_clipboard)
@@ -425,8 +428,12 @@ def _expand_placeholders(content: str) -> str:
     ``{date("%Y/%m/%d")}``, ``{clipboard|replace("foo", "bar")}``.
 
     Built-in scripts: ``clipboard``, ``date``, ``time``, ``datetime``,
-    ``unwrap``.  Plugins register additional scripts via ``wz.script``;
-    plugin scripts are namespaced as ``<plugin>.<name>``.
+    ``unwrap``.  ``date``/``time``/``datetime`` each take an optional
+    ``strftime`` format string (positional or ``fmt=...``); without an
+    argument they use ``%Y-%m-%d``, ``%H:%M:%S``, and
+    ``%Y-%m-%d %H:%M:%S`` respectively.  Plugins register additional
+    scripts via ``wz.script``; plugin scripts are namespaced as
+    ``<plugin>.<name>``.
 
     Use doubled braces to emit a literal brace:
       ``{{date}}``  → ``{date}`` (not expanded)
