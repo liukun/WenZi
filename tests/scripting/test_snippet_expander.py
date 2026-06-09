@@ -167,6 +167,66 @@ class TestBufferAndMatching:
         expand_mock.assert_not_called()
 
 
+class TestBackspaceBuffer:
+    """Backspace pops one char from the buffer instead of clearing it.
+
+    This lets mid-word corrections still match on later typing, e.g.
+    typing "ad", backspacing the "d", then "bc" yields buffer "abc".
+    """
+
+    def _make_expander(self, setup_fn=None):
+        store = _make_store(setup_fn)
+        return SnippetExpander(store)
+
+    def _feed(self, expander, *, keycode, char="", flags=0):
+        """Drive _callback once with a synthetic key event."""
+        import wenzi._cgeventtap as cg_mod
+
+        with (
+            patch.object(
+                cg_mod, "CGEventGetIntegerValueField", return_value=keycode,
+            ),
+            patch.object(cg_mod, "CGEventGetFlags", return_value=flags),
+            patch(
+                "wenzi.scripting.snippet_expander._get_unicode_string",
+                return_value=char,
+            ),
+        ):
+            # event_type = kCGEventKeyDown, distinct from the disabled-by-timeout
+            # sentinel the callback checks first.
+            expander._callback(None, cg_mod.kCGEventKeyDown, 0, None)
+
+    def test_backspace_pops_one_char(self):
+        expander = self._make_expander()
+        expander._buffer = "ad"
+        self._feed(expander, keycode=51)  # backspace
+        assert expander._buffer == "a"
+
+    def test_backspace_on_empty_buffer_safe(self):
+        expander = self._make_expander()
+        expander._buffer = ""
+        self._feed(expander, keycode=51)  # backspace
+        assert expander._buffer == ""
+
+    def test_mid_word_correction_matches(self):
+        def setup(d):
+            _write_snippet(d, "abc", "abc", "alphabet soup")
+
+        expander = self._make_expander(setup)
+        # Type "ad", backspace the "d", then "bc" -> buffer becomes "abc".
+        self._feed(expander, keycode=0, char="a")
+        self._feed(expander, keycode=2, char="d")
+        self._feed(expander, keycode=51)  # backspace
+        self._feed(expander, keycode=11, char="b")
+        self._feed(expander, keycode=8, char="c")
+
+        # Match clears the buffer and schedules a debounced expansion.
+        assert expander._buffer == ""
+        assert expander._pending_timer is not None
+        assert expander._pending_timer.args[0] == "abc"
+        expander._cancel_pending()
+
+
 class TestExpand:
     """Test the expansion action (backspaces + paste)."""
 

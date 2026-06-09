@@ -32,11 +32,11 @@ _MAX_BUFFER = 128
 # UTF-16 buffer size for CGEventKeyboardGetUnicodeString
 _KEYBOARD_BUF_SIZE = 16
 
-# Keycodes that should clear the character buffer (navigation / control)
+# Keycodes that should clear the character buffer (navigation / control).
+# Backspace (51) is handled separately — it pops one char instead of clearing.
 _CLEAR_KEYCODES = {
     36,  # return
     48,  # tab
-    51,  # delete (backspace)
     53,  # escape
     76,  # enter (numpad)
     117,  # forward delete
@@ -164,6 +164,15 @@ class SnippetExpander:
             if flags & mod_mask:
                 with self._lock:
                     self._buffer = ""
+                return None
+
+            # Backspace removes the last buffered char (mirrors the text field),
+            # so mid-word corrections still match on later typing
+            # (e.g. "ad⌫bc" -> "abc"). No match check here: any keyword suffix
+            # is produced by forward typing, which already ran the check.
+            if keycode == _VK_DELETE:
+                with self._lock:
+                    self._buffer = self._buffer[:-1]
                 return None
 
             # Navigation / control keys clear the buffer
