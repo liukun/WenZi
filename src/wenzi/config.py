@@ -334,6 +334,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "settings_last_tab": "general",
         "diff_panel_open": False,
     },
+    "input_indicator": {
+        "enabled": False,
+        # Per-input-source overrides, keyed by input source ID, e.g.:
+        #   "com.apple.keylayout.ABC": {"text": "A", "color": "#5AC8FA", "alpha": 0.6}
+        # Unconfigured sources log their ID once and fall back to the first
+        # character of the localized input source name.
+        "styles": {},
+        "default_color": "#FFFFFF",
+        # Whole-chip opacity (0..1) for sources without a configured style.
+        # A configured style is fully opaque unless it sets its own "alpha".
+        "default_alpha": 1.0,
+        "offset_x": 14,
+        "offset_y": -30,
+        # Seconds to keep the chip on screen after the cursor hides (e.g. while
+        # typing) before hiding it. 0 hides in lockstep with the cursor.
+        "hide_delay": 8.0,
+    },
     "update_check": {
         "enabled": True,
         "interval_hours": 6,
@@ -552,6 +569,15 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
          DEFAULT_CONFIG["logging"]["level"]),
         ("ui.settings_last_tab", str, lambda v: v in {"general", "microphone", "stt", "ai", "launcher"},
          DEFAULT_CONFIG["ui"]["settings_last_tab"]),
+        ("input_indicator.enabled", bool, None, DEFAULT_CONFIG["input_indicator"]["enabled"]),
+        ("input_indicator.default_color", str, lambda v: len(v) > 0,
+         DEFAULT_CONFIG["input_indicator"]["default_color"]),
+        ("input_indicator.default_alpha", (int, float), lambda v: 0.0 <= v <= 1.0,
+         DEFAULT_CONFIG["input_indicator"]["default_alpha"]),
+        ("input_indicator.offset_x", (int, float), None, DEFAULT_CONFIG["input_indicator"]["offset_x"]),
+        ("input_indicator.offset_y", (int, float), None, DEFAULT_CONFIG["input_indicator"]["offset_y"]),
+        ("input_indicator.hide_delay", (int, float), lambda v: v >= 0,
+         DEFAULT_CONFIG["input_indicator"]["hide_delay"]),
         ("ai_enhance.timeout", (int, float), lambda v: v > 0, DEFAULT_CONFIG["ai_enhance"]["timeout"]),
         ("ai_enhance.connection_timeout", (int, float), lambda v: v > 0,
          DEFAULT_CONFIG["ai_enhance"]["connection_timeout"]),

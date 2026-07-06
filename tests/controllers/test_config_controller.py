@@ -49,6 +49,8 @@ def mock_app():
     app._preview_item = MagicMock()
     app._sound_feedback_item = MagicMock()
     app._visual_indicator_item = MagicMock()
+    app._input_indicator_item = MagicMock()
+    app._input_indicator = MagicMock()
     app._sound_manager = MagicMock()
     app._recording_indicator = MagicMock()
     app._app_hotkey_tap = MagicMock()

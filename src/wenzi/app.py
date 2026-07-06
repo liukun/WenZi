@@ -58,6 +58,7 @@ from .transcription.model_registry import (
     is_model_cached,
     resolve_preset_from_config,
 )
+from .ui.input_indicator import InputIndicatorController
 from .ui.result_window_web import ResultPreviewPanel
 from .ui.settings_window_web import SettingsWebPanel as SettingsPanel
 from .ui.streaming_overlay import StreamingOverlayPanel
@@ -456,6 +457,13 @@ class WenZiApp(StatusBarApp):
         )
         self._visual_indicator_item.state = 1 if self._recording_indicator.enabled else 0
 
+        # Mouse-side input-source indicator (follows the cursor)
+        self._input_indicator = InputIndicatorController(self)
+        self._input_indicator_item = StatusMenuItem(
+            t("menu.input_indicator"), callback=self._input_indicator.on_menu_toggle
+        )
+        self._input_indicator_item.state = 1 if self._input_indicator.enabled else 0
+
         # View Logs top-level item (replaces Debug submenu)
         self._view_logs_item = StatusMenuItem(
             t("menu.view_logs"), callback=self._on_view_logs
@@ -511,6 +519,7 @@ class WenZiApp(StatusBarApp):
                 self._browse_history_item,
                 self._vocab_manager_item,
                 self._settings_item,
+                self._input_indicator_item,
                 None,
                 self._view_logs_item,
                 self._usage_stats_item,
@@ -1156,6 +1165,10 @@ class WenZiApp(StatusBarApp):
         except Exception:
             logger.debug("Recording indicator hide failed", exc_info=True)
         try:
+            self._input_indicator.stop()
+        except Exception:
+            logger.debug("Input indicator stop failed", exc_info=True)
+        try:
             self._streaming_overlay.close()
         except Exception:
             logger.debug("Streaming overlay close failed", exc_info=True)
@@ -1564,6 +1577,10 @@ class WenZiApp(StatusBarApp):
         # Start background update checker
         if not self._config_degraded:
             AppHelper.callAfter(self._update_controller.start)
+
+        # Start the mouse-side input indicator (no-op unless enabled in config)
+        if not self._config_degraded:
+            AppHelper.callAfter(self._input_indicator.start)
 
         # Hide status bar icon if configured (set flag before super().run()
         # creates the NSStatusItem, so the icon never appears)

@@ -41,6 +41,7 @@
   "menu.enhance_clipboard": "Enhance Clipboard",
   "menu.sound_feedback": "Sound Feedback",
   "menu.visual_indicator": "Visual Indicator",
+  "menu.input_indicator": "Input Indicator",
   "menu.view_logs": "View Logs...",
   "menu.show_config": "Show Config...",
   "menu.reload_config": "Reload Config",

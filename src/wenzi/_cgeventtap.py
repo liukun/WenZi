@@ -93,6 +93,12 @@ _cg.CGEventCreateKeyboardEvent.argtypes = [c_void_p, c_uint32, c_bool]
 _cg.CGEventPost.restype = None
 _cg.CGEventPost.argtypes = [c_uint32, c_void_p]
 
+# CGCursorIsVisible() -> Boolean
+# Deprecated since 10.9 but still functional, and there is no public
+# replacement for querying the global cursor visibility state.
+_cg.CGCursorIsVisible.restype = c_bool
+_cg.CGCursorIsVisible.argtypes = []
+
 # CFMachPortCreateRunLoopSource(allocator, port, order) -> CFRunLoopSourceRef
 _cf.CFMachPortCreateRunLoopSource.restype = c_void_p
 _cf.CFMachPortCreateRunLoopSource.argtypes = [c_void_p, c_void_p, c_int64]
@@ -181,6 +187,11 @@ def CFRelease(cf):
 def CGEventMaskBit(event_type):
     """Pure Python implementation of CGEventMaskBit."""
     return 1 << event_type
+
+
+def CGCursorIsVisible() -> bool:
+    """Return whether the system mouse cursor is currently visible."""
+    return bool(_cg.CGCursorIsVisible())
 
 
 # ---------------------------------------------------------------------------

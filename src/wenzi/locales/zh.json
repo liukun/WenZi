@@ -41,6 +41,7 @@
   "menu.enhance_clipboard": "增强剪贴板",
   "menu.sound_feedback": "声音反馈",
   "menu.visual_indicator": "视觉指示",
+  "menu.input_indicator": "输入法指示器",
   "menu.view_logs": "查看日志...",
   "menu.show_config": "显示配置...",
   "menu.reload_config": "重新加载配置",

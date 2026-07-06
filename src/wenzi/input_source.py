@@ -20,6 +20,7 @@ _TISCreateInputSourceList = None
 _TISSelectInputSource = None
 _TISGetInputSourceProperty = None
 _kTISPropertyInputSourceID = None
+_kTISPropertyLocalizedName = None
 
 
 def _load_tis() -> bool:
@@ -30,6 +31,7 @@ def _load_tis() -> bool:
     global _TISSelectInputSource
     global _TISGetInputSourceProperty
     global _kTISPropertyInputSourceID
+    global _kTISPropertyLocalizedName
 
     if _tis_loaded is not None:
         return _tis_loaded
@@ -66,13 +68,19 @@ def _load_tis() -> bool:
         _TISSelectInputSource = result.get("TISSelectInputSource")
         _TISGetInputSourceProperty = result.get("TISGetInputSourceProperty")
 
-        # Load the property key constant (CFStringRef)
+        # Load the property key constants (CFStringRef).
+        # LocalizedName is optional: it is only used for the display fallback
+        # and must not gate the core (id/select) functionality.
         objc.loadBundleVariables(
             bundle,
             result,
-            [("kTISPropertyInputSourceID", b"@")],
+            [
+                ("kTISPropertyInputSourceID", b"@"),
+                ("kTISPropertyLocalizedName", b"@"),
+            ],
         )
         _kTISPropertyInputSourceID = result.get("kTISPropertyInputSourceID")
+        _kTISPropertyLocalizedName = result.get("kTISPropertyLocalizedName")
 
         _tis_loaded = all([
             _TISCopyCurrentKeyboardInputSource,
@@ -125,6 +133,35 @@ def get_current_input_source() -> str | None:
     except Exception:
         logger.warning("Failed to get current input source", exc_info=True)
         return None
+
+
+def get_current_input_source_info() -> tuple[str | None, str | None]:
+    """Return ``(source_id, localized_name)`` for the current input source.
+
+    Either element may be ``None`` if TIS is unavailable or the property is
+    missing. ``localized_name`` is e.g. ``"ABC"`` or ``"拼音 - 简体"``.
+    """
+    if not _load_tis():
+        return (None, None)
+
+    try:
+        import objc
+
+        with objc.autorelease_pool():
+            source = _TISCopyCurrentKeyboardInputSource()
+            if source is None:
+                return (None, None)
+            sid = _TISGetInputSourceProperty(source, _kTISPropertyInputSourceID)
+            name = None
+            if _kTISPropertyLocalizedName is not None:
+                name = _TISGetInputSourceProperty(source, _kTISPropertyLocalizedName)
+            return (
+                str(sid) if sid else None,
+                str(name) if name else None,
+            )
+    except Exception:
+        logger.warning("Failed to get current input source info", exc_info=True)
+        return (None, None)
 
 
 def select_input_source(source_id: str) -> bool:

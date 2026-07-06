@@ -260,6 +260,11 @@ class ConfigController:
         app._recording_indicator.enabled = fb_cfg.get("visual_indicator", True)
         app._visual_indicator_item.state = 1 if app._recording_indicator.enabled else 0
 
+        # Mouse-side input indicator
+        ii_cfg = new_config.get("input_indicator", {})
+        app._input_indicator_item.state = 1 if ii_cfg.get("enabled", False) else 0
+        app._input_indicator.reload_config()
+
         # Clipboard enhance hotkey
         clip_cfg = new_config.get("clipboard_enhance", {})
         new_clip_hotkey = clip_cfg.get("hotkey", "")

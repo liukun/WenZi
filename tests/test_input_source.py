@@ -18,6 +18,7 @@ def _reset_tis_state():
     input_source._TISSelectInputSource = None
     input_source._TISGetInputSourceProperty = None
     input_source._kTISPropertyInputSourceID = None
+    input_source._kTISPropertyLocalizedName = None
     input_source._cached_english_sid = None
     yield
     input_source._tis_loaded = None
@@ -26,6 +27,7 @@ def _reset_tis_state():
     input_source._TISSelectInputSource = None
     input_source._TISGetInputSourceProperty = None
     input_source._kTISPropertyInputSourceID = None
+    input_source._kTISPropertyLocalizedName = None
     input_source._cached_english_sid = None
 
 
@@ -107,6 +109,64 @@ class TestGetCurrentInputSource:
             side_effect=RuntimeError("boom")
         )
         assert input_source.get_current_input_source() is None
+
+
+class TestGetCurrentInputSourceInfo:
+    def test_returns_none_pair_when_tis_unavailable(self):
+        input_source._tis_loaded = False
+        assert input_source.get_current_input_source_info() == (None, None)
+
+    def test_returns_id_and_name(self):
+        input_source._tis_loaded = True
+        mock_source = MagicMock()
+        input_source._TISCopyCurrentKeyboardInputSource = MagicMock(
+            return_value=mock_source
+        )
+        input_source._kTISPropertyInputSourceID = "ID"
+        input_source._kTISPropertyLocalizedName = "NAME"
+
+        def _prop(_source, key):
+            return {
+                "ID": "com.apple.inputmethod.SCIM.ITABC",
+                "NAME": "拼音 - 简体",
+            }[key]
+
+        input_source._TISGetInputSourceProperty = MagicMock(side_effect=_prop)
+
+        assert input_source.get_current_input_source_info() == (
+            "com.apple.inputmethod.SCIM.ITABC",
+            "拼音 - 简体",
+        )
+
+    def test_name_none_when_localized_key_missing(self):
+        """Without the LocalizedName key, only the ID is returned."""
+        input_source._tis_loaded = True
+        mock_source = MagicMock()
+        input_source._TISCopyCurrentKeyboardInputSource = MagicMock(
+            return_value=mock_source
+        )
+        input_source._kTISPropertyInputSourceID = "ID"
+        input_source._kTISPropertyLocalizedName = None
+        input_source._TISGetInputSourceProperty = MagicMock(
+            return_value="com.apple.keylayout.ABC"
+        )
+
+        assert input_source.get_current_input_source_info() == (
+            "com.apple.keylayout.ABC",
+            None,
+        )
+
+    def test_returns_none_pair_when_source_is_none(self):
+        input_source._tis_loaded = True
+        input_source._TISCopyCurrentKeyboardInputSource = MagicMock(return_value=None)
+        assert input_source.get_current_input_source_info() == (None, None)
+
+    def test_returns_none_pair_on_exception(self):
+        input_source._tis_loaded = True
+        input_source._TISCopyCurrentKeyboardInputSource = MagicMock(
+            side_effect=RuntimeError("boom")
+        )
+        assert input_source.get_current_input_source_info() == (None, None)
 
 
 class TestSelectInputSource:
